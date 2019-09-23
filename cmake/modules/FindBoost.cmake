@@ -389,7 +389,6 @@ endmacro()
 # Use 'build_type' to support different lib paths for RELEASE or DEBUG builds
 #
 macro(_Boost_FIND_LIBRARY var build_type)
-
   find_library(${var} ${ARGN})
 
   if(${var})
@@ -541,10 +540,10 @@ function(_Boost_GUESS_COMPILER_PREFIX _ret)
           set(_boost_COMPILER "-gcc${_boost_COMPILER_VERSION}")
         endif()
       endif()
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-      # TODO: Find out any Boost version constraints vs clang support.
-      set(_boost_COMPILER "-clang${_boost_COMPILER_VERSION}")
     endif()
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # TODO: Find out any Boost version constraints vs clang support.
+    set(_boost_COMPILER "-clang${_boost_COMPILER_VERSION}")
   else()
     # TODO at least Boost_DEBUG here?
     set(_boost_COMPILER "")
