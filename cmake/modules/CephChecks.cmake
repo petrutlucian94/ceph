@@ -88,10 +88,19 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
   include(CheckCXXSourceRuns)
   cmake_push_check_state()
   set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++17")
+  if(WIN32)
+    set(CMAKE_REQUIRED_LIBRARIES Ws2_32)
+  endif()
+
   check_cxx_source_runs("
 #include <cstdint>
 #include <iterator>
+
+#ifdef _WIN32
+#include <Winsock2.h>
+#else
 #include <arpa/inet.h>
+#endif
 
 uint32_t load(char* p, size_t offset)
 {
