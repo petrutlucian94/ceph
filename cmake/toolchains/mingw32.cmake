@@ -1,0 +1,19 @@
+set(CMAKE_SYSTEM_NAME Windows)
+set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
+#set(TOOLCHAIN_PREFIX i686-w64-mingw32)
+
+set(CMAKE_C_COMPILER ${TOOLCHAIN_PREFIX}-gcc)
+set(CMAKE_CXX_COMPILER ${TOOLCHAIN_PREFIX}-g++)
+# set(CMAKE_C_COMPILER ${TOOLCHAIN_PREFIX}-gcc-posix)
+# set(CMAKE_CXX_COMPILER ${TOOLCHAIN_PREFIX}-g++-posix)
+set(CMAKE_RC_COMPILER ${TOOLCHAIN_PREFIX}-windres)
+# TODO: check if other mingw binaries have to be
+# set explicitly.
+
+set(CMAKE_FIND_ROOT_PATH /usr/${TOOLCHAIN_PREFIX} /usr/lib/gcc/${TOOLCHAIN_PREFIX}/7.3-posix)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+# TODO: consider switching this to "ONLY". The issue with
+# that is that all our libs should then be under
+# CMAKE_FIND_ROOT_PATH and CMAKE_PREFIX_PATH would be ignored.
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
