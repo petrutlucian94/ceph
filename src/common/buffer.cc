@@ -17,8 +17,6 @@
 #include <errno.h>
 #include <limits.h>
 
-#include <sys/uio.h>
-
 #include "include/ceph_assert.h"
 #include "include/types.h"
 #include "include/buffer_raw.h"

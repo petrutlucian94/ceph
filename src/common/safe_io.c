@@ -55,6 +55,7 @@ ssize_t safe_read_exact(int fd, void *buf, size_t count)
  
 ssize_t safe_write(int fd, const void *buf, size_t count)
 {
+  #if defined(HAVE_IOVEC)
 	while (count > 0) {
 		ssize_t r = write(fd, buf, count);
 		if (r < 0) {
@@ -66,10 +67,14 @@ ssize_t safe_write(int fd, const void *buf, size_t count)
 		buf = (char *)buf + r;
 	}
 	return 0;
+
+  #endif /* HAVE_IOVEC */
+  return -ENOTSUP;
 }
 
 ssize_t safe_pread(int fd, void *buf, size_t count, off_t offset)
 {
+  #if defined(HAVE_IOVEC)
 	size_t cnt = 0;
 	char *b = (char*)buf;
 
@@ -88,6 +93,9 @@ ssize_t safe_pread(int fd, void *buf, size_t count, off_t offset)
 		cnt += r;
 	}
 	return cnt;
+  #endif /* HAVE_IOVEC */
+
+  return -ENOTSUP;
 }
 
 ssize_t safe_pread_exact(int fd, void *buf, size_t count, off_t offset)

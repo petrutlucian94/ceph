@@ -24,7 +24,7 @@
 #endif
 
 #include <stdio.h>
-#include <sys/uio.h>
+#include "include/compat.h"
 
 #if defined(__linux__)	// For malloc(2).
 #include <malloc.h>

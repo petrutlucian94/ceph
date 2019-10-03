@@ -192,4 +192,20 @@ int ceph_posix_fallocate(int fd, off_t offset, off_t len);
 
 int pipe_cloexec(int pipefd[2]);
 
+// TODO: determine when running cmake
+#if defined(_WIN32)
+struct iovec {
+    void *iov_base;
+    size_t iov_len;
+};
+
+#define IOV_MAX 1024
+
+ssize_t readv(int fd, const struct iovec *iov, int iov_cnt);
+ssize_t writev(int fd, const struct iovec *iov, int iov_cnt);
+#else
+#define HAVE_IOVEC 1
+#include <sys/uio.h>
+#endif /* WIN32 */
+
 #endif /* !CEPH_COMPAT_H */
