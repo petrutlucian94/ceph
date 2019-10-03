@@ -434,11 +434,18 @@ if(NOT APPLE AND NOT FREEBSD)
     PROPERTY LINK_FLAGS "-Wl,-Bsymbolic -Wl,-Bsymbolic-functions")
 endif()
 
-install(
-  TARGETS ceph-common
-  LIBRARY
-  DESTINATION ${CEPH_INSTALL_PKGLIBDIR}
-  NAMELINK_SKIP)
+if(MINGW)
+  install(
+    TARGETS ceph-common
+    RUNTIME
+    DESTINATION ${CEPH_INSTALL_PKGLIBDIR})
+else()
+  install(
+    TARGETS ceph-common
+    LIBRARY
+    DESTINATION ${CEPH_INSTALL_PKGLIBDIR}
+    NAMELINK_SKIP)
+endif()
 
 if(${WITH_LTTNG})
   add_subdirectory(tracing)
