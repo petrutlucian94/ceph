@@ -1,6 +1,8 @@
 
 #if defined(__linux__)
 #include <linux/errno.h>
+#elif defined(_WIN32)
+#include <errno.h>
 #else
 #include <sys/errno.h>
 #endif
