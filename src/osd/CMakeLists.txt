@@ -47,7 +47,7 @@ add_library(osd STATIC ${osd_srcs}
   $<TARGET_OBJECTS:global_common_objs>)
 target_link_libraries(osd
   PUBLIC dmclock::dmclock
-  PRIVATE os heap_profiler cpu_profiler ${CMAKE_DL_LIBS})
+  PRIVATE os heap_profiler cpu_profiler ceph-common ${CMAKE_DL_LIBS})
 if(WITH_LTTNG)
   add_dependencies(osd osd-tp pg-tp)
 endif()
