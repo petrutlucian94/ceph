@@ -7,6 +7,7 @@
 
 #include "include/types.h"
 #include "common/ceph_mutex.h"
+#include "common/shared_lib.h"
 #include "objclass/objclass.h"
 
 //forward declaration
@@ -59,7 +60,7 @@ public:
 
     std::string name;
     ClassHandler *handler = nullptr;
-    void *handle = nullptr;
+    lib_handle handle = nullptr;
 
     bool whitelisted = false;
 
