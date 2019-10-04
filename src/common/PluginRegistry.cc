@@ -20,12 +20,13 @@
 #include "common/ceph_context.h"
 #include "common/errno.h"
 #include "common/debug.h"
-
-#include <dlfcn.h>
+#include "common/shared_lib.h"
 
 #define PLUGIN_PREFIX "libceph_"
 #ifdef __APPLE__
 #define PLUGIN_SUFFIX ".dylib"
+#elif _WIN32
+#define PLUGIN_SUFFIX ".dll"
 #else
 #define PLUGIN_SUFFIX ".so"
 #endif
@@ -52,9 +53,9 @@ PluginRegistry::~PluginRegistry()
        ++i) {
     for (std::map<std::string,Plugin*>::iterator j = i->second.begin();
 	 j != i->second.end(); ++j) {
-      void *library = j->second->library;
+      lib_handle library = j->second->library;
       delete j->second;
-      dlclose(library);
+      close_shared_lib(library);
     }
   }
 }
@@ -72,9 +73,9 @@ int PluginRegistry::remove(const std::string& type, const std::string& name)
     return -ENOENT;
 
   ldout(cct, 1) << __func__ << " " << type << " " << name << dendl;
-  void *library = j->second->library;
+  lib_handle library = j->second->library;
   delete j->second;
-  dlclose(library);
+  close_shared_lib(library);
   i->second.erase(j);
   if (i->second.empty())
     plugins.erase(i);
@@ -142,33 +143,41 @@ int PluginRegistry::load(const std::string &type,
   //  + name + PLUGIN_SUFFIX;
   std::string fname = cct->_conf.get_val<std::string>("plugin_dir") + "/" + type + "/" + PLUGIN_PREFIX
       + name + PLUGIN_SUFFIX;
-  void *library = dlopen(fname.c_str(), RTLD_NOW);
+  lib_handle library = open_shared_lib(fname.c_str());
   if (!library) {
-    string err1(dlerror());
+    char* err1 = shared_lib_last_err();
     // fall back to plugin_dir
     std::string fname2 = cct->_conf.get_val<std::string>("plugin_dir") + "/" + PLUGIN_PREFIX +
       name + PLUGIN_SUFFIX;
-    library = dlopen(fname2.c_str(), RTLD_NOW);
+    library = open_shared_lib(fname2.c_str());
     if (!library) {
+      char* err2 = shared_lib_last_err();
       lderr(cct) << __func__
-		 << " failed dlopen(): \""	<< err1.c_str() 
-		 << "\" or \"" << dlerror() << "\""
+		 << " failed dlopen(): \""	<< err1
+		 << "\" or \"" << err2 << "\""
 		 << dendl;
+     shared_lib_free_err_msg(err2);
+    }
+
+    shared_lib_free_err_msg(err1);
+    if (!library) {
       return -EIO;
     }
   }
 
   const char * (*code_version)() =
-    (const char *(*)())dlsym(library, PLUGIN_VERSION_FUNCTION);
+    (const char *(*)())find_symbol(library, PLUGIN_VERSION_FUNCTION);
   if (code_version == NULL) {
-    lderr(cct) << __func__ << " code_version == NULL" << dlerror() << dendl;
+    char* err = shared_lib_last_err();
+    lderr(cct) << __func__ << " code_version == NULL" << err << dendl;
+    shared_lib_free_err_msg(err);
     return -EXDEV;
   }
   if (code_version() != string(CEPH_GIT_NICE_VER)) {
     lderr(cct) << __func__ << " plugin " << fname << " version "
 	       << code_version() << " != expected "
 	       << CEPH_GIT_NICE_VER << dendl;
-    dlclose(library);
+    close_shared_lib(library);
     return -EXDEV;
   }
 
@@ -177,7 +186,7 @@ int PluginRegistry::load(const std::string &type,
 		   const std::string& name) =
     (int (*)(CephContext *,
 	     const std::string& type,
-	     const std::string& name))dlsym(library, PLUGIN_INIT_FUNCTION);
+	     const std::string& name))find_symbol(library, PLUGIN_INIT_FUNCTION);
   if (code_init) {
     int r = code_init(cct, type, name);
     if (r != 0) {
@@ -185,13 +194,15 @@ int PluginRegistry::load(const std::string &type,
 		 << PLUGIN_INIT_FUNCTION << "(" << cct
 		 << "," << type << "," << name << "): " << cpp_strerror(r)
 		 << dendl;
-      dlclose(library);
+      close_shared_lib(library);
       return r;
     }
   } else {
+    char* err = shared_lib_last_err();
     lderr(cct) << __func__ << " " << fname << " dlsym(" << PLUGIN_INIT_FUNCTION
-	       << "): " << dlerror() << dendl;
-    dlclose(library);
+	       << "): " << err << dendl;
+    shared_lib_free_err_msg(err);
+    close_shared_lib(library);
     return -ENOENT;
   }
 
@@ -201,7 +212,7 @@ int PluginRegistry::load(const std::string &type,
 	       << PLUGIN_INIT_FUNCTION << "()"
 	       << "did not register plugin type " << type << " name " << name
 	       << dendl;
-    dlclose(library);
+    close_shared_lib(library);
     return -EBADF;
   }
 
