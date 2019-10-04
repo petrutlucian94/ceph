@@ -15,7 +15,7 @@ TracepointProvider::TracepointProvider(CephContext *cct, const char *library,
 TracepointProvider::~TracepointProvider() {
   m_cct->_conf.remove_observer(this);
   if (m_handle) {
-    dlclose(m_handle);
+    close_shared_lib(m_handle);
   }
 }
 
@@ -39,7 +39,7 @@ void TracepointProvider::verify_config(const ConfigProxy& conf) {
     return;
   }
 
-  m_handle = dlopen(m_library.c_str(), RTLD_NOW | RTLD_NODELETE);
+  m_handle = open_shared_lib(m_library.c_str());
   ceph_assert(m_handle);
 }
 
