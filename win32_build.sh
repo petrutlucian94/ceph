@@ -4,6 +4,9 @@ set -e
 # At some point, we'll probably provide a docker image for building ceph
 # for Windows.
 
+CLEAN_BUILD=${CLEAN_BUILD:-}
+SKIP_BUILD=${SKIP_BUILD:-}
+
 cephDir="/data2/workspace/ceph"
 depsDir="/data2/workspace/ceph_deps"
 buildDir="${cephDir}/build"
@@ -36,6 +39,11 @@ curlInclude="${curlDir}/include"
 # cmake doesn't properly recognize this for some reason.
 # cc=$(where.exe clang.exe) -replace "\\", "/"
 # cxx=$(where.exe clang++.exe) -replace "\\", "/"
+
+if [[ ! -z $CLEAN_BUILD ]]; then
+    echo "Cleaning up build dir: $buildDir"
+    rm -rf $buildDir
+fi
 
 mkdir -p $buildDir
 pushd .
@@ -81,7 +89,11 @@ $cmake -D CMAKE_PREFIX_PATH=$depsDirs \
 
 
 # TODO: switch to ninja
-echo "Building solution. Log: ${buildDir}/build.log"
-# MSBuild.exe build\ceph.sln /m > "${buildDir}/build.log" 2>&1
+echo "Running make. Log: ${buildDir}/make.log"
+cd $buildDir
+
+if [[ -z SKIP_MAKE ]]; then
+    make -j 8 &> ${buildDir}/make.log
+fi
 
 popd
