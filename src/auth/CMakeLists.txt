@@ -28,3 +28,5 @@ if(WITH_SEASTAR)
   target_include_directories(crimson-auth PRIVATE
     $<TARGET_PROPERTY:Seastar::seastar,INTERFACE_INCLUDE_DIRECTORIES>)
 endif()
+
+target_include_directories(common-auth-objs PRIVATE ${OPENSSL_INCLUDE_DIR})
