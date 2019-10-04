@@ -21,6 +21,7 @@
 #include <map>
 #include <string>
 #include "common/ceph_mutex.h"
+#include "common/shared_lib.h"
 
 class CephContext;
 
@@ -35,7 +36,7 @@ namespace ceph {
 
   class Plugin {
   public:
-    void *library;
+    lib_handle library;
     CephContext *cct;
 
     explicit Plugin(CephContext *cct) : library(NULL), cct(cct) {}
