@@ -5,8 +5,7 @@
 #include "ClassHandler.h"
 #include "common/errno.h"
 #include "common/ceph_context.h"
-
-#include <dlfcn.h>
+#include "common/shared_lib.h"
 
 #include <map>
 
@@ -23,7 +22,7 @@
 
 
 #define CLS_PREFIX "libcls_"
-#define CLS_SUFFIX ".so"
+#define CLS_SUFFIX SHARED_LIB_SUFFIX
 
 
 int ClassHandler::open_class(const string& cname, ClassData **pcls)
@@ -76,7 +75,7 @@ void ClassHandler::shutdown()
 {
   for (auto& cls : classes) {
     if (cls.second.handle) {
-      dlclose(cls.second.handle);
+      shared_lib_close(cls.second.handle);
     }
   }
   classes.clear();
@@ -140,7 +139,7 @@ int ClassHandler::_load_class(ClassData *cls)
 	     cls->name.c_str());
     ldout(cct, 10) << "_load_class " << cls->name << " from " << fname << dendl;
 
-    cls->handle = dlopen(fname, RTLD_NOW);
+    cls->handle = shared_lib_open(fname);
     if (!cls->handle) {
       struct stat st;
       int r = ::stat(fname, &st);
@@ -149,16 +148,18 @@ int ClassHandler::_load_class(ClassData *cls)
 	ldout(cct, 0) << __func__ << " could not stat class " << fname
 		      << ": " << cpp_strerror(r) << dendl;
       } else {
-	ldout(cct, 0) << "_load_class could not open class " << fname
-		      << " (dlopen failed): " << dlerror() << dendl;
-	r = -EIO;
+        char* err = shared_lib_last_err();
+        ldout(cct, 0) << "_load_class could not open class " << fname
+                      << " (dlopen failed): " << err << dendl;
+        shared_lib_free_err_msg(err);
+        r = -EIO;
       }
       cls->status = ClassData::CLASS_MISSING;
       return r;
     }
 
     cls_deps_t *(*cls_deps)();
-    cls_deps = (cls_deps_t *(*)())dlsym(cls->handle, "class_deps");
+    cls_deps = (cls_deps_t *(*)())shared_lib_find_symbol(cls->handle, "class_deps");
     if (cls_deps) {
       cls_deps_t *deps = cls_deps();
       while (deps) {
@@ -188,7 +189,7 @@ int ClassHandler::_load_class(ClassData *cls)
   }
 
   // initialize
-  void (*cls_init)() = (void (*)())dlsym(cls->handle, "__cls_init");
+  void (*cls_init)() = (void (*)())shared_lib_find_symbol(cls->handle, "__cls_init");
   if (cls_init) {
     cls->status = ClassData::CLASS_INITIALIZING;
     cls_init();

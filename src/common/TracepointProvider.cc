@@ -15,7 +15,7 @@ TracepointProvider::TracepointProvider(CephContext *cct, const char *library,
 TracepointProvider::~TracepointProvider() {
   m_cct->_conf.remove_observer(this);
   if (m_handle) {
-    dlclose(m_handle);
+    shared_lib_close(m_handle);
   }
 }
 
@@ -39,7 +39,14 @@ void TracepointProvider::verify_config(const ConfigProxy& conf) {
     return;
   }
 
-  m_handle = dlopen(m_library.c_str(), RTLD_NOW | RTLD_NODELETE);
+  #ifdef _WIN32
+  m_handle = shared_lib_open(m_library.c_str());
+  #else
+  // dlclose can cause issues with lttng. While RTLD_NODELETE
+  // is not available on Windows, this may not be a concern.
+  m_handle = shared_lib_open(m_library.c_str(), RTLD_NOW | RTLD_NODELETE);
+  #endif
+
   ceph_assert(m_handle);
 }
 
