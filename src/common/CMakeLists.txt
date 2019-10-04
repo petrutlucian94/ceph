@@ -88,6 +88,7 @@ set(common_srcs
   reverse.c
   run_cmd.cc
   scrub_types.cc
+  shared_lib.cc
   shared_mutex_debug.cc
   signal.cc
   snap_types.cc
