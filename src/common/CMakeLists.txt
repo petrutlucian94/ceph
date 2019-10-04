@@ -100,6 +100,11 @@ set(common_srcs
   util.cc
   version.cc)
 
+if(WIN32)
+  list(APPEND common_srcs
+    dlfcn_win32.cc)
+endif()
+
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
   APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/src/include/ceph_ver.h)
 
