@@ -7,7 +7,7 @@
 #include "common/ceph_context.h"
 #include "common/config_obs.h"
 #include "common/ceph_mutex.h"
-#include <dlfcn.h>
+#include "common/shared_lib.h"
 
 class TracepointProvider : public md_config_obs_t {
 public:
@@ -74,7 +74,7 @@ private:
   mutable const char* m_config_keys[2];
 
   ceph::mutex m_lock = ceph::make_mutex("TracepointProvider::m_lock");
-  void* m_handle = nullptr;
+  lib_handle m_handle = nullptr;
 
   void verify_config(const ConfigProxy& conf);
 };
