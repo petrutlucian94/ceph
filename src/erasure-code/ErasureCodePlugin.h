@@ -19,6 +19,7 @@
 #define CEPH_ERASURE_CODE_PLUGIN_H
 
 #include "common/ceph_mutex.h"
+#include "common/shared_lib.h"
 #include "ErasureCodeInterface.h"
 
 extern "C" {
@@ -30,7 +31,7 @@ namespace ceph {
 
   class ErasureCodePlugin {
   public:
-    void *library;
+    lib_handle library;
 
     ErasureCodePlugin() :
       library(0) {}
