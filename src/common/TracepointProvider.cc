@@ -1,6 +1,10 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
+#if !defined(_WIN32)
+  #include <dlfcn.h>
+#endif
+
 #include "common/TracepointProvider.h"
 #include "common/config.h"
 
@@ -15,7 +19,7 @@ TracepointProvider::TracepointProvider(CephContext *cct, const char *library,
 TracepointProvider::~TracepointProvider() {
   m_cct->_conf.remove_observer(this);
   if (m_handle) {
-    dlclose(m_handle);
+    close_shared_lib(m_handle);
   }
 }
 
@@ -39,7 +43,14 @@ void TracepointProvider::verify_config(const ConfigProxy& conf) {
     return;
   }
 
+  #ifdef _WIN32
+  m_handle = open_shared_lib(m_library.c_str());
+  #else
+  // dlclose can cause issues with lttng. While RTLD_NODELETE
+  // is not available on Windows, this may not be a concern.
   m_handle = dlopen(m_library.c_str(), RTLD_NOW | RTLD_NODELETE);
+  #endif
+
   ceph_assert(m_handle);
 }
 
