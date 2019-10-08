@@ -15,6 +15,10 @@
 #ifndef CEPH_LIBRBD_H
 #define CEPH_LIBRBD_H
 
+#ifdef _WIN32
+#include "../windows/windefs.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
