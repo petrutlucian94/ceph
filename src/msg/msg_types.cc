@@ -4,7 +4,10 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <netdb.h>
+#endif
 
 #include "common/Formatter.h"
 
