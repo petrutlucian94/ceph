@@ -124,6 +124,7 @@ void Log::reopen_log_file()
     VOID_TEMP_FAILURE_RETRY(::close(m_fd));
   if (m_log_file.length()) {
     m_fd = ::open(m_log_file.c_str(), O_CREAT|O_WRONLY|O_APPEND|O_CLOEXEC, 0644);
+    #ifndef _WIN32
     if (m_fd >= 0 && (m_uid || m_gid)) {
       if (::fchown(m_fd, m_uid, m_gid) < 0) {
 	int e = errno;
@@ -131,14 +132,19 @@ void Log::reopen_log_file()
 	     << std::endl;
       }
     }
+    #endif /* _WIN32 */
   } else {
     m_fd = -1;
   }
   m_flush_mutex_holder = 0;
 }
 
-void Log::chown_log_file(uid_t uid, gid_t gid)
+void Log::chown_log_file(_uid_t uid, _gid_t gid)
 {
+  // fchown is not available on Windows. Plus, changing file owners is not
+  // a common practice on Windows, for which reason we'll skip this for
+  // now and use a stub.
+  #ifndef _WIN32
   std::scoped_lock lock(m_flush_mutex);
   if (m_fd >= 0) {
     int r = ::fchown(m_fd, uid, gid);
@@ -148,6 +154,7 @@ void Log::chown_log_file(uid_t uid, gid_t gid)
 	   << std::endl;
     }
   }
+  #endif /* _WIN32 */
 }
 
 void Log::set_syslog_level(int log, int crash)

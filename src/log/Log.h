@@ -24,6 +24,15 @@ namespace logging {
 class Graylog;
 class SubsystemMap;
 
+#ifdef _WIN32
+// just a placeholder for now.
+typedef int _uid_t;
+typedef int _gid_t;
+#else
+typedef uid_t _uid_t;
+typedef gid_t _gid_t;
+#endif
+
 class Log : private Thread
 {
   using EntryRing = boost::circular_buffer<ConcreteEntry>;
@@ -51,8 +60,8 @@ class Log : private Thread
 
   std::string m_log_file;
   int m_fd = -1;
-  uid_t m_uid = 0;
-  gid_t m_gid = 0;
+  _uid_t m_uid = 0;
+  _gid_t m_gid = 0;
 
   int m_fd_last_error = 0;  ///< last error we say writing to fd (if any)
 
@@ -94,7 +103,8 @@ public:
   void set_max_recent(std::size_t n);
   void set_log_file(std::string_view fn);
   void reopen_log_file();
-  void chown_log_file(uid_t uid, gid_t gid);
+
+  void chown_log_file(_uid_t uid, _gid_t gid);
   void set_log_stderr_prefix(std::string_view p);
 
   void flush();
