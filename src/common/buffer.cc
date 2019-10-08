@@ -157,7 +157,7 @@ static ceph::spinlock debug_lock;
     }
   };
 
-#ifndef __CYGWIN__
+#if !defined(__CYGWIN__) && !defined(_WIN32)
   class buffer::raw_posix_aligned : public buffer::raw {
     unsigned align;
   public:
@@ -188,7 +188,7 @@ static ceph::spinlock debug_lock;
   };
 #endif
 
-#ifdef __CYGWIN__
+#if defined(__CYGWIN__) || defined(_WIN32)
   class buffer::raw_hack_aligned : public buffer::raw {
     unsigned align;
     char *realdata;
@@ -344,7 +344,7 @@ static ceph::spinlock debug_lock;
     // size passes 8KB.
     if ((align & ~CEPH_PAGE_MASK) == 0 ||
 	len >= CEPH_PAGE_SIZE * 2) {
-#ifndef __CYGWIN__
+#if !defined(__CYGWIN__) && !defined(_WIN32)
       return ceph::unique_leakable_ptr<buffer::raw>(new raw_posix_aligned(len, align));
 #else
       return ceph::unique_leakable_ptr<buffer::raw>(new raw_hack_aligned(len, align));
