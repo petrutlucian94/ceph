@@ -24,6 +24,12 @@ namespace logging {
 class Graylog;
 class SubsystemMap;
 
+#ifdef _WIN32
+  #define SYSLOG_AVAILABLE 0
+#else
+  #define SYSLOG_AVAILABLE 1
+#endif
+
 class Log : private Thread
 {
   using EntryRing = boost::circular_buffer<ConcreteEntry>;
