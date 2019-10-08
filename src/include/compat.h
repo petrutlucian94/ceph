@@ -206,6 +206,8 @@ char *ceph_strerror_r(int errnum, char *buf, size_t buflen);
 
 #if defined(_WIN32)
 
+#include "include/windows/windefs.h"
+
 typedef _sigset_t sigset_t;
 
 typedef int uid_t;
