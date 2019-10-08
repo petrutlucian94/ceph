@@ -18,7 +18,12 @@
 #include "EventSelect.h"
 
 #include <unistd.h>
+
+#ifndef _WIN32
 #include <sys/select.h>
+#else
+#include <winsock2.h>
+#endif
 #define dout_subsys ceph_subsys_ms
 
 #undef dout_prefix
