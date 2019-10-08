@@ -1,7 +1,11 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 //
-#include <syslog.h>
+
+#if !defined(_WIN32)
+  #include <syslog.h>
+#endif
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "LogEntry.h"
@@ -47,6 +51,7 @@ clog_type LogEntry::str_to_level(std::string const &str)
 
 // ----
 
+#if SYSLOG_AVAILABLE
 int clog_type_to_syslog_level(clog_type t)
 {
   switch (t) {
@@ -65,6 +70,7 @@ int clog_type_to_syslog_level(clog_type t)
       return 0;
   }
 }
+#endif
 
 clog_type string_to_clog_type(const string& s)
 {
@@ -88,6 +94,7 @@ clog_type string_to_clog_type(const string& s)
   return CLOG_UNKNOWN;
 }
 
+#if SYSLOG_AVAILABLE
 int string_to_syslog_level(string s)
 {
   if (boost::iequals(s, "debug"))
@@ -156,6 +163,7 @@ int string_to_syslog_facility(string s)
   // default to USER
   return LOG_USER;
 }
+#endif
 
 string clog_type_to_string(clog_type t)
 {
@@ -178,6 +186,7 @@ string clog_type_to_string(clog_type t)
 
 void LogEntry::log_to_syslog(string level, string facility)
 {
+  #if SYSLOG_AVAILABLE
   int min = string_to_syslog_level(level);
   int l = clog_type_to_syslog_level(prio);
   if (l <= min) {
@@ -188,6 +197,7 @@ void LogEntry::log_to_syslog(string level, string facility)
 	   (long long unsigned)seq,
 	   msg.c_str());
   }
+  #endif
 }
 
 void LogEntry::encode(bufferlist& bl, uint64_t features) const
