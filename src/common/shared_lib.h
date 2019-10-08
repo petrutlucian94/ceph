@@ -17,7 +17,8 @@
 #endif
 
 #ifdef _WIN32
-  #include <windows.h>
+  #include "include/compat.h"
+
   typedef HMODULE lib_handle;
 #else
   #include <ostream>

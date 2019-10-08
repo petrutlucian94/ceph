@@ -15,6 +15,10 @@
 #ifndef CEPH_LIBRADOS_H
 #define CEPH_LIBRADOS_H
 
+#ifdef _WIN32
+#include "../windows/windefs.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
