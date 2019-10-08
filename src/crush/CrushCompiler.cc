@@ -4,6 +4,10 @@
 #define EBADE ECORRUPT
 #endif
 
+#if defined(_WIN32)
+#define EBADE EINVAL
+#endif
+
 #ifndef EBADE
 #define EBADE EFTYPE
 #endif
