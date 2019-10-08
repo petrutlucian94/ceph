@@ -20,7 +20,8 @@
 
 #include "uuid.h"
 
-#include <netinet/in.h>
+#include "sock_types.h"
+
 #include <fcntl.h>
 #include <string.h>
 

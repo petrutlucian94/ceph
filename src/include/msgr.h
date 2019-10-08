@@ -2,8 +2,8 @@
 #define CEPH_MSGR_H
 
 #ifndef __KERNEL__
-#include <sys/socket.h> // for struct sockaddr_storage
-#endif
+	#include "include/sock_types.h"
+#endif /* __KERNEL__ */
 
 #include "include/int_types.h"
 
