@@ -19,3 +19,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 # CMAKE_FIND_ROOT_PATH and CMAKE_PREFIX_PATH would be ignored.
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+
+# Some functions (e.g. localtime_r) will not be available unless we set
+# the following flag.
+add_definitions(-D_POSIX_C_SOURCE)
