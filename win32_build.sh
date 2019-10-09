@@ -42,7 +42,7 @@ curlInclude="${curlDir}/include"
 # cc=$(where.exe clang.exe) -replace "\\", "/"
 # cxx=$(where.exe clang++.exe) -replace "\\", "/"
 
-if [[ ! -z $CLEAN_BUILD ]]; then
+if [[ -n $CLEAN_BUILD ]]; then
     echo "Cleaning up build dir: $buildDir"
     rm -rf $buildDir
 fi
@@ -94,8 +94,8 @@ $cmake -D CMAKE_PREFIX_PATH=$depsDirs \
 echo "Running make. Log: ${buildDir}/make.log"
 cd $buildDir
 
-if [[ -z SKIP_MAKE ]]; then
-    make -j 8 &> ${buildDir}/make.log
+if [[ -z $SKIP_BUILD ]]; then
+    make -j 8 2>&1 | tee ${buildDir}/make.log
 fi
 
 popd
