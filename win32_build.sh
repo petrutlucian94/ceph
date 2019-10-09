@@ -20,6 +20,8 @@ curlDir="${depsToolsetDir}/curl"
 boostDir="${depsToolsetDir}/boost"
 zlibDir="${depsToolsetDir}/zlib"
 backtraceDir="${depsToolsetDir}/backtrace"
+snappySrcDir="${depsSrcDir}/snappy"
+snappyDir="${depsToolsetDir}/snappy"
 
 # cmakeGenerator="Ninja"
 cmakeArchitecture="x64"
@@ -27,7 +29,7 @@ cmakeArchitecture="x64"
 
 pyVersion="3.6"
 
-depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir"
+depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir;$snappyDir"
 
 # That's actually a dll, we may want to rename the file.
 lz4Lib="${lz4Dir}/lib/liblz4.so.1.9.2"

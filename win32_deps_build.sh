@@ -18,6 +18,29 @@ zlibDir="${depsMingwDir}/zlib"
 zlibSrcDir="${depsSrcDir}/zlib"
 backtraceDir="${depsMingwDir}/backtrace"
 backtraceSrcDir="${depsSrcDir}/backtrace"
+snappySrcDir="${depsSrcDir}/snappy"
+snappyDir="${depsMingwDir}/snappy"
+
+MINGW_PREFIX="x86_64-w64-mingw32-"
+
+MINGW_CMAKE_FILE=/tmp/mingw.cmake
+cat > $MINGW_CMAKE_FILE <<EOL
+set(CMAKE_SYSTEM_NAME Windows)
+set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
+
+# We'll need to use posix threads in order to use
+# C++11 features, such as std::thread.
+set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}-gcc-posix)
+set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}-g++-posix)
+set(CMAKE_RC_COMPILER \${TOOLCHAIN_PREFIX}-windres)
+
+set(CMAKE_FIND_ROOT_PATH /usr/\${TOOLCHAIN_PREFIX} /usr/lib/gcc/\${TOOLCHAIN_PREFIX}/7.3-posix)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+EOL
+
+
 
 
 cd $depsMingwDir
@@ -90,3 +113,24 @@ cd libbacktrace/build
              --host x86_64-w64-mingw32 --enable-host-shared
 make LDFLAGS="-no-undefined" -j 8
 make install
+
+git clone git clone https://github.com/google/snappy
+mkdir snappy/build
+cd snappy/build
+
+cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=ON \
+      -DSNAPPY_BUILD_TESTS=OFF \
+      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
+      ../
+make
+make install
+
+cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DSNAPPY_BUILD_TESTS=OFF \
+      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
+      ../
+make
