@@ -99,6 +99,7 @@ int sched_setaffinity(pid_t pid, size_t cpusetsize,
 #ifndef EKEYREJECTED
 #define EKEYREJECTED 129
 #endif
+#endif /* __APPLE__ */
 
 #ifndef HOST_NAME_MAX
 #ifdef MAXHOSTNAMELEN 
@@ -106,9 +107,7 @@ int sched_setaffinity(pid_t pid, size_t cpusetsize,
 #else
 #define HOST_NAME_MAX 255
 #endif
-#endif
-
-#endif /* __APPLE__ */
+#endif /* HOST_NAME_MAX */
 
 /* O_LARGEFILE is not defined/required on OSX/FreeBSD */
 #ifndef O_LARGEFILE
