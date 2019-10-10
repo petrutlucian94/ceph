@@ -194,6 +194,14 @@ int pipe_cloexec(int pipefd[2]);
 
 // TODO: determine when running cmake
 #if defined(_WIN32)
+
+typedef int uid_t;
+typedef int gid_t;
+
+typedef long blksize_t;
+typedef long blkcnt_t;
+typedef long nlink_t;
+
 struct iovec {
     void *iov_base;
     size_t iov_len;

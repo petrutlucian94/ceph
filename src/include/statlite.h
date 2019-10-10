@@ -11,35 +11,15 @@ extern "C" {
 #include <unistd.h>
 #include <dirent.h>
 
-#ifdef _WIN32
-// This will be a placeholder for now. We may consider expanding
-// this structure to fit a SID.
-typedef int _uid_t;
-typedef int _gid_t;
-#else
-typedef uid_t _uid_t;
-typedef gid_t _gid_t;
-#endif
-
-// The following are undefined on Windows. Those may be moved
-// to compat.h.
-#ifndef blksize_t
-typedef long blksize_t;
-#endif
-#ifndef blkcnt_t
-typedef long blkcnt_t;
-#endif
-#ifndef nlink_t
-typedef long nlink_t;
-#endif
+#include "include/compat.h"
 
 struct statlite {
   dev_t         st_dev;      /* device */
   ino_t         st_ino;      /* inode */
   mode_t        st_mode;     /* protection */
   nlink_t       st_nlink;    /* number of hard links */
-  _uid_t        st_uid;      /* user ID of owner */
-  _gid_t        st_gid;      /* group ID of owner */
+  uid_t         st_uid;      /* user ID of owner */
+  gid_t         st_gid;      /* group ID of owner */
   dev_t         st_rdev;     /* device type (if inode device)*/
   unsigned long st_litemask; /* bit mask for optional fields */
   /***************************************************************/

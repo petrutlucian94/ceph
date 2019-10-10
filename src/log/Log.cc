@@ -139,7 +139,7 @@ void Log::reopen_log_file()
   m_flush_mutex_holder = 0;
 }
 
-void Log::chown_log_file(_uid_t uid, _gid_t gid)
+void Log::chown_log_file(uid_t uid, gid_t gid)
 {
   // fchown is not available on Windows. Plus, changing file owners is not
   // a common practice on Windows, for which reason we'll skip this for
