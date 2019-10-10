@@ -18,12 +18,12 @@ static inline void *ERR_PTR(long error)
 
 static inline long PTR_ERR(const void *ptr)
 {
-  return (long) ptr;
+  return (uintptr_t) ptr;
 }
 
 static inline long IS_ERR(const void *ptr)
 {
-  return IS_ERR_VALUE((unsigned long)ptr);
+  return IS_ERR_VALUE((uintptr_t)ptr);
 }
 
 #endif
