@@ -24,7 +24,6 @@
 #endif
 
 #include <stdio.h>
-#include <sys/uio.h>
 
 #if defined(__linux__)	// For malloc(2).
 #include <malloc.h>
@@ -60,6 +59,7 @@
 # include <assert.h>
 #endif
 
+#include "include/compat.h"
 #include "inline_memory.h"
 
 #define CEPH_BUFFER_API

@@ -28,9 +28,10 @@ extern "C" {
 #endif
 #include <stdbool.h>
 #include <string.h>
-#include <sys/uio.h>
 #include "../rados/librados.h"
 #include "features.h"
+#include "include/compat.h"
+
 
 #define LIBRBD_VER_MAJOR 1
 #define LIBRBD_VER_MINOR 12
