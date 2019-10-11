@@ -40,9 +40,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 EOL
 
-
-
-
 cd $depsMingwDir
 # make BUILD_STATIC=no CC=x86_64-w64-mingw32-gcc \
 #     DLLTOOL=x86_64-w64-mingw32-dlltool OS=Windows_NT
@@ -68,22 +65,112 @@ make
 make install
 
 cd $boostSrcDir
-echo "using gcc : mingw32 : x86_64-w64-mingw32-g++ ;" > user-config.jam
-./boostrap.sh
+echo "using gcc : mingw32 : x86_64-w64-mingw32-g++-posix ;" > user-config.jam
+
+# Workaround for https://github.com/boostorg/thread/issues/156
+# Older versions of mingw provided a different pthread lib.
+sed -i 's/lib$(libname)GC2.a/lib$(libname).a/g' ./libs/thread/build/Jamfile.v2
+sed -i 's/mthreads/pthreads/g' ./tools/build/src/tools/gcc.py
+sed -i 's/mthreads/pthreads/g' ./tools/build/src/tools/gcc.jam
+
+sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.py
+sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.jam
+
+export PTW32_INCLUDE=/usr/share/mingw-w64/include
+export PTW32_LIB=/usr/x86_64-w64-mingw32/lib
+
+# Fix getting Windows page size
+cat > thread_data.patch <<EOL
+--- boost/thread/pthread/thread_data.hpp        2019-10-11 15:26:15.678703586 +0300
++++ boost/thread/pthread/thread_data.hpp.new    2019-10-11 15:26:07.321463698 +0300
+@@ -32,6 +32,10 @@
+ # endif
+ #endif
+
++#if defined(_WIN32)
++#include <windows.h>
++#endif
++
+ #include <pthread.h>
+ #include <unistd.h>
+
+@@ -54,6 +58,10 @@
+           if (size==0) return;
+ #ifdef BOOST_THREAD_USES_GETPAGESIZE
+           std::size_t page_size = getpagesize();
++#elif _WIN32
++          SYSTEM_INFO system_info;
++          ::GetSystemInfo (&system_info);
++          std::size_t page_size = system_info.dwPageSize;
+ #else
+           std::size_t page_size = ::sysconf( _SC_PAGESIZE);
+ #endif
+EOL
+
+# Use pthread if requested
+cat > thread.patch <<EOL
+--- boost/asio/detail/thread.hpp        2019-10-11 16:26:11.191094656 +0300
++++ boost/asio/detail/thread.hpp.new    2019-10-11 16:26:03.310542438 +0300
+@@ -19,6 +19,8 @@
+
+ #if !defined(BOOST_ASIO_HAS_THREADS)
+ # include <boost/asio/detail/null_thread.hpp>
++#elif defined(BOOST_ASIO_HAS_PTHREADS)
++# include <boost/asio/detail/posix_thread.hpp>
+ #elif defined(BOOST_ASIO_WINDOWS)
+ # if defined(UNDER_CE)
+ #  include <boost/asio/detail/wince_thread.hpp>
+@@ -27,8 +29,6 @@
+ # else
+ #  include <boost/asio/detail/win_thread.hpp>
+ # endif
+-#elif defined(BOOST_ASIO_HAS_PTHREADS)
+-# include <boost/asio/detail/posix_thread.hpp>
+ #elif defined(BOOST_ASIO_HAS_STD_THREAD)
+ # include <boost/asio/detail/std_thread.hpp>
+ #else
+@@ -41,6 +41,8 @@
+
+ #if !defined(BOOST_ASIO_HAS_THREADS)
+ typedef null_thread thread;
++#elif defined(BOOST_ASIO_HAS_PTHREADS)
++typedef posix_thread thread;
+ #elif defined(BOOST_ASIO_WINDOWS)
+ # if defined(UNDER_CE)
+ typedef wince_thread thread;
+@@ -49,8 +51,6 @@
+ # else
+ typedef win_thread thread;
+ # endif
+-#elif defined(BOOST_ASIO_HAS_PTHREADS)
+-typedef posix_thread thread;
+ #elif defined(BOOST_ASIO_HAS_STD_THREAD)
+ typedef std_thread thread;
+ #endif
+EOL
+
+# TODO: send this upstream and maybe use a fork until it merges
+patch -N boost/thread/pthread/thread_data.hpp thread_data.patch
+patch -N boost/asio/detail/thread.hpp thread.hpp
+
+./bootstrap.sh
+
 ./b2 install --user-config=user-config.jam toolset=gcc-mingw32 \
     target-os=windows release \
-    threadapi=win32 --prefix=$boostDir \
+    threadapi=pthread --prefix=$boostDir \
     address-model=64 architecture=x86 \
     binary-format=pe abi=ms -j 8 \
-    --without-python --without-mpi -sNO_BZIP2=1 -sNO_ZLIB=1
+    --without-python --without-mpi -sNO_BZIP2=1 -sNO_ZLIB=1 \
+
+ # cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-pthread cxxflags=-DTHREAD
 # ./b2 toolset=gcc-mingw32 target-os=windows threadapi=win32 \
 #     --build-type=complete --prefix=/usr/x86_64-w64-mingw32/local \
 #     --layout=tagged --without-python -sNO_BZIP2=1 -sNO_ZLIB=1
 
-./b2 install --user-config=user-config.jam toolset=gcc-mingw32 \
-    target-os=windows release \
-    threadapi=win32 --prefix=$boostDir \
-    address-model=64 architecture=x86 -j 8 \
+# ./b2 install --user-config=user-config.jam toolset=gcc-mingw32 \
+#     target-os=windows release \
+#     threadapi=win32 --prefix=$boostDir \
+#     address-model=64 architecture=x86 -j 8 \
 
 cd $depsSrcDir
 git clone https://github.com/madler/zlib
