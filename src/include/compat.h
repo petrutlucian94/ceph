@@ -210,6 +210,9 @@ struct iovec {
 
 ssize_t readv(int fd, const struct iovec *iov, int iov_cnt);
 ssize_t writev(int fd, const struct iovec *iov, int iov_cnt);
+
+int posix_memalign(void **memptr, size_t alignment, size_t size);
+
 #else
 #define HAVE_IOVEC 1
 #include <sys/uio.h>
