@@ -219,6 +219,11 @@ typedef long nlink_t;
 
 typedef long long loff_t;
 
+struct iovec {
+    void *iov_base;
+    size_t iov_len;
+};
+
 #define SHUT_RD SD_RECEIVE
 #define SHUT_WR SD_SEND
 #define SHUT_RDWR SD_BOTH
@@ -232,11 +237,38 @@ typedef long long loff_t;
 #define ESTALE 256
 #define EREMOTEIO 257
 
+#define IOV_MAX 1024
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+ssize_t readv(int fd, const struct iovec *iov, int iov_cnt);
+ssize_t writev(int fd, const struct iovec *iov, int iov_cnt);
+
+int fsync(int fd);
+ssize_t pread(int fd, void *buf, size_t count, off_t offset);
+ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
+
+long int lrand48(void);
+
+int pipe(int pipefd[2]);
+
+int posix_memalign(void **memptr, size_t alignment, size_t size);
+
+char *strptime(const char *s, const char *format, struct tm *tm);
+
+#ifdef __cplusplus
+}
+#endif
+
 // O_CLOEXEC is not defined on Windows. Since handles aren't inherited
 // with subprocesses unless explicitly requested, we'll define this
 // flag as a no-op.
 #define O_CLOEXEC 0
 
+#else
+#include <sys/uio.h>
 #endif /* WIN32 */
 
 #endif /* !CEPH_COMPAT_H */
