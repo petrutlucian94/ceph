@@ -18,7 +18,7 @@ struct cls_lock_lock_op
   utime_t duration;
   uint8_t flags;
 
-  cls_lock_lock_op() : type(LOCK_NONE), flags(0) {}
+  cls_lock_lock_op() : type(CLS_LOCK_NONE), flags(0) {}
 
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);
@@ -128,7 +128,7 @@ struct cls_lock_get_info_reply
   ClsLockType lock_type;
   string tag;
 
-  cls_lock_get_info_reply() : lock_type(LOCK_NONE) {}
+  cls_lock_get_info_reply() : lock_type(CLS_LOCK_NONE) {}
 
   void encode(bufferlist &bl, uint64_t features) const {
     ENCODE_START(1, 1, bl);
@@ -180,7 +180,7 @@ struct cls_lock_assert_op
   string cookie;
   string tag;
 
-  cls_lock_assert_op() : type(LOCK_NONE) {}
+  cls_lock_assert_op() : type(CLS_LOCK_NONE) {}
 
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);
@@ -214,7 +214,7 @@ struct cls_lock_set_cookie_op
   string tag;
   string new_cookie;
 
-  cls_lock_set_cookie_op() : type(LOCK_NONE) {}
+  cls_lock_set_cookie_op() : type(CLS_LOCK_NONE) {}
 
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);
