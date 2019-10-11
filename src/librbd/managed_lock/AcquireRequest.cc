@@ -108,7 +108,7 @@ void AcquireRequest<I>::send_lock() {
 
   librados::ObjectWriteOperation op;
   rados::cls::lock::lock(&op, RBD_LOCK_NAME,
-                         m_exclusive ? LOCK_EXCLUSIVE : LOCK_SHARED, m_cookie,
+                         m_exclusive ? CLS_LOCK_EXCLUSIVE : CLS_LOCK_SHARED, m_cookie,
                          util::get_watcher_lock_tag(), "", utime_t(), 0);
 
   using klass = AcquireRequest;
