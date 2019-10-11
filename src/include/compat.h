@@ -213,6 +213,11 @@ ssize_t writev(int fd, const struct iovec *iov, int iov_cnt);
 
 int posix_memalign(void **memptr, size_t alignment, size_t size);
 
+// O_CLOEXEC is not defined on Windows. Since handles aren't inherited
+// with subprocesses unless explicitly requested, we'll define this
+// flag as a no-op.
+#define O_CLOEXEC 0
+
 #else
 #define HAVE_IOVEC 1
 #include <sys/uio.h>
