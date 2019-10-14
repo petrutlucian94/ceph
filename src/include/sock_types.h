@@ -14,6 +14,11 @@
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
+
+#ifndef poll
+#define poll WSAPoll
+#endif
+
 #else
 #include <netdb.h>
 #include <sys/socket.h>
