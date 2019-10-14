@@ -77,8 +77,26 @@ void CryptoRandom::get_bytes(char *buf, int len)
   }
 }
 
-#else // !HAVE_GETENTROPY
+#elif defined(_WIN32)
 
+#include <bcrypt.h>
+
+CryptoRandom::CryptoRandom() : fd(0) {}
+CryptoRandom::~CryptoRandom() = default;
+
+void CryptoRandom::get_bytes(char *buf, int len)
+{
+  auto ret = BCryptGenRandom (
+    NULL,
+    (unsigned char*)buf,
+    len,
+    BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+  if (ret != 0) {
+    throw std::system_error(ret, std::system_category());
+  }
+}
+
+#else
 // open /dev/urandom once on construction and reuse the fd for all reads
 CryptoRandom::CryptoRandom()
   : fd{open_urandom()}
