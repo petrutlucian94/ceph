@@ -194,8 +194,23 @@ int sched_setaffinity(pid_t pid, size_t cpusetsize,
 #endif
 
 #ifdef _WIN32
+
+#include <iomanip>
+#include <ctime>
+
 int posix_memalign(void **memptr, size_t alignment, size_t size) {
   *memptr = _aligned_malloc(size, alignment);
   return *memptr ? 0 : errno;
 }
+
+char *strptime(const char *s, const char *format, struct tm *tm) {
+  std::istringstream input(s);
+  input.imbue(std::locale(setlocale(LC_ALL, nullptr)));
+  input >> std::get_time(tm, format);
+  if (input.fail()) {
+    return nullptr;
+  }
+  return (char*)(s + input.tellg());
+}
+
 #endif /* _WIN32 */
