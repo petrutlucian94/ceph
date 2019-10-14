@@ -284,7 +284,11 @@ int RocksDBStore::create_db_dir()
     unique_ptr<rocksdb::Directory> dir;
     env->NewDirectory(path, &dir);
   } else {
+    #ifdef _WIN32
+    int r = ::mkdir(path.c_str());
+    #else
     int r = ::mkdir(path.c_str(), 0755);
+    #endif
     if (r < 0)
       r = -errno;
     if (r < 0 && r != -EEXIST) {
