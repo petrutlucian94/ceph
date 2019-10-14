@@ -75,6 +75,7 @@ $cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D Backtrace_Header="$backtraceDir/include/backtrace.h" \
       -D Backtrace_INCLUDE_DIR="$backtraceDir/include" \
       -D Backtrace_LIBRARY="$backtraceDir/lib/libbacktrace.dll.a" \
+      -D Boost_THREADAPI="pthread" \
       $cephDir \
       # --trace-expand > "${buildDir}/cmake.log" 2>&1
       # -T $toolset \
