@@ -1724,7 +1724,7 @@ int librados::IoCtx::lock_exclusive(const std::string &oid, const std::string &n
   if (duration)
     dur.set_from_timeval(duration);
 
-  return rados::cls::lock::lock(this, oid, name, LOCK_EXCLUSIVE, cookie, "",
+  return rados::cls::lock::lock(this, oid, name, CLS_LOCK_EXCLUSIVE, cookie, "",
 		  		description, dur, flags);
 }
 
@@ -1737,7 +1737,7 @@ int librados::IoCtx::lock_shared(const std::string &oid, const std::string &name
   if (duration)
     dur.set_from_timeval(duration);
 
-  return rados::cls::lock::lock(this, oid, name, LOCK_SHARED, cookie, tag,
+  return rados::cls::lock::lock(this, oid, name, CLS_LOCK_SHARED, cookie, tag,
 		  		description, dur, flags);
 }
 
@@ -1805,7 +1805,7 @@ int librados::IoCtx::list_lockers(const std::string &oid, const std::string &nam
   if (tag)
     *tag = tmp_tag;
   if (exclusive) {
-    if (tmp_type == LOCK_EXCLUSIVE)
+    if (tmp_type == CLS_LOCK_EXCLUSIVE)
       *exclusive = 1;
     else
       *exclusive = 0;
