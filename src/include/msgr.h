@@ -2,11 +2,7 @@
 #define CEPH_MSGR_H
 
 #ifndef __KERNEL__
-	#ifdef _WIN32
-		#include <winsock2.h>
-	#else
-		#include <sys/socket.h> // for struct sockaddr_storage
-	#endif /* _WIN32 */
+	#include "include/sock_types.h"
 #endif /* __KERNEL__ */
 
 #include "include/int_types.h"

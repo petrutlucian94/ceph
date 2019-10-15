@@ -5,10 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef _WIN32
-#include <netdb.h>
-#endif
-
 #include "common/Formatter.h"
 
 void entity_name_t::dump(Formatter *f) const

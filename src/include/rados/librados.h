@@ -19,13 +19,6 @@
 extern "C" {
 #endif
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2ipdef.h>
-#else
-#include <netinet/in.h>
-#endif
-
 #if defined(__linux__)
 #include <linux/types.h>
 #elif defined(__FreeBSD__)
@@ -34,6 +27,7 @@ extern "C" {
 #include <unistd.h>
 #include <string.h>
 #include "rados_types.h"
+#include "include/sock_types.h"
 
 #include <sys/time.h>
 

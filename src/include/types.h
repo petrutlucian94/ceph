@@ -20,11 +20,7 @@
 
 #include "uuid.h"
 
-#if defined(_WIN32)
-#include <winsock2.h>
-#else
-#include <netinet/in.h>
-#endif
+#include "sock_types.h"
 
 #include <fcntl.h>
 #include <string.h>

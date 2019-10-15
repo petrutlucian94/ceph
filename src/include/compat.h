@@ -195,7 +195,10 @@ int pipe_cloexec(int pipefd[2]);
 #if defined(_WIN32)
 
 // Boost complains if winsock2.h (or windows.h) is included before asio.hpp.
+#ifdef __cplusplus
 #include <boost/asio.hpp>
+#endif
+
 #include <windows.h>
 
 // There are a few name collisions between Windows headers and ceph.

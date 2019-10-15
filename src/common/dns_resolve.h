@@ -14,9 +14,9 @@
 #ifndef CEPH_DNS_RESOLVE_H
 #define CEPH_DNS_RESOLVE_H
 
-#include <netinet/in.h>
 #include <resolv.h>
 
+#include "include/sock_types.h"
 #include "common/ceph_mutex.h"
 #include "msg/msg_types.h"		// for entity_addr_t
 
