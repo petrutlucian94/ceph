@@ -226,7 +226,7 @@ TEST_F(TestInternal, ResizeFailsToLockImage) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE, "manually locked"));
 
   librbd::NoOpProgressContext no_op;
   ASSERT_EQ(-EROFS, ictx->operations->resize(m_image_size >> 1, true, no_op));
@@ -255,7 +255,7 @@ TEST_F(TestInternal, SnapCreateFailsToLockImage) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE, "manually locked"));
 
   ASSERT_EQ(-EROFS, snap_create(*ictx, "snap1"));
 }
@@ -286,7 +286,7 @@ TEST_F(TestInternal, SnapRollbackFailsToLockImage) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE, "manually locked"));
 
   librbd::NoOpProgressContext no_op;
   ASSERT_EQ(-EROFS,
@@ -365,7 +365,7 @@ TEST_F(TestInternal, FlattenFailsToLockImage) {
   } BOOST_SCOPE_EXIT_END;
 
   ASSERT_EQ(0, open_image(clone_name, &ictx2));
-  ASSERT_EQ(0, lock_image(*ictx2, LOCK_EXCLUSIVE, "manually locked"));
+  ASSERT_EQ(0, lock_image(*ictx2, C_LOCK_EXCLUSIVE, "manually locked"));
 
   librbd::NoOpProgressContext no_op;
   ASSERT_EQ(-EROFS, ictx2->operations->flatten(no_op));
@@ -376,7 +376,7 @@ TEST_F(TestInternal, AioWriteRequestsLock) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE, "manually locked"));
 
   std::string buffer(256, '1');
   Context *ctx = new DummyContext();
@@ -402,7 +402,7 @@ TEST_F(TestInternal, AioDiscardRequestsLock) {
 
   librbd::ImageCtx *ictx;
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE, "manually locked"));
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE, "manually locked"));
 
   Context *ctx = new DummyContext();
   auto c = librbd::io::AioCompletion::create(ctx);

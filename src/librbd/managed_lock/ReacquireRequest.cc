@@ -47,7 +47,7 @@ void ReacquireRequest<I>::set_cookie() {
 
   librados::ObjectWriteOperation op;
   rados::cls::lock::set_cookie(&op, RBD_LOCK_NAME,
-                               m_exclusive ? LOCK_EXCLUSIVE : LOCK_SHARED,
+                               m_exclusive ? C_LOCK_EXCLUSIVE : C_LOCK_SHARED,
                                m_old_cookie, util::get_watcher_lock_tag(),
                                m_new_cookie);
 

@@ -316,7 +316,7 @@ TEST_F(TestImageWatcher, NotifyFlatten) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_FLATTEN, create_response_message(0)}};
@@ -350,7 +350,7 @@ TEST_F(TestImageWatcher, NotifyResize) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_RESIZE, create_response_message(0)}};
@@ -384,7 +384,7 @@ TEST_F(TestImageWatcher, NotifyRebuildObjectMap) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_REBUILD_OBJECT_MAP, create_response_message(0)}};
@@ -419,7 +419,7 @@ TEST_F(TestImageWatcher, NotifySnapCreate) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_CREATE, create_response_message(0)}};
@@ -442,7 +442,7 @@ TEST_F(TestImageWatcher, NotifySnapCreateError) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_CREATE, create_response_message(-EEXIST)}};
@@ -465,7 +465,7 @@ TEST_F(TestImageWatcher, NotifySnapRename) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_RENAME, create_response_message(0)}};
@@ -487,7 +487,7 @@ TEST_F(TestImageWatcher, NotifySnapRenameError) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_RENAME, create_response_message(-EEXIST)}};
@@ -509,7 +509,7 @@ TEST_F(TestImageWatcher, NotifySnapRemove) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_REMOVE, create_response_message(0)}};
@@ -533,7 +533,7 @@ TEST_F(TestImageWatcher, NotifySnapProtect) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_PROTECT, create_response_message(0)}};
@@ -557,7 +557,7 @@ TEST_F(TestImageWatcher, NotifySnapUnprotect) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_SNAP_UNPROTECT, create_response_message(0)}};
@@ -581,7 +581,7 @@ TEST_F(TestImageWatcher, NotifyRename) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_RENAME, create_response_message(0)}};
@@ -603,7 +603,7 @@ TEST_F(TestImageWatcher, NotifyAsyncTimedOut) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_FLATTEN, {}}};
@@ -623,7 +623,7 @@ TEST_F(TestImageWatcher, NotifyAsyncError) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_FLATTEN, create_response_message(-EIO)}};
@@ -643,7 +643,7 @@ TEST_F(TestImageWatcher, NotifyAsyncCompleteError) {
   ASSERT_EQ(0, open_image(m_image_name, &ictx));
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
         "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_FLATTEN, create_response_message(0)}};
@@ -676,7 +676,7 @@ TEST_F(TestImageWatcher, NotifyAsyncRequestTimedOut) {
   ictx->config.set_val("rbd_request_timed_out_seconds", "0");
 
   ASSERT_EQ(0, register_image_watch(*ictx));
-  ASSERT_EQ(0, lock_image(*ictx, LOCK_EXCLUSIVE,
+  ASSERT_EQ(0, lock_image(*ictx, C_LOCK_EXCLUSIVE,
 			  "auto " + stringify(m_watch_ctx->get_handle())));
 
   m_notify_acks = {{NOTIFY_OP_FLATTEN, create_response_message(0)}};
