@@ -194,6 +194,19 @@ int pipe_cloexec(int pipefd[2]);
 // TODO: determine when running cmake
 #if defined(_WIN32)
 
+// Boost complains if winsock2.h (or windows.h) is included before asio.hpp.
+#include <boost/asio.hpp>
+#include <windows.h>
+
+// There are a few name collisions between Windows headers and ceph.
+// We'll redefine the Windows values by adding the "WIN32_" prefix rather than
+// making intrusive changes to ceph.
+#define WIN32_DELETE WIN32_DELETE
+#undef DELETE
+
+#define WIN32_ERROR ERROR
+#undef ERROR
+
 typedef int uid_t;
 typedef int gid_t;
 
