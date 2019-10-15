@@ -91,7 +91,7 @@ void lock_info_t::generate_test_instances(list<lock_info_t *>& o)
   generate_test_addr(info.addr, 1, 2);
   info.description = "description";
   i->lockers[id] = info;
-  i->lock_type = LOCK_EXCLUSIVE;
+  i->lock_type = CLS_LOCK_EXCLUSIVE;
   i->tag = "tag";
   o.push_back(i);
   o.push_back(new lock_info_t);
