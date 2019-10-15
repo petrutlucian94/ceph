@@ -14,22 +14,22 @@
 #define LOCK_FLAG_MUST_RENEW 0x2   /* lock must already be acquired */
 
 enum ClsLockType {
-  LOCK_NONE                = 0,
-  LOCK_EXCLUSIVE           = 1,
-  LOCK_SHARED              = 2,
-  LOCK_EXCLUSIVE_EPHEMERAL = 3, /* lock object is removed @ unlock */
+  C_LOCK_NONE                = 0,
+  C_LOCK_EXCLUSIVE           = 1,
+  C_LOCK_SHARED              = 2,
+  C_LOCK_EXCLUSIVE_EPHEMERAL = 3, /* lock object is removed @ unlock */
 };
 
 inline const char *cls_lock_type_str(ClsLockType type)
 {
     switch (type) {
-      case LOCK_NONE:
+      case C_LOCK_NONE:
 	return "none";
-      case LOCK_EXCLUSIVE:
+      case C_LOCK_EXCLUSIVE:
 	return "exclusive";
-      case LOCK_SHARED:
+      case C_LOCK_SHARED:
 	return "shared";
-      case LOCK_EXCLUSIVE_EPHEMERAL:
+      case C_LOCK_EXCLUSIVE_EPHEMERAL:
 	return "exclusive-ephemeral";
       default:
 	return "<unknown>";
@@ -37,17 +37,17 @@ inline const char *cls_lock_type_str(ClsLockType type)
 }
 
 inline bool cls_lock_is_exclusive(ClsLockType type) {
-  return LOCK_EXCLUSIVE == type || LOCK_EXCLUSIVE_EPHEMERAL == type;
+  return C_LOCK_EXCLUSIVE == type || C_LOCK_EXCLUSIVE_EPHEMERAL == type;
 }
 
 inline bool cls_lock_is_ephemeral(ClsLockType type) {
-  return LOCK_EXCLUSIVE_EPHEMERAL == type;
+  return C_LOCK_EXCLUSIVE_EPHEMERAL == type;
 }
 
 inline bool cls_lock_is_valid(ClsLockType type) {
-  return LOCK_SHARED == type ||
-    LOCK_EXCLUSIVE == type ||
-    LOCK_EXCLUSIVE_EPHEMERAL == type;
+  return C_LOCK_SHARED == type ||
+    C_LOCK_EXCLUSIVE == type ||
+    C_LOCK_EXCLUSIVE_EPHEMERAL == type;
 }
 
 namespace rados {
@@ -160,7 +160,7 @@ namespace rados {
           decode(tag, bl);
           DECODE_FINISH(bl);
         }
-        lock_info_t() : lock_type(LOCK_NONE) {}
+        lock_info_t() : lock_type(C_LOCK_NONE) {}
         void dump(Formatter *f) const;
         static void generate_test_instances(list<lock_info_t *>& o);
       };
