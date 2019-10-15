@@ -877,8 +877,8 @@ void Locker::eval_gather(SimpleLock *lock, bool first, bool *pneed_issue, MDSCon
       if (!mds->is_cluster_degraded() ||
 	  mds->mdsmap->get_state(auth) >= MDSMap::STATE_REJOIN) {
 	switch (lock->get_state()) {
-	case LOCK_SYNC_LOCK:
-	  mds->send_message_mds(make_message<MLock>(lock, LOCK_AC_LOCKACK, mds->get_nodeid()), auth);
+	case LOCK_SYNCLS_LOCK:
+	  mds->send_message_mds(make_message<MLock>(lock, LOCK_ACLS_LOCKACK, mds->get_nodeid()), auth);
 	  break;
 
 	case LOCK_MIX_SYNC:
@@ -911,9 +911,9 @@ void Locker::eval_gather(SimpleLock *lock, bool first, bool *pneed_issue, MDSCon
 	  {
 	    bufferlist data;
 	    lock->encode_locked_state(data);
-	    mds->send_message_mds(make_message<MLock>(lock, LOCK_AC_LOCKACK, mds->get_nodeid(), data), auth);
+	    mds->send_message_mds(make_message<MLock>(lock, LOCK_ACLS_LOCKACK, mds->get_nodeid(), data), auth);
 	    (static_cast<ScatterLock *>(lock))->start_flush();
-	    // we'll get an AC_LOCKFLUSHED to complete
+	    // we'll get an ACLS_LOCKFLUSHED to complete
 	  }
 	  break;
 
@@ -929,7 +929,7 @@ void Locker::eval_gather(SimpleLock *lock, bool first, bool *pneed_issue, MDSCon
       if (lock->get_state() == LOCK_MIX_LOCK &&
 	  lock->get_parent()->is_replicated()) {
 	dout(10) << " finished (local) gather for mix->lock, now gathering from replicas" << dendl;
-	send_lock_message(lock, LOCK_AC_LOCK);
+	send_lock_message(lock, LOCK_ACLS_LOCK);
 	lock->init_gather();
 	lock->set_state(LOCK_MIX_LOCK2);
 	return;
@@ -1434,7 +1434,7 @@ void Locker::wrlock_force(SimpleLock *lock, MutationRef& mut)
 {
   if (lock->get_type() == CEPH_LOCK_IVERSION ||
       lock->get_type() == CEPH_LOCK_DVERSION)
-    return local_wrlock_grab(static_cast<LocalLock*>(lock), mut);
+    return local_wrlock_grab(static_cast<LocalLockC*>(lock), mut);
 
   dout(7) << "wrlock_force  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -1476,7 +1476,7 @@ bool Locker::wrlock_start(const MutationImpl::LockOp &op, MDRequestRef& mut)
   SimpleLock *lock = op.lock;
   if (lock->get_type() == CEPH_LOCK_IVERSION ||
       lock->get_type() == CEPH_LOCK_DVERSION)
-    return local_wrlock_start(static_cast<LocalLock*>(lock), mut);
+    return local_wrlock_start(static_cast<LocalLockC*>(lock), mut);
 
   dout(10) << "wrlock_start " << *lock << " on " << *lock->get_parent() << dendl;
 
@@ -1613,7 +1613,7 @@ bool Locker::xlock_start(SimpleLock *lock, MDRequestRef& mut)
 {
   if (lock->get_type() == CEPH_LOCK_IVERSION ||
       lock->get_type() == CEPH_LOCK_DVERSION)
-    return local_xlock_start(static_cast<LocalLock*>(lock), mut);
+    return local_xlock_start(static_cast<LocalLockC*>(lock), mut);
 
   dout(7) << "xlock_start on " << *lock << " on " << *lock->get_parent() << dendl;
   client_t client = mut->get_client();
@@ -4050,9 +4050,9 @@ void Locker::handle_simple_lock(SimpleLock *lock, const cref_t<MLock> &m)
     lock->finish_waiters(SimpleLock::WAIT_RD|SimpleLock::WAIT_STABLE);
     break;
     
-  case LOCK_AC_LOCK:
+  case LOCK_ACLS_LOCK:
     ceph_assert(lock->get_state() == LOCK_SYNC);
-    lock->set_state(LOCK_SYNC_LOCK);
+    lock->set_state(LOCK_SYNCLS_LOCK);
     if (lock->is_leased())
       revoke_client_leases(lock);
     eval_gather(lock, true);
@@ -4062,8 +4062,8 @@ void Locker::handle_simple_lock(SimpleLock *lock, const cref_t<MLock> &m)
 
 
     // -- auth --
-  case LOCK_AC_LOCKACK:
-    ceph_assert(lock->get_state() == LOCK_SYNC_LOCK ||
+  case LOCK_ACLS_LOCKACK:
+    ceph_assert(lock->get_state() == LOCK_SYNCLS_LOCK ||
 	   lock->get_state() == LOCK_SYNC_EXCL);
     ceph_assert(lock->is_gathering(from));
     lock->remove_gather(from);
@@ -4289,7 +4289,7 @@ void Locker::simple_excl(SimpleLock *lock, bool *need_issue)
   if (lock->get_parent()->is_replicated() && 
       lock->get_state() != LOCK_LOCK_EXCL &&
       lock->get_state() != LOCK_XSYN_EXCL) {
-    send_lock_message(lock, LOCK_AC_LOCK);
+    send_lock_message(lock, LOCK_ACLS_LOCK);
     lock->init_gather();
     gather++;
   }
@@ -4332,7 +4332,7 @@ void Locker::simple_lock(SimpleLock *lock, bool *need_issue)
   int old_state = lock->get_state();
 
   switch (lock->get_state()) {
-  case LOCK_SYNC: lock->set_state(LOCK_SYNC_LOCK); break;
+  case LOCK_SYNC: lock->set_state(LOCK_SYNCLS_LOCK); break;
   case LOCK_XSYN: lock->set_state(LOCK_XSYN_LOCK); break;
   case LOCK_EXCL: lock->set_state(LOCK_EXCL_LOCK); break;
   case LOCK_MIX: lock->set_state(LOCK_MIX_LOCK);
@@ -4381,7 +4381,7 @@ void Locker::simple_lock(SimpleLock *lock, bool *need_issue)
     if (lock->get_parent()->is_replicated() &&
 	lock->get_sm()->states[old_state].replica_state != LOCK_LOCK) {  // replica may already be LOCK
       gather++;
-      send_lock_message(lock, LOCK_AC_LOCK);
+      send_lock_message(lock, LOCK_ACLS_LOCK);
       lock->init_gather();
     }
   }
@@ -4547,7 +4547,7 @@ void Locker::scatter_writebehind_finish(ScatterLock *lock, MutationRef& mut)
     case LOCK_MIX_LOCK2:
     case LOCK_MIX_EXCL:
     case LOCK_MIX_TSYN:
-      send_lock_message(lock, LOCK_AC_LOCKFLUSHED);
+      send_lock_message(lock, LOCK_ACLS_LOCKFLUSHED);
     }
   }
 
@@ -4817,7 +4817,7 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
   if (lock->get_state() == LOCK_MIX_TSYN &&
       in->is_replicated()) {
     lock->init_gather();
-    send_lock_message(lock, LOCK_AC_LOCK);
+    send_lock_message(lock, LOCK_ACLS_LOCK);
     gather++;
   }
 
@@ -4841,7 +4841,7 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
 // ==========================================================================
 // local lock
 
-void Locker::local_wrlock_grab(LocalLock *lock, MutationRef& mut)
+void Locker::local_wrlock_grab(LocalLockC *lock, MutationRef& mut)
 {
   dout(7) << "local_wrlock_grab  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -4854,7 +4854,7 @@ void Locker::local_wrlock_grab(LocalLock *lock, MutationRef& mut)
   ceph_assert(ret.second);
 }
 
-bool Locker::local_wrlock_start(LocalLock *lock, MDRequestRef& mut)
+bool Locker::local_wrlock_start(LocalLockC *lock, MDRequestRef& mut)
 {
   dout(7) << "local_wrlock_start  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -4874,7 +4874,7 @@ bool Locker::local_wrlock_start(LocalLock *lock, MDRequestRef& mut)
 void Locker::local_wrlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *mut)
 {
   ceph_assert(it->is_wrlock());
-  LocalLock *lock = static_cast<LocalLock*>(it->lock);
+  LocalLockC *lock = static_cast<LocalLockC*>(it->lock);
   dout(7) << "local_wrlock_finish  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
   lock->put_wrlock();
@@ -4886,7 +4886,7 @@ void Locker::local_wrlock_finish(const MutationImpl::lock_iterator& it, Mutation
   }
 }
 
-bool Locker::local_xlock_start(LocalLock *lock, MDRequestRef& mut)
+bool Locker::local_xlock_start(LocalLockC *lock, MDRequestRef& mut)
 {
   dout(7) << "local_xlock_start  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -4905,7 +4905,7 @@ bool Locker::local_xlock_start(LocalLock *lock, MDRequestRef& mut)
 void Locker::local_xlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *mut)
 {
   ceph_assert(it->is_xlock());
-  LocalLock *lock = static_cast<LocalLock*>(it->lock);
+  LocalLockC *lock = static_cast<LocalLockC*>(it->lock);
   dout(7) << "local_xlock_finish  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
   lock->put_xlock();
@@ -5145,7 +5145,7 @@ void Locker::file_excl(ScatterLock *lock, bool *need_issue)
   if (in->is_replicated() &&
       lock->get_state() != LOCK_LOCK_EXCL &&
       lock->get_state() != LOCK_XSYN_EXCL) {  // if we were lock, replicas are already lock.
-    send_lock_message(lock, LOCK_AC_LOCK);
+    send_lock_message(lock, LOCK_ACLS_LOCK);
     lock->init_gather();
     gather++;
   }
@@ -5232,7 +5232,7 @@ void Locker::file_recover(ScatterLock *lock)
   /*
   if (in->is_replicated()
       lock->get_sm()->states[oldstate].replica_state != LOCK_LOCK) {
-    send_lock_message(lock, LOCK_AC_LOCK);
+    send_lock_message(lock, LOCK_ACLS_LOCK);
     lock->init_gather();
     gather++;
   }
@@ -5301,9 +5301,9 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
     lock->put_rdlock();
     break;
     
-  case LOCK_AC_LOCK:
+  case LOCK_ACLS_LOCK:
     switch (lock->get_state()) {
-    case LOCK_SYNC: lock->set_state(LOCK_SYNC_LOCK); break;
+    case LOCK_SYNC: lock->set_state(LOCK_SYNCLS_LOCK); break;
     case LOCK_MIX: lock->set_state(LOCK_MIX_LOCK); break;
     default: ceph_abort();
     }
@@ -5314,7 +5314,7 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
 
     break;
 
-  case LOCK_AC_LOCKFLUSHED:
+  case LOCK_ACLS_LOCKFLUSHED:
     (static_cast<ScatterLock *>(lock))->finish_flush();
     (static_cast<ScatterLock *>(lock))->clear_flushed();
     // wake up scatter_nudge waiters
@@ -5348,8 +5348,8 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
 
 
     // -- auth --
-  case LOCK_AC_LOCKACK:
-    ceph_assert(lock->get_state() == LOCK_SYNC_LOCK ||
+  case LOCK_ACLS_LOCKACK:
+    ceph_assert(lock->get_state() == LOCK_SYNCLS_LOCK ||
            lock->get_state() == LOCK_MIX_LOCK ||
            lock->get_state() == LOCK_MIX_LOCK2 ||
            lock->get_state() == LOCK_MIX_EXCL ||
@@ -5364,7 +5364,7 @@ void Locker::handle_file_lock(ScatterLock *lock, const cref_t<MLock> &m)
 	lock->get_state() == LOCK_MIX_EXCL ||
 	lock->get_state() == LOCK_MIX_TSYN) {
       lock->decode_locked_state(m->get_data());
-      // replica is waiting for AC_LOCKFLUSHED, eval_gather() should not
+      // replica is waiting for ACLS_LOCKFLUSHED, eval_gather() should not
       // delay calling scatter_writebehind().
       lock->clear_flushed();
     }
