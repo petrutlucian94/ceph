@@ -13,7 +13,7 @@
 #define CEPH_SOCK_COMPAT_H
 
 #include "include/compat.h"
-#include <sys/socket.h>
+#include "include/sock_types.h"
 
 /*
  * This optimization may not be available on all platforms (e.g. OSX).
