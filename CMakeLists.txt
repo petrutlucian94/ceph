@@ -39,6 +39,11 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
   FIND_PACKAGE(Threads)
 endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
+if (WIN32)
+  set(WIN32_WINNT "0x0A00" CACHE STRING "Targeted Windows version.")
+  add_definitions(-D_WIN32_WINNT=${WIN32_WINNT})
+endif()
+
 option(WITH_CCACHE "Build with ccache.")
 if(WITH_CCACHE)
   find_program(CCACHE_FOUND ccache)
