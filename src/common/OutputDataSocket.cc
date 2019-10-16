@@ -13,13 +13,10 @@
  */
 
 #ifndef _WIN32
+// We'll use WSAPoll from winsock2.h for Windows.
 #include <poll.h>
-#else
-// We'll use WSAPoll from winsock2.h
-#include "include/sock_types.h"
 #endif
 
-#include <sys/un.h>
 #include <unistd.h>
 
 #include "common/OutputDataSocket.h"
@@ -28,6 +25,7 @@
 #include "common/safe_io.h"
 #include "include/compat.h"
 #include "include/sock_compat.h"
+#include "include/sock_types.h"
 
 // re-include our assert to clobber the system one; fix dout:
 #include "include/ceph_assert.h"

@@ -12,13 +12,9 @@
  *
  */
 #ifndef _WIN32
+// We'll use WSAPoll from winsock2.h for Windows.
 #include <poll.h>
-#else
-// We'll use WSAPoll from winsock2.h
-#include "include/sock_types.h"
 #endif
-
-#include <sys/un.h>
 
 #include "common/admin_socket.h"
 #include "common/admin_socket_client.h"
@@ -27,6 +23,7 @@
 #include "common/safe_io.h"
 #include "common/Thread.h"
 #include "common/version.h"
+#include "include/sock_types.h"
 
 
 // re-include our assert to clobber the system one; fix dout:
