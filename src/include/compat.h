@@ -284,8 +284,12 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 // flag as a no-op.
 #define O_CLOEXEC 0
 
+#define SOCKOPT_VAL_TYPE char*
+
 #else
 #include <sys/uio.h>
+
+#define SOCKOPT_VAL_TYPE void*
 #endif /* WIN32 */
 
 #endif /* !CEPH_COMPAT_H */
