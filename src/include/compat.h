@@ -291,6 +291,11 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 // with subprocesses unless explicitly requested, we'll define this
 // flag as a no-op.
 #define O_CLOEXEC 0
+#define SOCKOPT_VAL_TYPE char*
+
+#else
+
+#define SOCKOPT_VAL_TYPE void*
 
 #endif /* WIN32 */
 
