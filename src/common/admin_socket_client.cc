@@ -70,7 +70,7 @@ static std::string asok_connect(const std::string &path, int *fd)
   struct timeval timer;
   timer.tv_sec = 5;
   timer.tv_usec = 0;
-  if (::setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timer, sizeof(timer))) {
+  if (::setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (SOCKOPT_VAL_TYPE) &timer, sizeof(timer))) {
     int err = errno;
     ostringstream oss;
     oss << "setsockopt(" << socket_fd << ", SO_RCVTIMEO) failed: "
@@ -80,7 +80,7 @@ static std::string asok_connect(const std::string &path, int *fd)
   }
   timer.tv_sec = 5;
   timer.tv_usec = 0;
-  if (::setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timer, sizeof(timer))) {
+  if (::setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, (SOCKOPT_VAL_TYPE) &timer, sizeof(timer))) {
     int err = errno;
     ostringstream oss;
     oss << "setsockopt(" << socket_fd << ", SO_SNDTIMEO) failed: "

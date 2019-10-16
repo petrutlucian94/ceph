@@ -194,6 +194,8 @@ int pipe_cloexec(int pipefd[2]);
 // TODO: determine when running cmake
 #if defined(_WIN32)
 
+#define SOCKOPT_VAL_TYPE char*
+
 // Boost complains if winsock2.h (or windows.h) is included before asio.hpp.
 #ifdef __cplusplus
 #include <boost/asio.hpp>
@@ -243,6 +245,8 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 #else
 #define HAVE_IOVEC 1
 #include <sys/uio.h>
+
+#define SOCKOPT_VAL_TYPE void*
 #endif /* WIN32 */
 
 #endif /* !CEPH_COMPAT_H */
