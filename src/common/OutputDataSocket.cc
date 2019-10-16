@@ -12,7 +12,13 @@
  * 
  */
 
+#ifndef _WIN32
 #include <poll.h>
+#else
+// We'll use WSAPoll from winsock2.h
+#include "include/sock_types.h"
+#endif
+
 #include <sys/un.h>
 #include <unistd.h>
 
