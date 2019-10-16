@@ -210,6 +210,10 @@ int pipe_cloexec(int pipefd[2]);
 #define WIN32_ERROR ERROR
 #undef ERROR
 
+#ifndef sigset_t
+#define sigset_t _sigset_t
+#endif
+
 typedef int uid_t;
 typedef int gid_t;
 
