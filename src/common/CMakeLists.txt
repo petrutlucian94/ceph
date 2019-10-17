@@ -38,7 +38,6 @@ set(common_srcs
   admin_socket_client.cc
   assert.cc
   bit_str.cc
-  blkdev.cc
   bloom_filter.cc
   ceph_argparse.cc
   ceph_context.cc
@@ -100,6 +99,12 @@ set(common_srcs
   version.cc
   xattr.c
   shared_lib.cc)
+
+if (WIN32)
+  list(APPEND common_srcs blkdev_win32.cc)
+else()
+  list(APPEND common_srcs blkdev.cc)
+endif()
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
   APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/src/include/ceph_ver.h)
