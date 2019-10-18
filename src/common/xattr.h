@@ -24,6 +24,10 @@ extern "C" {
 # define ENOATTR ENODATA
 #endif
 
+#ifdef _WIN32
+#include <crtdefs.h>
+#endif
+
 int ceph_os_setxattr(const char *path, const char *name,
                   const void *value, size_t size);
 int ceph_os_fsetxattr(int fd, const char *name, const void *value,
