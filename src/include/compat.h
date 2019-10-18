@@ -237,6 +237,8 @@ int posix_memalign(void **memptr, size_t alignment, size_t size);
 
 char *strptime(const char *s, const char *format, struct tm *tm);
 
+#define pipe _pipe
+
 // O_CLOEXEC is not defined on Windows. Since handles aren't inherited
 // with subprocesses unless explicitly requested, we'll define this
 // flag as a no-op.

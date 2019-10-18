@@ -102,10 +102,14 @@ int pipe_cloexec(int pipefd[2])
 #if defined(HAVE_PIPE2)
   return pipe2(pipefd, O_CLOEXEC);
 #else
+
+  #ifdef _WIN32
+  if (_pipe(pipefd, 0x10000, O_NOINHERIT))
+    return -1;
+  #else
   if (pipe(pipefd) == -1)
     return -1;
 
-  #ifndef _WIN32
   /*
    * The old-fashioned, race-condition prone way that we have to fall
    * back on if pipe2 does not exist.
@@ -117,7 +121,7 @@ int pipe_cloexec(int pipefd[2])
   if (fcntl(pipefd[1], F_SETFD, FD_CLOEXEC) < 0) {
     goto fail;
   }
-  #endif
+  #endif /* _WIN32 */
 
   return 0;
 fail:
