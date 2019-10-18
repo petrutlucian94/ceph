@@ -219,6 +219,14 @@ typedef long nlink_t;
 
 typedef long long loff_t;
 
+#define CPU_SETSIZE (sizeof(size_t)*8)
+
+typedef union
+{
+  char cpuset[CPU_SETSIZE/8];
+  size_t _align;
+} cpu_set_t;
+
 #define SHUT_RD SD_RECEIVE
 #define SHUT_WR SD_SEND
 #define SHUT_RDWR SD_BOTH

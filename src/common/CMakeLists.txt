@@ -38,7 +38,6 @@ set(common_srcs
   admin_socket_client.cc
   assert.cc
   bit_str.cc
-  blkdev.cc
   bloom_filter.cc
   ceph_argparse.cc
   ceph_context.cc
@@ -57,7 +56,6 @@ set(common_srcs
   condition_variable_debug.cc
   config.cc
   config_values.cc
-  dns_resolve.cc
   dout.cc
   entity_name.cc
   environment.cc
@@ -69,9 +67,7 @@ set(common_srcs
   histogram.cc
   hobject.cc
   hostname.cc
-  ipaddr.cc
   iso_8601.cc
-  linux_version.c
   lockdep.cc
   mempool.cc
   mime.c
@@ -82,11 +78,9 @@ set(common_srcs
   perf_counters.cc
   perf_counters_collection.cc
   perf_histogram.cc
-  pick_address.cc
   rabin.cc
   random_string.cc
   reverse.c
-  run_cmd.cc
   scrub_types.cc
   shared_mutex_debug.cc
   signal.cc
@@ -99,8 +93,17 @@ set(common_srcs
   utf8.c
   util.cc
   version.cc
-  xattr.c
   shared_lib.cc)
+
+if (WIN32)
+  list(APPEND common_srcs blkdev_win32.cc dns_resolve_win32.cc
+       xattr_win32.c)
+else()
+  list(APPEND common_srcs
+       blkdev.cc linux_version.c dns_resolve.cc
+       pick_address.cc ipaddr.cc run_cmd.cc
+       xattr.c)
+endif()
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
   APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/src/include/ceph_ver.h)
