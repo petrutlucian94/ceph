@@ -70,7 +70,6 @@ set(common_srcs
   hostname.cc
   ipaddr.cc
   iso_8601.cc
-  linux_version.c
   lockdep.cc
   mempool.cc
   mime.c
@@ -103,7 +102,7 @@ set(common_srcs
 if (WIN32)
   list(APPEND common_srcs blkdev_win32.cc)
 else()
-  list(APPEND common_srcs blkdev.cc)
+  list(APPEND common_srcs blkdev.cc linux_version.c)
 endif()
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
