@@ -134,7 +134,7 @@ int get_numa_node_cpu_set(
   return r;
 }
 
-#elif defined(__FreeBSD__)
+#else
 
 int parse_cpu_set_list(const char *s,
 		       size_t *cpu_set_size,

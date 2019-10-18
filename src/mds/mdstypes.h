@@ -538,7 +538,12 @@ struct inode_t {
   }
 
   // file type
+  #ifndef _WIN32
   bool is_symlink() const { return (mode & S_IFMT) == S_IFLNK; }
+  #else
+  // TODO: provide proper implementation. We'll need a file name or handle.
+  bool is_symlink() const { return 0; }
+  #endif
   bool is_dir()     const { return (mode & S_IFMT) == S_IFDIR; }
   bool is_file()    const { return (mode & S_IFMT) == S_IFREG; }
 
