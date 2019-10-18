@@ -62,9 +62,13 @@ int manual_fallocate(int fd, off_t offset, off_t len) {
 }
 
 int on_zfs(int basedir_fd) {
+  #ifndef _WIN32
   struct statfs basefs;
   (void)fstatfs(basedir_fd, &basefs);
   return (basefs.f_type == FS_ZFS_TYPE);
+  #else
+  return 0;
+  #endif
 }
 
 int ceph_posix_fallocate(int fd, off_t offset, off_t len) {
