@@ -17,9 +17,11 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <sys/mount.h>
+#endif
 #include <sys/param.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -99,6 +101,7 @@ int pipe_cloexec(int pipefd[2])
   if (pipe(pipefd) == -1)
     return -1;
 
+  #ifndef _WIN32
   /*
    * The old-fashioned, race-condition prone way that we have to fall
    * back on if pipe2 does not exist.
@@ -110,6 +113,7 @@ int pipe_cloexec(int pipefd[2])
   if (fcntl(pipefd[1], F_SETFD, FD_CLOEXEC) < 0) {
     goto fail;
   }
+  #endif
 
   return 0;
 fail:
@@ -130,8 +134,10 @@ int socket_cloexec(int domain, int type, int protocol)
   if (fd == -1)
     return -1;
 
+  #ifndef _WIN32
   if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
     goto fail;
+  #endif
 
   return fd;
 fail:
@@ -150,11 +156,13 @@ int socketpair_cloexec(int domain, int type, int protocol, int sv[2])
   if (rc == -1)
     return -1;
 
+  #ifndef _WIN32
   if (fcntl(sv[0], F_SETFD, FD_CLOEXEC) < 0)
     goto fail;
 
   if (fcntl(sv[1], F_SETFD, FD_CLOEXEC) < 0)
     goto fail;
+  #endif
 
   return 0;
 fail:
@@ -174,8 +182,10 @@ int accept_cloexec(int sockfd, struct sockaddr* addr, socklen_t* addrlen)
   if (fd == -1)
     return -1;
 
+  #ifndef _WIN32
   if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
     goto fail;
+  #endif
 
   return fd;
 fail:
