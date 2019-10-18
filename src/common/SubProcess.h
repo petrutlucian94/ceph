@@ -21,9 +21,15 @@
 #include <signal.h>
 #endif
 
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 #include <sstream>
 #include <vector>
+
+#ifndef SIGKILL
+#define SIGKILL 9
+#endif
 
 /**
  * SubProcess:
