@@ -1,15 +1,13 @@
 
-#include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(__FreeBSD__)
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #endif
 
 #include "include/ipaddr.h"
+#include "include/sock_types.h"
 #include "msg/msg_types.h"
 #include "common/pick_address.h"
 
