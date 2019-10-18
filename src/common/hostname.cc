@@ -16,6 +16,10 @@
 
 #include <unistd.h>
 
+#ifdef _WIN32
+#include "include/sock_types.h"
+#endif
+
 std::string ceph_get_hostname()
 {
   // are we in a container?  if so we would prefer the *real* hostname.
