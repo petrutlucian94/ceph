@@ -8,6 +8,12 @@
 #include <ostream>
 #include <set>
 
+#ifndef cpu_set_t
+// This is not available on Windows, so those functions will be
+// stubbed for the time being.
+typedef void cpu_set_t;
+#endif
+
 int parse_cpu_set_list(const char *s,
 		       size_t *cpu_set_size,
 		       cpu_set_t *cpu_set);
