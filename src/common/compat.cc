@@ -159,6 +159,9 @@ int socketpair_cloexec(int domain, int type, int protocol, int sv[2])
 {
 #ifdef SOCK_CLOEXEC
   return socketpair(domain, type|SOCK_CLOEXEC, protocol, sv);
+#elif _WIN32
+  /* TODO */
+  return -ENOTSUP;
 #else
   int rc = socketpair(domain, type, protocol, sv);
   if (rc == -1)
