@@ -135,6 +135,8 @@ endif()
 add_library(common-common-objs OBJECT
   ${common_srcs})
 # for options.cc
+target_include_directories(common-common-objs PRIVATE
+  ${OPENSSL_INCLUDE_DIR})
 target_compile_definitions(common-common-objs PRIVATE
   "CEPH_LIBDIR=\"${CMAKE_INSTALL_FULL_LIBDIR}\""
   "CEPH_PKGLIBDIR=\"${CEPH_INSTALL_FULL_PKGLIBDIR}\""
