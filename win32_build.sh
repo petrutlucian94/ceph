@@ -4,8 +4,11 @@ set -e
 # At some point, we'll probably provide a docker image for building ceph
 # for Windows.
 
+num_vcpus=$(( $(lscpu -p | tail -1 | cut -d "," -f 1) + 1 ))
+
 CLEAN_BUILD=${CLEAN_BUILD:-}
 SKIP_BUILD=${SKIP_BUILD:-}
+NUM_WORKERS=${NUM_WORKERS:-$num_vcpus}
 
 cephDir="/data2/workspace/ceph"
 depsDir="/data2/workspace/ceph_deps"
@@ -92,11 +95,11 @@ $cmake -D CMAKE_PREFIX_PATH=$depsDirs \
 
 
 # TODO: switch to ninja
-echo "Running make. Log: ${buildDir}/make.log"
+echo "Running make using $NUM_WORKERS workers. Log: ${buildDir}/make.log"
 cd $buildDir
 
 if [[ -z $SKIP_BUILD ]]; then
-    make -j 8 2>&1 | tee ${buildDir}/make.log
+    make -j $NUM_WORKERS 2>&1 | tee ${buildDir}/make.log
 fi
 
 popd

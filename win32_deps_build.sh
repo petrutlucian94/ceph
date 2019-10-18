@@ -40,6 +40,9 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 EOL
 
+sudo apt-get -y install mingw-w64 cmake pkg-config python3-dev python3-pip
+sudo python3 -m pip install cython
+
 cd $depsMingwDir
 # make BUILD_STATIC=no CC=x86_64-w64-mingw32-gcc \
 #     DLLTOOL=x86_64-w64-mingw32-dlltool OS=Windows_NT
