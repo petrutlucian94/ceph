@@ -28,6 +28,8 @@
 
 #include <boost/container/small_vector.hpp>
 #include <boost/asio.hpp>
+#include <boost/thread/shared_mutex.hpp>
+#include <boost/thread/locks.hpp>
 
 #include <fmt/format.h>
 
