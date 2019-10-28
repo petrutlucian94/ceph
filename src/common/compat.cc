@@ -234,4 +234,14 @@ char *strptime(const char *s, const char *format, struct tm *tm) {
   return (char*)(s + input.tellg());
 }
 
+// lrand48 is not available on Windows. We'll generate a pseudo-random
+// value in the 0 - 2^31 range by calling rand twice.
+long int lrand48(void) {
+  long int val;
+  val = (long int) rand();
+  val << 16;
+  val += (long int) rand();
+  return val;
+}
+
 #endif /* _WIN32 */
