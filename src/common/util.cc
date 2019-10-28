@@ -12,7 +12,9 @@
  * 
  */
 
+#ifndef _WIN32
 #include <sys/utsname.h>
+#endif
 #include <boost/lexical_cast.hpp>
 
 #include "include/compat.h"
@@ -38,6 +40,7 @@
 
 #include <stdio.h>
 
+#ifndef _WIN32
 int get_fs_stats(ceph_data_stats_t &stats, const char *path)
 {
   if (!path)
@@ -55,6 +58,24 @@ int get_fs_stats(ceph_data_stats_t &stats, const char *path)
   stats.avail_percent = (((float)stats.byte_avail/stats.byte_total)*100);
   return 0;
 }
+#else
+int get_fs_stats(ceph_data_stats_t &stats, const char *path)
+{
+  ULARGE_INTEGER avail_bytes, total_bytes, total_free_bytes;
+
+  if (!(GetDiskFreeSpaceExA(path, &avail_bytes,
+                            &total_bytes, &total_free_bytes))) {
+    return -EINVAL;
+  }
+
+  stats.byte_total = total_bytes.QuadPart;
+  stats.byte_used = total_bytes.QuadPart - total_free_bytes.QuadPart;
+  // may not be equal to total_free_bytes due to quotas
+  stats.byte_avail = avail_bytes.QuadPart;
+  stats.avail_percent = (((float)stats.byte_avail/stats.byte_total)*100);
+  return 0;
+}
+#endif
 
 static char* value_sanitize(char *value)
 {
@@ -137,6 +158,7 @@ static void distro_detect(map<string, string> *m, CephContext *cct)
 
 int get_cgroup_memory_limit(uint64_t *limit)
 {
+  #ifndef _WIN32
   // /sys/fs/cgroup/memory/memory.limit_in_bytes
 
   // the magic value 9223372036854771712 or 0x7ffffffffffff000
@@ -164,8 +186,35 @@ int get_cgroup_memory_limit(uint64_t *limit)
 out:
   fclose(f);
   return ret;
+  #else
+  return 0;
+  #endif
 }
 
+int get_windows_version(POSVERSIONINFOEXW ver) {
+    HMODULE hLib;
+    int ret_val = 0;
+
+    typedef DWORD (WINAPI *RtlGetVersion_t) (OSVERSIONINFOEXW*);
+
+    // We'll load the library directly to avoid depending on the NTDDK.
+    hLib = LoadLibraryW(L"Ntdll.dll");
+    if (!hLib) {
+        return -EINVAL;
+    }
+
+    // The standard "GetVersion" returned values depend on the application
+    // manifest. We'll get the "real" version by using the Rtl* version.
+    auto f_RtlGetVersion =
+            (RtlGetVersion_t)GetProcAddress(hLib, "RtlGetVersion");
+    if (!f_RtlGetVersion || f_RtlGetVersion(ver)) {
+        // RtlGetVersion returns non-zero values in case of errors.
+        ret_val = -EINVAL;
+    }
+
+    FreeLibrary(hLib);
+    return ret_val;
+}
 
 void collect_sys_info(map<string, string> *m, CephContext *cct)
 {
@@ -174,6 +223,7 @@ void collect_sys_info(map<string, string> *m, CephContext *cct)
   (*m)["ceph_version_short"] = ceph_version_to_str();
   (*m)["ceph_release"] = ceph_release_to_str();
 
+  #ifndef _WIN32
   // kernel info
   struct utsname u;
   int r = uname(&u);
@@ -184,6 +234,44 @@ void collect_sys_info(map<string, string> *m, CephContext *cct)
     (*m)["hostname"] = u.nodename;
     (*m)["arch"] = u.machine;
   }
+  #else
+  OSVERSIONINFOEXW ver = {0};
+  ver.dwOSVersionInfoSize = sizeof(ver);
+  get_windows_version(&ver);
+
+  char version_str[64];
+  snprintf(version_str, 64, "%d.%d (%d)",
+           ver.dwMajorVersion, ver.dwMinorVersion, ver.dwBuildNumber);
+
+  char hostname[64];
+  DWORD hostname_sz = 64;
+  GetComputerNameA(hostname, &hostname_sz);
+
+  SYSTEM_INFO sys_info;
+  char* arch_str;
+  GetNativeSystemInfo(&sys_info);
+
+  switch(sys_info.wProcessorArchitecture) {
+    case PROCESSOR_ARCHITECTURE_AMD64:
+      arch_str = "x86_64";
+      break;
+    case PROCESSOR_ARCHITECTURE_INTEL:
+      arch_str = "x86";
+      break;
+    case PROCESSOR_ARCHITECTURE_ARM:
+      arch_str = "arm";
+      break;
+    default:
+      arch_str = "unknown";
+      break;
+  }
+
+  (*m)["os"] = "Windows";
+  (*m)["kernel_version"] = version_str;
+  (*m)["kernel_description"] = version_str;
+  (*m)["hostname"] = hostname;
+  (*m)["arch"] = arch_str;
+  #endif
 
   // but wait, am i in a container?
   bool in_container = false;
@@ -202,7 +290,7 @@ void collect_sys_info(map<string, string> *m, CephContext *cct)
   }
   if (in_container) {
     if (const char *node_name = getenv("NODE_NAME")) {
-      (*m)["container_hostname"] = u.nodename;
+      (*m)["container_hostname"] = (*m)["hostname"];
       (*m)["hostname"] = node_name;
     }
     if (const char *ns = getenv("POD_NAMESPACE")) {
@@ -238,7 +326,7 @@ void collect_sys_info(map<string, string> *m, CephContext *cct)
       (*m)["cpu"] = buf;
     }
   }
-#else
+#elif !defined(_WIN32)
   // memory
   FILE *f = fopen(PROCPREFIX "/proc/meminfo", "r");
   if (f) {
@@ -288,6 +376,8 @@ void collect_sys_info(map<string, string> *m, CephContext *cct)
     }
     fclose(f);
   }
+#else
+
 #endif
   // distro info
   distro_detect(m, cct);
