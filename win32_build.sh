@@ -61,6 +61,11 @@ cmake=$(which cmake)
 # cmake=/data2/workspace/CMake/bin/cmake
 
 cd $buildDir
+
+# This isn't propagated to some of the subprojects, we'll use an env variable
+# for now.
+export CMAKE_PREFIX_PATH=$depsDirs
+
 $cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D CMAKE_TOOLCHAIN_FILE="$cephDir/cmake/toolchains/mingw32.cmake" \
       -D WITH_PYTHON2=OFF -D WITH_PYTHON3=${pyVersion} \
