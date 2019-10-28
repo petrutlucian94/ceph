@@ -92,15 +92,16 @@ set(common_srcs
   utf8.c
   util.cc
   version.cc
-  xattr.c
   shared_lib.cc)
 
 if (WIN32)
-  list(APPEND common_srcs blkdev_win32.cc)
+  list(APPEND common_srcs blkdev_win32.cc
+       xattr_win32.c)
 else()
   list(APPEND common_srcs
        blkdev.cc linux_version.c dns_resolve.cc
-       pick_address.cc ipaddr.cc run_cmd.cc)
+       pick_address.cc ipaddr.cc run_cmd.cc
+       xattr.c)
 endif()
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
