@@ -402,6 +402,10 @@ if(WITH_DPDK)
   list(APPEND ceph_common_deps common_async_dpdk)
 endif()
 
+if(WIN32)
+  list(APPEND ceph_common_deps ws2_32)
+endif()
+
 if(WITH_BLUESTORE_PMEM)
   if(WITH_SYSTEM_PMDK)
     find_package(pmem REQUIRED)
