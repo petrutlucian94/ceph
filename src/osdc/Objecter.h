@@ -24,6 +24,7 @@
 #include <type_traits>
 
 #include <boost/thread/shared_mutex.hpp>
+#include <boost/thread/locks.hpp>
 
 #include "include/ceph_assert.h"
 #include "include/buffer.h"
