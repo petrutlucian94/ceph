@@ -228,6 +228,10 @@ struct iovec {
     size_t iov_len;
 };
 
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
+#define SHUT_RDWR SD_BOTH
+
 #define IOV_MAX 1024
 
 ssize_t readv(int fd, const struct iovec *iov, int iov_cnt);
