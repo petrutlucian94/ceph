@@ -1,5 +1,6 @@
 set(CURSES_NEED_NCURSES TRUE)
-find_package(Curses REQUIRED)
+# libcurses may not be available on some platforms (e.g. Windows).
+find_package(Curses)
 
 set(rbd_srcs
   rbd.cc
@@ -51,6 +52,10 @@ set(rbd_srcs
   action/Trash.cc
   action/Watch.cc)
 
+if(CURSES_FOUND)
+  add_definitions(-DHAVE_CURSES)
+endif()
+
 add_executable(rbd ${rbd_srcs}
   $<TARGET_OBJECTS:common_texttable_obj>)
 set_target_properties(rbd PROPERTIES OUTPUT_NAME rbd)
@@ -58,8 +63,11 @@ target_link_libraries(rbd librbd librados
   cls_journal_client cls_rbd_client
   rbd_types
   journal
-  ceph-common global ${CURSES_LIBRARIES}
+  ceph-common global
   ${BLKID_LIBRARIES} ${CMAKE_DL_LIBS})
+if(CURSES_FOUND)
+  target_link_libraries(rbd ${CURSES_LIBRARIES})
+endif()
 if(WITH_KRBD)
   target_link_libraries(rbd 
     krbd)
