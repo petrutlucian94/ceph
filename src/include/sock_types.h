@@ -6,11 +6,6 @@
 #include <netinet/in.h>
 #endif
 #ifdef _WIN32
-// Boost complains if winsock2.h (or windows.h) is included before asio.hpp.
-#ifdef __cplusplus
-#include <boost/asio.hpp>
-#endif
-
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
