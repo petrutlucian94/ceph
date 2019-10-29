@@ -1,11 +1,11 @@
 
 #include "msg_types.h"
 
-#include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "common/Formatter.h"
+#include "include/sock_types.h"
 
 void entity_name_t::dump(Formatter *f) const
 {
