@@ -8,6 +8,7 @@
 
 #include "common/debug.h"
 #include "common/ceph_crypto.h"
+#include "include/compat.h"
 #include "include/types.h"
 
 #define dout_subsys ceph_subsys_ms
@@ -19,14 +20,14 @@ static constexpr const std::size_t AESGCM_IV_LEN{12};
 static constexpr const std::size_t AESGCM_TAG_LEN{16};
 static constexpr const std::size_t AESGCM_BLOCK_LEN{16};
 
-struct nonce_t {
+CEPH_PACKED(struct nonce_t {
   ceph_le32 fixed;
   ceph_le64 counter;
 
   bool operator==(const nonce_t& rhs) const {
     return !memcmp(this, &rhs, sizeof(*this));
   }
-} __attribute__((packed));
+});
 static_assert(sizeof(nonce_t) == AESGCM_IV_LEN);
 
 using key_t = std::array<std::uint8_t, AESGCM_KEY_LEN>;

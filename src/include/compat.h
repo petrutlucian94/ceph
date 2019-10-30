@@ -307,4 +307,10 @@ int lchown(const char *path, uid_t owner, gid_t group);
 
 #endif /* WIN32 */
 
+#ifdef __MINGW32__
+#define CEPH_PACKED(DECL) DECL __attribute__((packed, gcc_struct))
+#else
+#define CEPH_PACKED(DECL) DECL __attribute__((__packed__))
+#endif
+
 #endif /* !CEPH_COMPAT_H */
