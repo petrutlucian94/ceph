@@ -292,4 +292,12 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 #define SOCKOPT_VAL_TYPE void*
 #endif /* WIN32 */
 
+#ifdef __MINGW32__
+#define CEPH_PACKED(DECL) DECL __attribute__((packed, gcc_struct))
+#elif !defined(_MSC_VER)
+#define CEPH_PACKED(DECL) DECL __attribute__((__packed__))
+#else
+#define CEPH_PACKED(DECL) __pragma(pack(push, 1)) DECL __pragma(pack(pop))
+#endif
+
 #endif /* !CEPH_COMPAT_H */
