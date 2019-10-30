@@ -223,6 +223,8 @@ typedef long blksize_t;
 typedef long blkcnt_t;
 typedef long nlink_t;
 
+typedef long long loff_t;
+
 struct iovec {
     void *iov_base;
     size_t iov_len;
