@@ -7,6 +7,7 @@
 #include "crypto_onwire.h"
 
 #include "common/debug.h"
+#include "include/compat.h"
 #include "include/types.h"
 
 #define dout_subsys ceph_subsys_ms
@@ -18,10 +19,10 @@ static constexpr const std::size_t AESGCM_IV_LEN{12};
 static constexpr const std::size_t AESGCM_TAG_LEN{16};
 static constexpr const std::size_t AESGCM_BLOCK_LEN{16};
 
-struct nonce_t {
+CEPH_PACKED(struct nonce_t {
   std::uint32_t random_seq;
   std::uint64_t random_rest;
-} __attribute__((packed));
+});
 static_assert(sizeof(nonce_t) == AESGCM_IV_LEN);
 
 using key_t = std::array<std::uint8_t, AESGCM_KEY_LEN>;
