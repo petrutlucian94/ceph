@@ -95,7 +95,7 @@ set(common_srcs
   shared_lib.cc)
 
 if (WIN32)
-  list(APPEND common_srcs blkdev_win32.cc
+  list(APPEND common_srcs blkdev_win32.cc dns_resolve_win32.cc
        xattr_win32.c)
 else()
   list(APPEND common_srcs
