@@ -36,7 +36,7 @@ class Capability;
 
 class SimpleLock;
 class ScatterLock;
-class LocalLock;
+class LocalLockC;
 
 #include "CInode.h"
 #include "SimpleLock.h"
@@ -212,11 +212,11 @@ public:
 
   // local
 public:
-  void local_wrlock_grab(LocalLock *lock, MutationRef& mut);
+  void local_wrlock_grab(LocalLockC *lock, MutationRef& mut);
 protected:
-  bool local_wrlock_start(LocalLock *lock, MDRequestRef& mut);
+  bool local_wrlock_start(LocalLockC *lock, MDRequestRef& mut);
   void local_wrlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *mut);
-  bool local_xlock_start(LocalLock *lock, MDRequestRef& mut);
+  bool local_xlock_start(LocalLockC *lock, MDRequestRef& mut);
   void local_xlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *mut);
 
 

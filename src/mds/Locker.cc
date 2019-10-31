@@ -1442,7 +1442,7 @@ void Locker::wrlock_force(SimpleLock *lock, MutationRef& mut)
 {
   if (lock->get_type() == CEPH_LOCK_IVERSION ||
       lock->get_type() == CEPH_LOCK_DVERSION)
-    return local_wrlock_grab(static_cast<LocalLock*>(lock), mut);
+    return local_wrlock_grab(static_cast<LocalLockC*>(lock), mut);
 
   dout(7) << "wrlock_force  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -1455,7 +1455,7 @@ bool Locker::wrlock_start(const MutationImpl::LockOp &op, MDRequestRef& mut, boo
   SimpleLock *lock = op.lock;
   if (lock->get_type() == CEPH_LOCK_IVERSION ||
       lock->get_type() == CEPH_LOCK_DVERSION)
-    return local_wrlock_start(static_cast<LocalLock*>(lock), mut);
+    return local_wrlock_start(static_cast<LocalLockC*>(lock), mut);
 
   dout(10) << "wrlock_start " << *lock << " on " << *lock->get_parent() << dendl;
 
@@ -1604,7 +1604,7 @@ bool Locker::xlock_start(SimpleLock *lock, MDRequestRef& mut)
 {
   if (lock->get_type() == CEPH_LOCK_IVERSION ||
       lock->get_type() == CEPH_LOCK_DVERSION)
-    return local_xlock_start(static_cast<LocalLock*>(lock), mut);
+    return local_xlock_start(static_cast<LocalLockC*>(lock), mut);
 
   dout(7) << "xlock_start on " << *lock << " on " << *lock->get_parent() << dendl;
   client_t client = mut->get_client();
@@ -4854,7 +4854,7 @@ void Locker::scatter_tempsync(ScatterLock *lock, bool *need_issue)
 // ==========================================================================
 // local lock
 
-void Locker::local_wrlock_grab(LocalLock *lock, MutationRef& mut)
+void Locker::local_wrlock_grab(LocalLockC *lock, MutationRef& mut)
 {
   dout(7) << "local_wrlock_grab  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -4867,7 +4867,7 @@ void Locker::local_wrlock_grab(LocalLock *lock, MutationRef& mut)
   ceph_assert(ret.second);
 }
 
-bool Locker::local_wrlock_start(LocalLock *lock, MDRequestRef& mut)
+bool Locker::local_wrlock_start(LocalLockC *lock, MDRequestRef& mut)
 {
   dout(7) << "local_wrlock_start  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -4887,7 +4887,7 @@ bool Locker::local_wrlock_start(LocalLock *lock, MDRequestRef& mut)
 void Locker::local_wrlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *mut)
 {
   ceph_assert(it->is_wrlock());
-  LocalLock *lock = static_cast<LocalLock*>(it->lock);
+  LocalLockC *lock = static_cast<LocalLockC*>(it->lock);
   dout(7) << "local_wrlock_finish  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
   lock->put_wrlock();
@@ -4899,7 +4899,7 @@ void Locker::local_wrlock_finish(const MutationImpl::lock_iterator& it, Mutation
   }
 }
 
-bool Locker::local_xlock_start(LocalLock *lock, MDRequestRef& mut)
+bool Locker::local_xlock_start(LocalLockC *lock, MDRequestRef& mut)
 {
   dout(7) << "local_xlock_start  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
@@ -4918,7 +4918,7 @@ bool Locker::local_xlock_start(LocalLock *lock, MDRequestRef& mut)
 void Locker::local_xlock_finish(const MutationImpl::lock_iterator& it, MutationImpl *mut)
 {
   ceph_assert(it->is_xlock());
-  LocalLock *lock = static_cast<LocalLock*>(it->lock);
+  LocalLockC *lock = static_cast<LocalLockC*>(it->lock);
   dout(7) << "local_xlock_finish  on " << *lock
 	  << " on " << *lock->get_parent() << dendl;  
   lock->put_xlock();
