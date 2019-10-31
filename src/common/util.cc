@@ -191,6 +191,7 @@ out:
   #endif
 }
 
+#ifdef _WIN32
 int get_windows_version(POSVERSIONINFOEXW ver) {
     HMODULE hLib;
     int ret_val = 0;
@@ -215,6 +216,7 @@ int get_windows_version(POSVERSIONINFOEXW ver) {
     FreeLibrary(hLib);
     return ret_val;
 }
+#endif
 
 void collect_sys_info(map<string, string> *m, CephContext *cct)
 {
