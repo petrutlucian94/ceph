@@ -9,7 +9,7 @@
 
   typedef HMODULE lib_handle;
 #else
-  typedef *void lib_handle;
+  typedef void* lib_handle;
 #endif /* _WIN32 */
 
 
