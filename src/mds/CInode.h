@@ -596,7 +596,11 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
 
   inodeno_t ino() const { return inode.ino; }
   vinodeno_t vino() const { return vinodeno_t(inode.ino, last); }
+  #ifndef _WIN32
   int d_type() const { return IFTODT(inode.mode); }
+  #else
+  int d_type() const { return -ENOTSUP; }
+  #endif
 
   mempool_inode& get_inode() { return inode; }
   const mempool_inode& get_inode() const { return inode; }
