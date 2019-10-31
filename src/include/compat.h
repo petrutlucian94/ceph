@@ -206,10 +206,12 @@ int pipe_cloexec(int pipefd[2]);
 // There are a few name collisions between Windows headers and ceph.
 // We'll redefine the Windows values by adding the "WIN32_" prefix rather than
 // making intrusive changes to ceph.
-#define WIN32_DELETE WIN32_DELETE
+
+
+#define WIN32_DELETE 0x00010000L
 #undef DELETE
 
-#define WIN32_ERROR ERROR
+#define WIN32_ERROR 0
 #undef ERROR
 
 #ifndef sigset_t
