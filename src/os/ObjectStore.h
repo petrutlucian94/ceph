@@ -29,12 +29,6 @@
 #include <vector>
 #include <map>
 
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__sun)
-#include <sys/statvfs.h>
-#else
-#include <sys/vfs.h>    /* or <sys/statfs.h> */
-#endif
-
 class CephContext;
 
 namespace ceph {
