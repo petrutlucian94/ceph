@@ -89,7 +89,7 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
   cmake_push_check_state()
   set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++17")
   if(WIN32)
-    set(CMAKE_REQUIRED_LIBRARIES Ws2_32)
+    set(CMAKE_REQUIRED_LIBRARIES ws2_32)
   endif()
 
   check_cxx_source_runs("
@@ -97,7 +97,7 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
 #include <iterator>
 
 #ifdef _WIN32
-#include <Winsock2.h>
+#include <winsock2.h>
 #else
 #include <arpa/inet.h>
 #endif
