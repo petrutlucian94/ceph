@@ -10,7 +10,7 @@ lib_handle open_shared_lib(const char *filename) {
   return LoadLibrary(filename);
 }
 
-int close_library(lib_handle handle) {
+int close_shared_lib(lib_handle handle) {
   //FreeLibrary returns 0 on error, as opposed to dlclose.
   return !FreeLibrary(handle);
 }
@@ -45,7 +45,7 @@ lib_handle open_shared_lib(const char *filename) {
   return dlopen(filename, RTLD_NOW);
 }
 
-int close_library(lib_handle handle) {
+int open_shared_lib(lib_handle handle) {
   return dlclose(handle);
 }
 
