@@ -154,7 +154,7 @@ EOL
 
 # TODO: send this upstream and maybe use a fork until it merges
 patch -N boost/thread/pthread/thread_data.hpp thread_data.patch
-patch -N boost/asio/detail/thread.hpp thread.hpp
+patch -N boost/asio/detail/thread.hpp thread.patch
 
 ./bootstrap.sh
 
@@ -163,7 +163,8 @@ patch -N boost/asio/detail/thread.hpp thread.hpp
     threadapi=pthread --prefix=$boostDir \
     address-model=64 architecture=x86 \
     binary-format=pe abi=ms -j 8 \
-    --without-python --without-mpi -sNO_BZIP2=1 -sNO_ZLIB=1 \
+    -sZLIB_INCLUDE=$zlibDir/include -sZLIB_LIBRARY_PATH=$zlibDir/lib \
+    --without-python --without-mpi
 
  # cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-pthread cxxflags=-DTHREAD
 # ./b2 toolset=gcc-mingw32 target-os=windows threadapi=win32 \
