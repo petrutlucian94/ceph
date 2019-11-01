@@ -1,29 +1,51 @@
-# This is just a template atm.
+#!/bin/bash
 
-depsDir="/data2/workspace/ceph_deps"
-depsSrcDir=/data2/workspace/ceph_deps/src
-depsMingwDir="/data2/workspace/ceph_deps/mingw"
+set -e
 
-# Can't easily specify build dir for lz4
-lz4Dir="${depsMingwDir}/lz4"
-# TODO: fetch configurable openssl version
-sslVersion="1.1.1d"
-sslDir="${depsMingwDir}/openssl"
+SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
+SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
+
+num_vcpus=$(( $(lscpu -p | tail -1 | cut -d "," -f 1) + 1 ))
+NUM_WORKERS=${NUM_WORKERS:-$num_vcpus}
+
+DEPS_DIR="${DEPS_DIR:-$SCRIPT_DIR/build.deps}"
+depsSrcDir="$DEPS_DIR/src"
+depsToolsetDir="$DEPS_DIR/mingw"
+
+lz4SrcDir="${depsSrcDir}/lz4"
+lz4Dir="${depsToolsetDir}/lz4"
+lz4Tag="v1.9.2"
+sslVersion="1.1.1c"
+sslDir="${depsToolsetDir}/openssl"
 sslSrcDir="${depsSrcDir}/openssl-${sslVersion}"
+
+curlTag="curl-7_66_0"
 curlSrcDir="${depsSrcDir}/curl"
-curlDir="${depsMingwDir}/curl"
-boostSrcDir="${boostSrcDir}/boost"
-boostDir="${depsMingwDir}/boost"
-zlibDir="${depsMingwDir}/zlib"
+curlDir="${depsToolsetDir}/curl"
+
+# For now, we'll keep the version number within the file path when not using git.
+boostUrl="https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.gz"
+boostSrcDir="${depsSrcDir}/boost_1_70_0"
+boostDir="${depsToolsetDir}/boost"
+zlibDir="${depsToolsetDir}/zlib"
 zlibSrcDir="${depsSrcDir}/zlib"
-backtraceDir="${depsMingwDir}/backtrace"
+backtraceDir="${depsToolsetDir}/backtrace"
 backtraceSrcDir="${depsSrcDir}/backtrace"
 snappySrcDir="${depsSrcDir}/snappy"
-snappyDir="${depsMingwDir}/snappy"
+snappyDir="${depsToolsetDir}/snappy"
+snappyTag="1.1.7"
 
 MINGW_PREFIX="x86_64-w64-mingw32-"
 
-MINGW_CMAKE_FILE=/tmp/mingw.cmake
+function _make() {
+  make -j $NUM_WORKERS $@
+}
+
+mkdir -p $DEPS_DIR
+mkdir -p $depsToolsetDir
+mkdir -p $depsSrcDir
+
+MINGW_CMAKE_FILE="$DEPS_DIR/mingw.cmake"
 cat > $MINGW_CMAKE_FILE <<EOL
 set(CMAKE_SYSTEM_NAME Windows)
 set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
@@ -40,32 +62,62 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 EOL
 
-sudo apt-get -y install mingw-w64 cmake pkg-config python3-dev python3-pip
+sudo apt-get -y install mingw-w64 cmake pkg-config python3-dev python3-pip \
+                autoconf libtool
 sudo python3 -m pip install cython
 
-cd $depsMingwDir
-# make BUILD_STATIC=no CC=x86_64-w64-mingw32-gcc \
-#     DLLTOOL=x86_64-w64-mingw32-dlltool OS=Windows_NT
-# make BUILD_STATIC=no CC=x86_64-w64-mingw32-gcc \
-#     DLLTOOL=x86_64-w64-mingw32-dlltool OS=Windows_NT \
-#     -C /data2/workspace/ceph_deps/mingw/lz4_build ../lz4/Makefile
-curl "https://www.openssl.org/source/${sslVersion}.tar.gz" | \
-    tar xvz
-pushd $sslSrcDir
+cd $depsSrcDir
+if [[ ! -d $zlibDir ]]; then
+    git clone https://github.com/madler/zlib
+fi
+cd zlib
+# Apparently the configure script is broken...
+sed -e s/"PREFIX ="/"PREFIX = x86_64-w64-mingw32-"/ -i win32/Makefile.gcc
+_make -f win32/Makefile.gcc
+_make BINARY_PATH=$zlibDir \
+     INCLUDE_PATH=$zlibDir/include \
+     LIBRARY_PATH=$zlibDir/lib \
+     SHARED_MODE=1 \
+     -f win32/Makefile.gcc install
+
+cd $depsToolsetDir
+if [[ ! -d $lz4Dir ]]; then
+    git clone https://github.com/lz4/lz4
+fi
+cd lz4
+git checkout $lz4Tag
+_make BUILD_STATIC=no CC=x86_64-w64-mingw32-gcc \
+      DLLTOOL=x86_64-w64-mingw32-dlltool OS=Windows_NT
+
+cd $depsSrcDir
+if [[ ! -d $sslSrcDir ]]; then
+    curl "https://www.openssl.org/source/openssl-${sslVersion}.tar.gz" | tar xz
+fi
+cd $sslSrcDir
+mkdir -p $sslDir
 CROSS_COMPILE="x86_64-w64-mingw32-" ./Configure \
     mingw64 shared --prefix=$sslDir
-# CROSS_COMPILE="x86_64-w64-mingw32-" ./Configure \
-#     --prefix=$sslDir mingw64 no-asm no-shared
-make depend
-make
-make install
+_make depend
+_make
+_make install
 
-
+cd $depsSrcDir
+if [[ ! -d $curlSrcDir ]]; then
+    git clone https://github.com/curl/curl
+fi
 cd $curlSrcDir
-./configure --prefix=$curlDir --with-ssl=$sslDir --host=x86_64-w64-mingw32
+git checkout $curlTag
+./buildconf
+./configure --prefix=$curlDir --with-ssl=$sslDir --with-zlib=$zlibDir \
+            --host=x86_64-w64-mingw32
+_make
+_make install
 
-make
-make install
+
+cd $depsSrcDir
+if [[ ! -d $boostSrcDir ]]; then
+    wget -qO- $boostUrl | tar xz
+fi
 
 cd $boostSrcDir
 echo "using gcc : mingw32 : x86_64-w64-mingw32-g++-posix ;" > user-config.jam
@@ -162,52 +214,28 @@ patch -N boost/asio/detail/thread.hpp thread.patch
     target-os=windows release \
     threadapi=pthread --prefix=$boostDir \
     address-model=64 architecture=x86 \
-    binary-format=pe abi=ms -j 8 \
+    binary-format=pe abi=ms -j $NUM_WORKERS \
     -sZLIB_INCLUDE=$zlibDir/include -sZLIB_LIBRARY_PATH=$zlibDir/lib \
     --without-python --without-mpi
 
- # cxxflags=-DPTHREADS cxxflags=-DBOOST_THREAD_POSIX cxxflags=-pthread cxxflags=-DTHREAD
-# ./b2 toolset=gcc-mingw32 target-os=windows threadapi=win32 \
-#     --build-type=complete --prefix=/usr/x86_64-w64-mingw32/local \
-#     --layout=tagged --without-python -sNO_BZIP2=1 -sNO_ZLIB=1
-
-# ./b2 install --user-config=user-config.jam toolset=gcc-mingw32 \
-#     target-os=windows release \
-#     threadapi=win32 --prefix=$boostDir \
-#     address-model=64 architecture=x86 -j 8 \
-
 cd $depsSrcDir
-git clone https://github.com/madler/zlib
-# Apparently the configure script is broken...
-sed -e s/"PREFIX ="/"PREFIX = x86_64-w64-mingw32-"/ -i win32/Makefile.gcc
-make -f win32/Makefile.gcc
-make BINARY_PATH=$zlibDir \
-     INCLUDE_PATH=$zlibDir/include \
-     LIBRARY_PATH=$zlibDir/lib \
-     SHARED_MODE=1 \
-     -f win32/Makefile.gcc install
-
-# If you ever happen to want to link against installed libraries
-# in a given directory, LIBDIR, you must either use libtool, and
-# specify the full pathname of the library, or use the `-LLIBDIR'
-# flag during linking and do at least one of the following:
-#    - add LIBDIR to the `PATH' environment variable
-#      during execution
-#    - add LIBDIR to the `LD_RUN_PATH' environment variable
-#      during linking
-#    - use the `-LLIBDIR' linker flag
-#    - have your system administrator add LIBDIR to `/etc/ld.so.conf'
-git clone https://github.com/ianlancetaylor/libbacktrace
+if [[ ! -d $backtraceSrcDir ]]; then
+    git clone https://github.com/ianlancetaylor/libbacktrace
+fi
 mkdir libbacktrace/build
 cd libbacktrace/build
 ../configure --prefix=$backtraceDir --exec-prefix=$backtraceDir \
              --host x86_64-w64-mingw32 --enable-host-shared
-make LDFLAGS="-no-undefined" -j 8
-make install
+_make LDFLAGS="-no-undefined"
+_make install
 
-git clone git clone https://github.com/google/snappy
-mkdir snappy/build
-cd snappy/build
+cd $depsSrcDir
+if [[ ! -d $snappySrcDir ]]; then
+    git clone https://github.com/google/snappy
+fi
+mkdir -p snappy/build
+cd snappy && git checkout $snappyTag
+cd build
 
 cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
       -DCMAKE_BUILD_TYPE=Release \
@@ -215,8 +243,8 @@ cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
       -DSNAPPY_BUILD_TESTS=OFF \
       -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
       ../
-make
-make install
+_make
+_make install
 
 cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
       -DCMAKE_BUILD_TYPE=Release \
@@ -224,4 +252,5 @@ cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
       -DSNAPPY_BUILD_TESTS=OFF \
       -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
       ../
-make
+_make
+_make install
