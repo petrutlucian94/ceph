@@ -26,6 +26,7 @@
 #include <typeindex>
 
 #include "include/any.h"
+#include "include/compat.h"
 
 #include "common/cmdparse.h"
 #include "common/code_environment.h"
