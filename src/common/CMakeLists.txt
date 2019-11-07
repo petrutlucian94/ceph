@@ -89,6 +89,7 @@ set(common_srcs
   pick_address.cc
   random_string.cc
   reverse.c
+  run_cmd.cc
   scrub_types.cc
   shared_mutex_debug.cc
   signal.cc
