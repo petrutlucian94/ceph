@@ -102,16 +102,16 @@ void SubProcess::close_stderr() {
   close(stderr_pipe_in_fd);
 }
 
+const std::string SubProcess::err() const {
+  return errstr.str();
+}
+
 #ifndef _WIN32
 void SubProcess::kill(int signo) const {
   ceph_assert(is_spawned());
 
   int ret = ::kill(pid, signo);
   ceph_assert(ret == 0);
-}
-
-const std::string SubProcess::err() const {
-  return errstr.str();
 }
 
 class fd_buf : public std::streambuf {
@@ -280,6 +280,9 @@ SubProcessTimed::SubProcessTimed(const char *cmd, std_fd_op stdin_op,
 				 std_fd_op stdout_op, std_fd_op stderr_op,
 				 int timeout_, int sigkill_) :
   SubProcess(cmd, stdin_op, stdout_op, stderr_op),
+  #ifdef _WIN32
+  monitor_stop_event(NULL),
+  #endif
   timeout(timeout_),
   sigkill(sigkill_) {
 }
@@ -397,18 +400,179 @@ fail_exit:
 }
 
 #else
+void SubProcess::close_h(HANDLE &handle) {
+  if (!handle)
+    return;
+
+  CloseHandle(handle);
+  handle = NULL;
+}
+
 int SubProcess::join() {
-  return EXIT_FAILURE;
+  ceph_assert(is_spawned());
+
+  close(stdin_pipe_out_fd);
+  close(stdout_pipe_in_fd);
+  close(stderr_pipe_in_fd);
+
+  DWORD status = 0;
+
+  if (WaitForSingleObject(handle, INFINITE) != WAIT_FAILED) {
+    if (!GetExitCodeProcess(handle, &status)) {
+      errstr << cmd << " : Could not get exit code: " << pid
+             << ". Error code: " << GetLastError() << "\n";
+    }
+  }
+  else {
+    errstr << cmd << " : Waiting for child process failed: " << pid
+           << ". Error code: " << GetLastError() << "\n";
+  }
+
+  close_h(handle);
+  pid = -1;
+
+  return status;
 }
 
 void SubProcess::kill(int signo) const {
+  ceph_assert(is_spawned());
+  ceph_assert(TerminateProcess(handle, 1));
 }
 
 int SubProcess::spawn() {
-  return EXIT_FAILURE;
+  std::ostringstream cmdline;
+  cmdline << cmd << " ";
+  std::copy(cmd_args.begin(), cmd_args.end(),
+            std::ostream_iterator<std::string>(cmdline, " "));
+
+  STARTUPINFO si = {0};
+  PROCESS_INFORMATION pi = {0};
+  SECURITY_ATTRIBUTES sa = {0};
+
+  sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+  sa.bInheritHandle = TRUE;
+  sa.lpSecurityDescriptor = NULL;
+
+  HANDLE stdin_r = NULL, stdin_w = NULL,
+         stdout_r = NULL, stdout_w = NULL,
+         stderr_r = NULL, stderr_w = NULL;
+
+  if (!CreatePipe(&stdin_r, &stdin_w, &sa, 0) ||
+      !CreatePipe(&stdout_r, &stdout_w, &sa, 0) ||
+      !CreatePipe(&stderr_r, &stderr_w, &sa, 0)) {
+    errstr << cmd << ": CreatePipe failed: " << GetLastError() << "\n";
+    return -1;
+  }
+
+  // The following handles will be used by the parent process and
+  // must be marked as non-inheritable.
+  if (!SetHandleInformation(stdin_w, HANDLE_FLAG_INHERIT, 0) ||
+      !SetHandleInformation(stdout_r, HANDLE_FLAG_INHERIT, 0) ||
+      !SetHandleInformation(stderr_r, HANDLE_FLAG_INHERIT, 0)) {
+    errstr << cmd << ": SetHandleInformation failed: "
+           << GetLastError() << "\n";
+    goto fail;
+  }
+
+  si.cb = sizeof(STARTUPINFO);
+  si.hStdInput = stdin_r;
+  si.hStdOutput = stdout_w;
+  si.hStdError = stderr_w;
+  si.dwFlags |= STARTF_USESTDHANDLES;
+
+  stdin_pipe_out_fd = _open_osfhandle((intptr_t)stdin_w, 0);
+  stdout_pipe_in_fd = _open_osfhandle((intptr_t)stdout_r, _O_RDONLY);
+  stderr_pipe_in_fd = _open_osfhandle((intptr_t)stderr_r, _O_RDONLY);
+
+  if (stdin_pipe_out_fd == -1 ||
+      stdout_pipe_in_fd == -1 ||
+      stderr_pipe_in_fd == -1) {
+    errstr << cmd << ": _open_osfhandle failed: " << GetLastError() << "\n";
+    goto fail;
+  }
+
+  // We've transfered ownership from those handles.
+  stdin_w = stdout_r = stdout_r = NULL;
+
+  if (!CreateProcess(
+      NULL, const_cast<char*>(cmdline.str().c_str()),
+      NULL, NULL, /* No special security attributes */
+      1, /* Inherit handles marked as inheritable */
+      0, /* No special flags */
+      NULL, /* Use the same environment variables */
+      NULL, /* use the same cwd */
+      &si, &pi)) {
+    errstr << cmd << ": exec failed: " << GetLastError() << "\n";
+    goto fail;
+  }
+
+  handle = pi.hProcess;
+
+  // The following are used by the subprocess.
+  CloseHandle(stdin_r);
+  CloseHandle(stdout_w);
+  CloseHandle(stderr_w);
+  CloseHandle(pi.hThread);
+  return 0;
+
+  fail:
+    // fd copies
+    close(stdin_pipe_out_fd);
+    close(stdout_pipe_in_fd);
+    close(stderr_pipe_in_fd);
+
+    // the original handles
+    close_h(stdin_r);
+    close_h(stdin_w);
+    close_h(stdout_r);
+    close_h(stdout_w);
+    close_h(stderr_r);
+    close_h(stderr_w);
+
+    // We may consider mapping some of the Windows errors.
+    return -1;
 }
 
 void SubProcess::exec() {
+}
+
+int SubProcessTimed::spawn() {
+  int ret_val = SubProcess::spawn();
+  if (ret_val < 0)
+    return ret_val;
+
+  monitor_stop_event = CreateEventA(
+    NULL, /* no security attributes */
+    1, /* manual reset */
+    0, /* initial state */
+    NULL /* name */);
+  ceph_assert(monitor_stop_event);
+
+  std::thread([&](){
+    DWORD wait_status = WaitForSingleObject(handle, timeout * 1000);
+    ceph_assert(wait_status != WAIT_FAILED);
+
+    if (wait_status == WAIT_TIMEOUT) {
+      ceph_assert(TerminateProcess(handle, 1));
+      timedout = 1;
+    }
+
+    ceph_assert(SetEvent(monitor_stop_event));
+  });
+
+  return 0;
+}
+
+int SubProcessTimed::join() {
+  ceph_assert(is_spawned());
+  ceph_assert(WaitForSingleObject(monitor_stop_event, INFINITE) !=
+              WAIT_FAILED);
+
+  int ret_val = SubProcess::join();
+
+  close_h(monitor_stop_event);
+
+  return ret_val;
 }
 
 void SubProcessTimed::exec() {
