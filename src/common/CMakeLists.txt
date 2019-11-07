@@ -89,6 +89,7 @@ set(common_srcs
   pick_address.cc
   random_string.cc
   reverse.c
+  run_cmd.cc
   scrub_types.cc
   shared_mutex_debug.cc
   signal.cc
@@ -112,8 +113,7 @@ else()
     blkdev.cc
     dns_resolve.cc
     ipaddr.cc
-    linux_version.c
-    run_cmd.cc)
+    linux_version.c)
 endif()
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
