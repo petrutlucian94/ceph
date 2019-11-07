@@ -81,6 +81,7 @@ set(common_srcs
   rabin.cc
   random_string.cc
   reverse.c
+  run_cmd.cc
   scrub_types.cc
   shared_mutex_debug.cc
   signal.cc
@@ -101,7 +102,7 @@ if (WIN32)
 else()
   list(APPEND common_srcs
        blkdev.cc linux_version.c dns_resolve.cc
-       pick_address.cc ipaddr.cc run_cmd.cc
+       pick_address.cc ipaddr.cc
        xattr.c)
 endif()
 
