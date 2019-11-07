@@ -14,14 +14,19 @@
 
 #include "common/errno.h"
 
+#ifndef _WIN32
 #include <sstream>
 #include <stdarg.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+#else
+#include "common/SubProcess.h"
+#endif /* _WIN32 */
 
 using std::ostringstream;
 
+#ifndef _WIN32
 std::string run_cmd(const char *cmd, ...)
 {
   std::vector <const char *> arr;
@@ -78,3 +83,24 @@ std::string run_cmd(const char *cmd, ...)
   oss << "run_cmd(" << cmd << "): terminated by unknown mechanism";
   return oss.str();
 }
+#else
+std::string run_cmd(const char *cmd, ...)
+{
+  SubProcess p(cmd, SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE);
+
+  va_list ap;
+  va_start(ap, cmd);
+  const char *c = cmd;
+  do {
+    p.add_cmd_arg(c);
+    c = va_arg(ap, const char*);
+  } while (c != NULL);
+  va_end(ap);
+
+  if (p.spawn() != 0) {
+    p.join();
+  }
+
+  return "";
+}
+#endif /* _WIN32 */
