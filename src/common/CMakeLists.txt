@@ -81,6 +81,7 @@ set(common_srcs
   rabin.cc
   random_string.cc
   reverse.c
+  run_cmd.cc
   scrub_types.cc
   shared_lib.cc
   shared_mutex_debug.cc
@@ -107,7 +108,6 @@ else()
     ipaddr.cc
     linux_version.c
     pick_address.cc
-    run_cmd.cc
     xattr.c)
 endif()
 
