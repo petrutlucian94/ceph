@@ -256,6 +256,11 @@ struct iovec {
 
 #define IOV_MAX 1024
 
+#ifndef ENODATA
+// mingw doesn't define this, the Windows SDK does.
+#define ENODATA 120
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
