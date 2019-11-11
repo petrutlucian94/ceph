@@ -36,7 +36,6 @@ set(librbd_internal_srcs
   api/Trash.cc
   cache/ImageWriteback.cc
   cache/ObjectCacherObjectDispatch.cc
-  cache/ParentCacheObjectDispatch.cc
   cache/ObjectCacherWriteback.cc
   cache/PassthroughImageCache.cc
   cache/WriteAroundObjectDispatch.cc
@@ -142,10 +141,15 @@ set(librbd_internal_srcs
   watcher/RewatchRequest.cc
   ${CMAKE_SOURCE_DIR}/src/common/ContextCompletion.cc)
 
+if (NOT WIN32)
+  list(
+    APPEND librbd_internal_srcs
+    cache/ParentCacheObjectDispatch.cc)
+endif()
+
 if(WITH_EVENTTRACE)
   list(APPEND librbd_internal_srcs ../common/EventTrace.cc)
 endif()
-
 
 add_library(rbd_api STATIC librbd.cc)
 add_library(rbd_internal STATIC
