@@ -9,7 +9,9 @@
 #include "librbd/Utils.h"
 #include "librbd/cache/ObjectCacherObjectDispatch.h"
 #include "librbd/cache/WriteAroundObjectDispatch.h"
+#ifndef _WIN32
 #include "librbd/cache/ParentCacheObjectDispatch.cc"
+#endif
 #include "librbd/image/CloseRequest.h"
 #include "librbd/image/RefreshRequest.h"
 #include "librbd/image/SetSnapRequest.h"
@@ -529,11 +531,19 @@ Context* OpenRequest<I>::send_parent_cache(int *result) {
 
   bool parent_cache_enabled = m_image_ctx->config.template get_val<bool>(
     "rbd_parent_cache_enabled");
+  if (parent_cache_enabled) {
+    lderr(cct) << "parent cache not supported on Windows. Disabling feature..."
+               << dendl;
+    parent_cache_enabled = false;
+  }
 
   if (m_image_ctx->child == nullptr || !parent_cache_enabled) {
     return send_init_cache(result);
   }
 
+  #ifndef _WIN32
+  // The cache client uses stream based Unix sockets. Once we add Windows
+  // named pipes support, we can enable this feature.
   auto parent_cache = cache::ParentCacheObjectDispatch<I>::create(m_image_ctx);
   using klass = OpenRequest<I>;
   Context *ctx = create_context_callback<
@@ -541,6 +551,7 @@ Context* OpenRequest<I>::send_parent_cache(int *result) {
 
   parent_cache->init(ctx);
   return nullptr;
+  #endif
 }
 
 template <typename I>
