@@ -36,7 +36,6 @@ set(librbd_internal_srcs
   api/Trash.cc
   cache/ImageWriteback.cc
   cache/ObjectCacherObjectDispatch.cc
-  cache/ParentCacheObjectDispatch.cc
   cache/ObjectCacherWriteback.cc
   cache/PassthroughImageCache.cc
   cache/WriteAroundObjectDispatch.cc
@@ -142,10 +141,15 @@ set(librbd_internal_srcs
   watcher/RewatchRequest.cc
   ${CMAKE_SOURCE_DIR}/src/common/ContextCompletion.cc)
 
+if (NOT WIN32)
+  list(
+    APPEND librbd_internal_srcs
+    cache/ParentCacheObjectDispatch.cc)
+endif()
+
 if(WITH_EVENTTRACE)
   list(APPEND librbd_internal_srcs ../common/EventTrace.cc)
 endif()
-
 
 add_library(rbd_api STATIC librbd.cc)
 add_library(rbd_internal STATIC
@@ -160,9 +164,11 @@ endif()
 if(WITH_EVENTTRACE)
   add_dependencies(rbd_internal eventtrace_tp)
 endif()
+if (NOT WIN32)
 target_link_libraries(rbd_internal PRIVATE
-  ceph_immutable_object_cache_lib
-  osdc)
+  ceph_immutable_object_cache_lib)
+endif()
+target_link_libraries(rbd_internal PRIVATE osdc)
 
 add_library(librbd ${CEPH_SHARED}
   librbd.cc)
@@ -193,7 +199,7 @@ if(ENABLE_SHARED)
     SOVERSION 1
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT WIN32)
       set_property(TARGET librbd APPEND_STRING PROPERTY
         LINK_FLAGS " -Wl,--exclude-libs,ALL")
     endif()
