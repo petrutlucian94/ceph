@@ -126,5 +126,10 @@ if(WITH_SEASTAR)
   add_subdirectory(crimson)
 endif()
 
-add_subdirectory(immutable_object_cache)
+if(NOT WIN32)
+  # Not available on Windows for now. We may enable it as soon as
+  # we switch from Unix sockes to Windows named pipes.
+  add_subdirectory(immutable_object_cache)
+endif()
+
 add_subdirectory(ceph-dencoder)
