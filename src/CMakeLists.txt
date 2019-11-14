@@ -408,7 +408,7 @@ if(WITH_DPDK)
 endif()
 
 if(WIN32)
-  list(APPEND ceph_common_deps ws2_32 mswsock bcrypt)
+  list(APPEND ceph_common_deps ws2_32 mswsock iphlpapi bcrypt)
 endif()
 
 if(WITH_BLUESTORE_PMEM OR WITH_RBD_RWL)
