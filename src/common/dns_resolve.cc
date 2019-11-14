@@ -14,6 +14,10 @@
 
 #include "include/scope_guard.h"
 #include "include/sock_types.h"
+#ifdef _WIN32
+#include "include/windows/resolv.h"
+#endif
+
 #include "dns_resolve.h"
 #include "common/debug.h"
 
@@ -38,7 +42,12 @@ int ResolvHWrapper::res_nsearch(res_state s, const char *hostname, int cls,
 
 int ResolvHWrapper::res_query(const char *hostname, int cls,
     int type, u_char *buf, int bufsz) {
+  #ifdef _WIN32
+  // TODO: check if we can't just use res_query on both platforms.
+  return ::res_search(hostname, cls, type, buf, bufsz);
+  #else
   return ::res_query(hostname, cls, type, buf, bufsz);
+  #endif
 }
 
 int ResolvHWrapper::res_search(const char *hostname, int cls,
