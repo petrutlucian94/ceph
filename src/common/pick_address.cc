@@ -24,7 +24,11 @@
 #include "common/errno.h"
 #include "common/numa.h"
 
+#ifdef _WIN32
+#include "include/windows/ifaddrs.h"
+#else
 #include <netdb.h>
+#endif
 
 #define dout_subsys ceph_subsys_
 
