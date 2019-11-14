@@ -16,6 +16,8 @@
 
 #ifndef _WIN32
 #include <resolv.h>
+#else
+#include "include/windows/resolv.h"
 #endif
 
 

@@ -99,7 +99,7 @@ set(common_srcs
 
 if (WIN32)
   list(APPEND common_srcs blkdev_win32.cc
-       xattr_win32.c res_quer_win32.c ns_initparse.c pick_address_win32.cc ifaddrs.c ipaddr_win32.cc)
+       xattr_win32.c res_quer_win32.c ns_initparse.c ifaddrs.c ipaddr_win32.cc)
 else()
   list(APPEND common_srcs
        blkdev.cc linux_version.c
