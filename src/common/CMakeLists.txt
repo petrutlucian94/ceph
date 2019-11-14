@@ -56,6 +56,7 @@ set(common_srcs
   condition_variable_debug.cc
   config.cc
   config_values.cc
+  dns_resolve.cc
   dout.cc
   entity_name.cc
   environment.cc
@@ -97,11 +98,11 @@ set(common_srcs
   shared_lib.cc)
 
 if (WIN32)
-  list(APPEND common_srcs blkdev_win32.cc dns_resolve_win32.cc
-       xattr_win32.c)
+  list(APPEND common_srcs blkdev_win32.cc
+       xattr_win32.c res_quer_win32.c ns_initparse.c pick_address_win32.cc ifaddrs.c ipaddr_win32.cc)
 else()
   list(APPEND common_srcs
-       blkdev.cc linux_version.c dns_resolve.cc
+       blkdev.cc linux_version.c
        pick_address.cc ipaddr.cc
        xattr.c)
 endif()
