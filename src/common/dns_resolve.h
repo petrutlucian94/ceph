@@ -14,10 +14,7 @@
 #ifndef CEPH_DNS_RESOLVE_H
 #define CEPH_DNS_RESOLVE_H
 
-#ifndef _WIN32
 #include <resolv.h>
-#endif
-
 
 #include "include/sock_types.h"
 #include "common/ceph_mutex.h"
