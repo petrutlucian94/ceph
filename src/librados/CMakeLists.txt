@@ -29,6 +29,10 @@ if(ENABLE_SHARED)
       LINK_FLAGS " -static-libstdc++ -static-libgcc")
   endif()
 endif()
+if (WIN32)
+  set_property(TARGET librados APPEND_STRING PROPERTY
+    LINK_FLAGS " -Wl,-allow-multiple-definition ")
+endif ()
 target_link_libraries(librados PRIVATE
   librados_impl osdc ceph-common cls_lock_client
   ${BLKID_LIBRARIES} ${CRYPTO_LIBS} ${EXTRALIBS} ${GSSAPI_LIBRARIES})
