@@ -67,6 +67,7 @@ set(common_srcs
   histogram.cc
   hobject.cc
   hostname.cc
+  ipaddr.cc
   iso_8601.cc
   lockdep.cc
   mempool.cc
@@ -78,11 +79,13 @@ set(common_srcs
   perf_counters.cc
   perf_counters_collection.cc
   perf_histogram.cc
+  pick_address.cc
   rabin.cc
   random_string.cc
   reverse.c
   run_cmd.cc
   scrub_types.cc
+  shared_lib.cc
   shared_mutex_debug.cc
   signal.cc
   snap_types.cc
@@ -93,17 +96,15 @@ set(common_srcs
   url_escape.cc
   utf8.c
   util.cc
-  version.cc
-  shared_lib.cc)
+  version.cc)
 
 if (WIN32)
-  list(APPEND common_srcs blkdev_win32.cc dns_resolve_win32.cc
-       xattr_win32.c)
+  list(APPEND common_srcs blkdev_win32.cc
+       xattr_win32.c ifaddrs.c dns_resolve_win32.cc)
 else()
   list(APPEND common_srcs
-       blkdev.cc linux_version.c dns_resolve.cc
-       pick_address.cc ipaddr.cc
-       xattr.c)
+       blkdev.cc linux_version.c
+       dns_resolve.cc xattr.c)
 endif()
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/src/common/version.cc
