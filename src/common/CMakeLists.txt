@@ -67,6 +67,7 @@ set(common_srcs
   histogram.cc
   hobject.cc
   hostname.cc
+  ipaddr.cc
   iso_8601.cc
   lockdep.cc
   mempool.cc
@@ -78,6 +79,7 @@ set(common_srcs
   perf_counters.cc
   perf_counters_collection.cc
   perf_histogram.cc
+  pick_address.cc
   rabin.cc
   random_string.cc
   reverse.c
@@ -100,14 +102,13 @@ if (WIN32)
   list(APPEND common_srcs
     blkdev_win32.cc
     dns_resolve_win32.cc
+    ifaddrs.c
     xattr_win32.c)
 else()
   list(APPEND common_srcs
     blkdev.cc
     dns_resolve.cc
-    ipaddr.cc
     linux_version.c
-    pick_address.cc
     xattr.c)
 endif()
 
