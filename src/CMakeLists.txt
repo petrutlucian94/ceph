@@ -390,7 +390,7 @@ set(ceph_common_objs
   $<TARGET_OBJECTS:global_common_objs>
   $<TARGET_OBJECTS:crush_objs>)
 set(ceph_common_deps
-  json_spirit erasure_code arch crc32
+  json_spirit arch crc32
   ${LIB_RESOLV}
   Boost::thread
   Boost::system
@@ -405,7 +405,8 @@ set(ceph_common_deps
   ${CRYPTO_LIBS}
   ${GSSAPI_LIBRARIES}
   ${CMAKE_THREAD_LIBS_INIT}
-  ${CMAKE_DL_LIBS})
+  ${CMAKE_DL_LIBS}
+  ${ZLIB_LIBRARIES})
 if(HAVE_UDEV)
   list(APPEND ceph_common_deps ${UDEV_LIBRARIES})
 endif()
@@ -416,10 +417,6 @@ endif()
 
 if(HAVE_RDMACM)
   list(APPEND ceph_common_deps RDMA::RDMAcm)
-endif()
-
-if(NOT WITH_SYSTEM_BOOST)
-  list(APPEND ceph_common_deps ${ZLIB_LIBRARIES})
 endif()
 
 if(HAVE_QATZIP)
