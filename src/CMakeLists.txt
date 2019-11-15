@@ -431,7 +431,7 @@ if(WITH_DPDK)
 endif()
 
 if(WIN32)
-  list(APPEND ceph_common_deps ws2_32 bcrypt)
+  list(APPEND ceph_common_deps ws2_32 iphlpapi dnsapi bcrypt)
 endif()
 
 if(WITH_BLUESTORE_PMEM)
