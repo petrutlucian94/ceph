@@ -68,9 +68,6 @@ __putlong(register u_long l, register u_char *msgp)
 	msgp[0] = HIBYTE(HIWORD(l));
 }
 
-#pragma comment(lib, "DnsAPI.Lib")
-#pragma comment(lib, "Ws2_32.lib")
-
 #define MAX_MSG_SIZE 0x8000
 
 #define strcasecmp	stricmp
@@ -510,3 +507,95 @@ __hostalias(register const char *name, char* abuf)
 	return -1;
 }
 
+int  WINAPI rdn_expand(const u_char  *msg, const u_char  *eomorig, const u_char  *comp_dn, char  *exp_dn, int length)
+{
+    register u_char *cp, *dn;
+    register int n, c;
+    u_char *eom;
+	INT_PTR len = -1;
+    int checked = 0;
+
+    dn = exp_dn;
+    cp = (u_char *)comp_dn;
+    eom = exp_dn + length;
+    /*
+     * fetch next label in domain name
+     */
+    while (n = *cp++) {
+        /*
+         * Check for indirection
+         */
+        switch (n & INDIR_MASK) {
+        case 0:
+            if (dn != exp_dn) {
+                if (dn >= eom)
+                    return (-1);
+                *dn++ = '.';
+            }
+            if (dn+n >= eom)
+                return (-1);
+            checked += n + 1;
+            while (--n >= 0) {
+                if ((c = *cp++) == '.') {
+                    if (dn + n + 2 >= eom)
+                        return (-1);
+                    *dn++ = '\\';
+                }
+                *dn++ = c;
+                if (cp >= eomorig)      /* out of range */
+                    return(-1);
+            }
+            break;
+
+        case INDIR_MASK:
+            if (len < 0)
+                len = cp - comp_dn + 1;
+            cp = (u_char *)msg + (((n & 0x3f) << 8) | (*cp & 0xff));
+            if (cp < msg || cp >= eomorig)  /* out of range */
+                return(-1);
+            checked += 2;
+            /*
+             * Check for loops in the compressed name;
+             * if we've looked at the whole message,
+             * there must be a loop.
+             */
+            if (checked >= eomorig - msg)
+                return (-1);
+            break;
+
+        default:
+            return (-1);                    /* flag error */
+        }
+    }
+    *dn = '\0';
+    if (len < 0)
+        len = cp - comp_dn;
+    return (int)(len);
+}
+
+/*
+ * Skip over a compressed domain name. Return the size or -1.
+ */
+int __dn_skipname(const u_char *comp_dn, const u_char *eom)
+{
+    register u_char *cp;
+    register int n;
+
+    cp = (u_char *)comp_dn;
+    while (cp < eom && (n = *cp++)) {
+        /*
+         * check for indirection
+         */
+        switch (n & INDIR_MASK) {
+        case 0:         /* normal case, n == len */
+            cp += n;
+            continue;
+        default:        /* illegal type */
+            return (-1);
+        case INDIR_MASK:        /* indirection */
+            cp++;
+        }
+        break;
+    }
+    return (int)(cp - comp_dn);
+}
