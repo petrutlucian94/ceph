@@ -91,7 +91,7 @@ if(WITH_LTTNG)
   add_dependencies(os bluestore-tp)
 endif()
 
-target_link_libraries(os kv)
+target_link_libraries(os ceph-common kv)
 
 add_dependencies(os compressor_plugins)
 add_dependencies(os crypto_plugins)
