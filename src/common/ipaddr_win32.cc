@@ -28,6 +28,8 @@ static bool match_numa_node(const string& if_name, int numa_node)
 {
 #ifdef WITH_SEASTAR
   return true;
+#elif _WIN32
+  return false;
 #else
   int if_node = -1;
   int r = get_iface_numa_node(if_name, &if_node);

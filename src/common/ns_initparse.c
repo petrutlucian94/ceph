@@ -56,8 +56,9 @@ ns_skiprr(const u_char *ptr, const u_char *eom, ns_sect section, int count) {
 	return (ptr - optr);
 }
 
+#if 0
 int
-ns_initparse(const u_char *msg, int msglen, ns_msg *handle) {
+__ns_initparse(const u_char *msg, int msglen, ns_msg *handle) {
 	const u_char *eom = msg + msglen;
 	int i;
 
@@ -165,3 +166,4 @@ setsection(ns_msg *msg, ns_sect sect) {
 		msg->_msg_ptr = msg->_sections[(int)sect];
 	}
 }
+#endif

@@ -289,11 +289,7 @@ int  WINAPI dn_comp(const u_char *exp_dn,
  *	\param[in]		length		size of the result in expn_dn
  *	\retval						the size of compressed name is returned or -1 if there was an error.
 */
-int  WINAPI rdn_expand(const u_char  *msg,
-                                      const u_char  *eomorig,
-                                      const u_char  *comp_dn,
-                                      char  *exp_dn,
-                                      int length);
+int  WINAPI rdn_expand(const u_char  *msg, const u_char  *eomorig, const u_char  *comp_dn, char  *exp_dn, int length);
 /* Microsoft includes an implementation of dn_expand() in winsock */
 /* Make sure we do not use it.  jaltman@columbia.edu              */
 #define dn_expand(a,b,c,d,e) rdn_expand(a,b,c,d,e)
