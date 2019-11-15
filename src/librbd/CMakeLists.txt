@@ -182,9 +182,14 @@ endif()
 if(WITH_EVENTTRACE)
   add_dependencies(rbd_internal eventtrace_tp)
 endif()
+
 target_link_libraries(rbd_internal PRIVATE
   ceph_immutable_object_cache_lib
   osdc)
+
+if(WIN32)
+  target_link_libraries(rbd_internal PRIVATE rbd_types)
+endif()
 
 if(WITH_RBD_RWL)
   target_link_libraries(rbd_internal PRIVATE
