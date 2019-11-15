@@ -44,6 +44,10 @@
 #  define __P(x) x
 #endif
 
+#define dn_skipname            __dn_skipname
+int            dn_skipname __P((const u_char *, const u_char *));
+
+
 /*
  * Define constants based on rfc883
  */
@@ -587,9 +591,9 @@ u_int		ns_get16 __P((const u_char *));
 u_long		ns_get32 __P((const u_char *));
 void		ns_put16 __P((u_int, u_char *));
 void		ns_put32 __P((u_long, u_char *));
-int		ns_initparse __P((const u_char *, int, ns_msg *));
+int		ns_initparse __P((const u_char *src, int n, ns_msg *handle)) {return -1;}
 int		ns_skiprr __P((const u_char *, const u_char *, ns_sect, int));
-int		ns_parserr __P((ns_msg *, ns_sect, int, ns_rr *));
+int		ns_parserr __P((ns_msg *msg, ns_sect sect, int n, ns_rr *rr)) {return -1;}
 int		ns_sprintrr __P((const ns_msg *, const ns_rr *,
 				 const char *, const char *, char *, size_t));
 int		ns_sprintrrf __P((const u_char *, size_t, const char *,
@@ -606,8 +610,8 @@ int		ns_name_unpack __P((const u_char *, const u_char *,
 				    const u_char *, u_char *, size_t));
 int		ns_name_pack __P((const u_char *, u_char *, int,
 				  const u_char **, const u_char **));
-int		ns_name_uncompress __P((const u_char *, const u_char *,
-					const u_char *, char *, size_t));
+int		ns_name_uncompress __P((const u_char *a, const u_char *b,
+					const u_char *c, char *d, size_t n)) {return -1;}
 int		ns_name_compress __P((const char *, u_char *, size_t,
 				      const u_char **, const u_char **));
 int		ns_name_skip __P((const u_char **, const u_char *));
@@ -672,6 +676,32 @@ int		ns_samename __P((const char *, const char *));
         *t_cp   = t_l; \
         (cp) += NS_INT32SZ; \
 } while (0)
+
+u_int
+ns_get16(const u_char *src) {
+    u_int dst;
+
+    NS_GET16(dst, src);
+    return (dst);
+}
+
+u_long
+ns_get32(const u_char *src) {
+    u_long dst;
+
+    NS_GET32(dst, src);
+    return (dst);
+}
+
+void
+ns_put16(u_int src, u_char *dst) {
+    NS_PUT16(src, dst);
+}
+
+void
+ns_put32(u_long src, u_char *dst) {
+    NS_PUT32(src, dst);
+}
 
 #endif /* !_NAMESER_H_ */
 
