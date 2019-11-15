@@ -180,7 +180,7 @@ set(rbd_plugin_parent_cache_srcs
   plugin/ParentCache.cc)
 add_library(librbd_plugin_parent_cache SHARED ${rbd_plugin_parent_cache_srcs})
 target_link_libraries(librbd_plugin_parent_cache PRIVATE
-  ceph_immutable_object_cache_lib)
+  ceph_immutable_object_cache_lib ceph-common librados)
 set_target_properties(librbd_plugin_parent_cache PROPERTIES
   OUTPUT_NAME ceph_librbd_parent_cache
   VERSION 1.0.0
@@ -220,7 +220,7 @@ if(WITH_EVENTTRACE)
   add_dependencies(rbd_internal eventtrace_tp)
 endif()
 target_link_libraries(rbd_internal PRIVATE
-  osdc)
+  osdc rbd_types)
 
 if(WITH_RBD_RWL)
   target_link_libraries(rbd_internal

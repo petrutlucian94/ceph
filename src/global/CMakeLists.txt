@@ -10,4 +10,7 @@ target_link_libraries(global-static common)
 
 add_library(global STATIC
   $<TARGET_OBJECTS:libglobal_objs>)
-target_link_libraries(global ceph-common ${EXTRALIBS})
+target_link_libraries(global
+    ceph-common
+    $<$<PLATFORM_ID:Windows>:erasure_code>
+    ${EXTRALIBS})
