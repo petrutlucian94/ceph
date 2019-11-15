@@ -89,7 +89,7 @@ if(WITH_LTTNG)
   add_dependencies(os bluestore-tp)
 endif()
 
-target_link_libraries(os kv)
+target_link_libraries(os $<$<PLATFORM_ID:Windows>:ceph-common> kv)
 
 add_dependencies(os compressor_plugins)
 add_dependencies(os crypto_plugins)
@@ -99,7 +99,7 @@ if(WITH_BLUESTORE)
   add_executable(ceph-bluestore-tool
     bluestore/bluestore_tool.cc)
   target_link_libraries(ceph-bluestore-tool
-    os global)
+    $<$<PLATFORM_ID:Windows>:ceph-common> os global)
   install(TARGETS ceph-bluestore-tool
     DESTINATION bin)
 endif()
