@@ -29,6 +29,9 @@ endif()
 
 add_library(erasure_code STATIC ErasureCodePlugin.cc)
 target_link_libraries(erasure_code ${CMAKE_DL_LIBS})
+if(WIN32)
+  target_link_libraries(erasure_code ceph-common ${CMAKE_DL_LIBS})
+endif()
 
 add_library(erasure_code_objs OBJECT ErasureCode.cc)
 
