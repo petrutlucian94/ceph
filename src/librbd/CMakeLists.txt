@@ -202,4 +202,8 @@ if(ENABLE_SHARED)
         LINK_FLAGS " -Wl,--exclude-libs,ALL")
     endif()
 endif(ENABLE_SHARED)
+if(WIN32)
+  set_property(TARGET librbd APPEND_STRING PROPERTY
+    LINK_FLAGS " -Wl,-allow-multiple-definition ")
+endif()
 install(TARGETS librbd DESTINATION ${CMAKE_INSTALL_LIBDIR})
