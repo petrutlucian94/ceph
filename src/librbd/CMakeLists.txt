@@ -163,9 +163,9 @@ if(WITH_LTTNG AND WITH_EVENTTRACE)
 endif()
 if (NOT WIN32)
 target_link_libraries(rbd_internal PRIVATE
-  ceph_immutable_object_cache_lib
-  osdc)
+  ceph_immutable_object_cache_lib)
 endif()
+target_link_libraries(rbd_internal PRIVATE osdc)
 
 add_library(librbd ${CEPH_SHARED}
   librbd.cc)
@@ -196,7 +196,7 @@ if(ENABLE_SHARED)
     SOVERSION 1
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT WIN32)
       set_property(TARGET librbd APPEND_STRING PROPERTY
         LINK_FLAGS " -Wl,--exclude-libs,ALL")
     endif()
