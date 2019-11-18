@@ -16,7 +16,7 @@ if(ENABLE_SHARED)
     VERSION 2.0.0
     SOVERSION 2
     VISIBILITY_INLINES_HIDDEN ON)
-  if(NOT APPLE)
+  if(NOT APPLE AND NOT WIN32)
     set_property(TARGET librados APPEND_STRING PROPERTY
       LINK_FLAGS " -Wl,--exclude-libs,ALL")
     set_property(TARGET librados APPEND_STRING PROPERTY
