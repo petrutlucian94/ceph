@@ -164,9 +164,11 @@ endif()
 if(WITH_EVENTTRACE)
   add_dependencies(rbd_internal eventtrace_tp)
 endif()
+if (NOT WIN32)
 target_link_libraries(rbd_internal PRIVATE
   ceph_immutable_object_cache_lib
   osdc)
+endif()
 
 add_library(librbd ${CEPH_SHARED}
   librbd.cc)
