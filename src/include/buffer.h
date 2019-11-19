@@ -62,7 +62,11 @@
 #include "include/compat.h"
 #include "inline_memory.h"
 
+#ifdef __MINGW32__
+#define CEPH_BUFFER_API __attribute__ ((visibility ("default")))
+#else
 #define CEPH_BUFFER_API
+#endif
 
 #ifdef HAVE_SEASTAR
 namespace seastar {

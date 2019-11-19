@@ -86,7 +86,15 @@ enum {
   LIBRADOS_OP_FLAG_FADVISE_FUA        = 0x80,
 };
 
+#ifdef _WIN32
+  #ifdef EXPORT_LIBRADOS
+    #define CEPH_RADOS_API __declspec(dllexport)
+  #else
+    #define CEPH_RADOS_API __declspec(dllimport)
+  #endif
+#else
 #define CEPH_RADOS_API
+#endif
 
 /**
  * @name xattr comparison operations

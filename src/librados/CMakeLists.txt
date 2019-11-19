@@ -11,6 +11,8 @@ add_library(librados ${CEPH_SHARED}
   librados_cxx.cc
   $<TARGET_OBJECTS:common_buffer_obj>)
 if(ENABLE_SHARED)
+  add_definitions(-DEXPORT_LIBRADOS)
+
   set_target_properties(librados PROPERTIES
     OUTPUT_NAME rados
     VERSION 2.0.0

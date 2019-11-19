@@ -48,7 +48,7 @@ if (WITH_RBD)
 
   set(cls_rbd_client_srcs rbd/cls_rbd_client.cc rbd/cls_rbd_types.cc)
   add_library(cls_rbd_client STATIC ${cls_rbd_client_srcs})
-  target_link_libraries(cls_rbd_client cls_lock_client)
+  target_link_libraries(cls_rbd_client librados cls_lock_client)
 
 endif (WITH_RBD)
 
@@ -67,7 +67,7 @@ set(cls_lock_client_srcs
   lock/cls_lock_types.cc
   lock/cls_lock_ops.cc)
 add_library(cls_lock_client STATIC ${cls_lock_client_srcs})
-
+target_link_libraries(cls_lock_client librados)
 
 # cls_otp
 if (WITH_RADOSGW)
