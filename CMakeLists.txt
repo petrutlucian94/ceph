@@ -44,6 +44,10 @@ if (WIN32)
   add_definitions(-D_WIN32_WINNT=${WIN32_WINNT})
 endif()
 
+if (MINGW)
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-allow-multiple-definition")
+endif()
+
 option(WITH_CCACHE "Build with ccache.")
 if(WITH_CCACHE)
   find_program(CCACHE_FOUND ccache)
