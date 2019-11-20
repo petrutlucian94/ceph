@@ -1,7 +1,12 @@
 set(libglobal_srcs
   global_init.cc
-  pidfile.cc
-  signal_handler.cc)
+  pidfile.cc)
+if (WIN32)
+  list(APPEND libglobal_srcs signal_handler_win32.cc)
+else()
+  list(APPEND libglobal_srcs signal_handler.cc)
+endif()
+
 set(global_common_files
   global_context.cc)
 add_library(global_common_objs OBJECT ${global_common_files})
