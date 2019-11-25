@@ -251,6 +251,7 @@ struct iovec {
 
 #define ESHUTDOWN ECONNABORTED
 #define ESTALE 256
+#define EREMOTEIO 257
 
 #define IOV_MAX 1024
 
