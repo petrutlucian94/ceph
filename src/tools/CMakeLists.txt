@@ -55,7 +55,6 @@ if(WITH_RBD)
   endif()
 endif(WITH_RBD)
 
-
 # The following tools are not supported on Windows, for now.
 if(NOT WIN32)
 add_executable(ceph-osdomap-tool ceph_osdomap_tool.cc)
@@ -136,6 +135,10 @@ endif(WIN32)
 
 if (MINGW)
   set_property(TARGET rados APPEND_STRING PROPERTY
+    LINK_FLAGS " -Wl,-allow-multiple-definition ")
+  set_property(TARGET rbd APPEND_STRING PROPERTY
+    LINK_FLAGS " -Wl,-allow-multiple-definition ")
+  set_property(TARGET rbd-mirror APPEND_STRING PROPERTY
     LINK_FLAGS " -Wl,-allow-multiple-definition ")
   set_property(TARGET ceph-authtool APPEND_STRING PROPERTY
     LINK_FLAGS " -Wl,-allow-multiple-definition ")
