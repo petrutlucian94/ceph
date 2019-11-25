@@ -34,6 +34,31 @@ install(PROGRAMS
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/ceph)
 endif(WITH_TESTS)
 
+set(ceph_conf_srcs ceph_conf.cc)
+add_executable(ceph-conf ${ceph_conf_srcs})
+target_link_libraries(ceph-conf global)
+install(TARGETS ceph-conf DESTINATION bin)
+
+set(ceph_authtool_srcs ceph_authtool.cc)
+add_executable(ceph-authtool ${ceph_authtool_srcs})
+target_link_libraries(ceph-authtool global ${EXTRALIBS} ${CRYPTO_LIBS})
+install(TARGETS ceph-authtool DESTINATION bin)
+
+if(WITH_RBD)
+  add_subdirectory(rbd)
+  add_subdirectory(rbd_mirror)
+  if(LINUX)
+    add_subdirectory(rbd_nbd)
+  endif()
+  if(FREEBSD)
+    add_subdirectory(rbd_ggate)
+  endif()
+endif(WITH_RBD)
+
+add_subdirectory(immutable_object_cache)
+
+# The following tools are not supported on Windows, for now.
+if(NOT WIN32)
 add_executable(ceph-osdomap-tool ceph_osdomap_tool.cc)
 target_link_libraries(ceph-osdomap-tool os global Boost::program_options)
 install(TARGETS ceph-osdomap-tool DESTINATION bin)
@@ -68,11 +93,6 @@ add_executable(ceph-kvstore-tool
 target_link_libraries(ceph-kvstore-tool os global)
 install(TARGETS ceph-kvstore-tool DESTINATION bin)
 
-set(ceph_conf_srcs ceph_conf.cc)
-add_executable(ceph-conf ${ceph_conf_srcs})
-target_link_libraries(ceph-conf global)
-install(TARGETS ceph-conf DESTINATION bin)
-
 set(crushtool_srcs crushtool.cc)
 add_executable(crushtool ${crushtool_srcs})
 target_link_libraries(crushtool global)
@@ -95,11 +115,6 @@ target_link_libraries(ceph_psim global)
 install(TARGETS ceph_psim DESTINATION bin)
 endif(WITH_TESTS)
 
-set(ceph_authtool_srcs ceph_authtool.cc)
-add_executable(ceph-authtool ${ceph_authtool_srcs})
-target_link_libraries(ceph-authtool global ${EXTRALIBS} ${CRYPTO_LIBS})
-install(TARGETS ceph-authtool DESTINATION bin)
-
 if(WITH_TESTS)
 set(ceph_dedup_tool_srcs ceph_dedup_tool.cc)
 add_executable(ceph-dedup-tool ${ceph_dedup_tool_srcs})
@@ -111,20 +126,9 @@ if(WITH_CEPHFS)
   add_subdirectory(cephfs)
 endif(WITH_CEPHFS)
 
-if(WITH_RBD)
-  add_subdirectory(rbd)
-  add_subdirectory(rbd_mirror)
-  if(LINUX)
-    add_subdirectory(rbd_nbd)
-  endif()
-  if(FREEBSD)
-    add_subdirectory(rbd_ggate)
-  endif()
-endif(WITH_RBD)
-
 if(WITH_SEASTAR)
   add_subdirectory(crimson)
 endif()
 
-add_subdirectory(immutable_object_cache)
 add_subdirectory(ceph-dencoder)
+endif(NOT WIN32)
