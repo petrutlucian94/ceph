@@ -168,7 +168,7 @@ if (NOT WIN32)
 target_link_libraries(rbd_internal PRIVATE
   ceph_immutable_object_cache_lib)
 endif()
-target_link_libraries(rbd_internal PRIVATE osdc)
+target_link_libraries(rbd_internal PRIVATE rbd_types osdc)
 
 add_library(librbd ${CEPH_SHARED}
   librbd.cc)
