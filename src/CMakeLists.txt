@@ -385,7 +385,7 @@ set(ceph_common_objs
   $<TARGET_OBJECTS:global_common_objs>
   $<TARGET_OBJECTS:crush_objs>)
 set(ceph_common_deps
-  json_spirit erasure_code arch crc32
+  json_spirit arch crc32
   ${LIB_RESOLV}
   Boost::thread
   Boost::system
