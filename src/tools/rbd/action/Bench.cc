@@ -535,18 +535,22 @@ int bench_execute(const po::variables_map &vm, io_type_t bench_io_type) {
     return r;
   }
 
+  #ifndef _WIN32
   init_async_signal_handler();
   register_async_signal_handler(SIGHUP, sighup_handler);
   register_async_signal_handler_oneshot(SIGINT, handle_signal);
   register_async_signal_handler_oneshot(SIGTERM, handle_signal);
+  #endif
 
   r = do_bench(image, bench_io_type, bench_io_size, bench_io_threads,
 		     bench_bytes, bench_pattern, bench_read_proportion);
 
+  #ifndef _WIN32
   unregister_async_signal_handler(SIGHUP, sighup_handler);
   unregister_async_signal_handler(SIGINT, handle_signal);
   unregister_async_signal_handler(SIGTERM, handle_signal);
   shutdown_async_signal_handler();
+  #endif()
 
   if (r < 0) {
     std::cerr << "bench failed: " << cpp_strerror(r) << std::endl;

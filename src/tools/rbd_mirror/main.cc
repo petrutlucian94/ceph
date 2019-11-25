@@ -55,10 +55,12 @@ int main(int argc, const char **argv)
 
   common_init_finish(g_ceph_context);
 
+  #ifndef _WIN32
   init_async_signal_handler();
   register_async_signal_handler(SIGHUP, sighup_handler);
   register_async_signal_handler_oneshot(SIGINT, handle_signal);
   register_async_signal_handler_oneshot(SIGTERM, handle_signal);
+  #endif
 
   std::vector<const char*> cmd_args;
   argv_to_vec(argc, argv, cmd_args);
@@ -90,10 +92,12 @@ int main(int argc, const char **argv)
   mirror->run();
 
  cleanup:
+  #ifndef _WIN32
   unregister_async_signal_handler(SIGHUP, sighup_handler);
   unregister_async_signal_handler(SIGINT, handle_signal);
   unregister_async_signal_handler(SIGTERM, handle_signal);
   shutdown_async_signal_handler();
+  #endif
 
   g_ceph_context->get_perfcounters_collection()->remove(g_perf_counters);
 
