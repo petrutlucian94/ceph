@@ -134,8 +134,6 @@ add_subdirectory(immutable_object_cache)
 add_subdirectory(ceph-dencoder)
 endif(NOT WIN32)
 
-
-
 if (MINGW)
   set_property(TARGET rados APPEND_STRING PROPERTY
     LINK_FLAGS " -Wl,-allow-multiple-definition ")
