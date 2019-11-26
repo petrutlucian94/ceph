@@ -126,10 +126,12 @@ if(HAVE_INTEL)
     set(object_format "elf64")
   endif()
   set(CMAKE_ASM_FLAGS "-f ${object_format}")
-  include(CheckYasm)
-  check_yasm_support(${object_format}
-    HAVE_GOOD_YASM_ELF64
-    HAVE_BETTER_YASM_ELF64)
+  if(NOT WIN32)
+    include(CheckYasm)
+    check_yasm_support(${object_format}
+      HAVE_GOOD_YASM_ELF64
+      HAVE_BETTER_YASM_ELF64)
+  endif()
 endif()
 
 
