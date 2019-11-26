@@ -435,11 +435,6 @@ if(NOT APPLE AND NOT FREEBSD)
     PROPERTY LINK_FLAGS "-Wl,-Bsymbolic -Wl,-Bsymbolic-functions")
 endif()
 
-if(WIN32)
-  set_property(TARGET ceph-common APPEND_STRING PROPERTY
-    LINK_FLAGS " -Wl,-allow-multiple-definition ")
-endif()
-
 if(MINGW)
   install(
     TARGETS ceph-common
