@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #ifndef _WIN32
@@ -352,6 +353,17 @@ ssize_t writev(int fd, const struct iovec *iov, int iov_cnt) {
   }
 
   return written;
+}
+
+CEPH_CONSTRUCTOR(winsock_start) {
+  WSADATA wsaData;
+  int error;
+
+  error = WSAStartup(MAKEWORD(2, 2), &wsaData);
+  if (error != 0) {
+    fprintf(stderr, "WSAStartup failed: %d", WSAGetLastError());
+    exit(error);
+  }
 }
 
 #endif /* _WIN32 */
