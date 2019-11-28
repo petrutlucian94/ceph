@@ -2262,7 +2262,7 @@ extern "C" int LIBRADOS_C_API_BASE_DEFAULT_F(rados_aio_create_completion)(void *
 }
 LIBRADOS_C_API_BASE_DEFAULT(rados_aio_create_completion);
 
-extern "C" int LIBRADOS_C_API_BASE_DEFAULT(rados_aio_create_completion2)(
+extern "C" int LIBRADOS_C_API_BASE_DEFAULT_F(rados_aio_create_completion2)(
                void *cb_arg,
 					     rados_callback_t cb_complete,
 					     rados_completion_t *pc)
