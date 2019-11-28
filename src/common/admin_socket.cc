@@ -116,7 +116,13 @@ AdminSocket::~AdminSocket()
 std::string AdminSocket::create_wakeup_pipe(int *pipe_rd, int *pipe_wr)
 {
   int pipefd[2];
+  #ifdef _WIN32
+  // TODO: use sockets instead of pipes on Windows due to API limitations.
+  // In the long term, we may switch to completion ports.
+  if (pipe_cloexec(pipefd, 0) < 0) {
+  #else
   if (pipe_cloexec(pipefd, O_NONBLOCK) < 0) {
+  #endif
     int e = errno;
     ostringstream oss;
     oss << "AdminSocket::create_wakeup_pipe error: " << cpp_strerror(e);
