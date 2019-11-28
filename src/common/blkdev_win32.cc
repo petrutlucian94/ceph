@@ -74,11 +74,6 @@ int BlkDev::discard(int64_t offset, int64_t len) const
   return -EOPNOTSUPP;
 }
 
-bool BlkDev::is_nvme() const
-{
-  return false;
-}
-
 bool BlkDev::is_rotational() const
 {
   return false;
