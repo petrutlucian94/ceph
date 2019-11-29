@@ -5,7 +5,11 @@ set(snappy_sources
 )
 
 add_library(ceph_snappy SHARED ${snappy_sources})
-target_link_libraries(ceph_snappy PRIVATE snappy::snappy common)
+if(NOT WIN32)
+  target_link_libraries(ceph_snappy PRIVATE snappy::snappy)
+else()
+  target_link_libraries(ceph_snappy PRIVATE snappy::snappy common)
+endif()
 set_target_properties(ceph_snappy PROPERTIES
   VERSION 2.0.0
   SOVERSION 2
