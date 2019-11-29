@@ -5,7 +5,11 @@ set(lz4_sources
 )
 
 add_library(ceph_lz4 SHARED ${lz4_sources})
-target_link_libraries(ceph_lz4 PRIVATE LZ4::LZ4 common)
+if(NOT WIN32)
+  target_link_libraries(ceph_lz4 PRIVATE LZ4::LZ4)
+else()
+  target_link_libraries(ceph_lz4 PRIVATE LZ4::LZ4 common)
+endif()
 set_target_properties(ceph_lz4 PROPERTIES
   VERSION 2.0.0
   SOVERSION 2
