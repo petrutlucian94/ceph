@@ -283,7 +283,11 @@ ssize_t AsyncConnection::read_bulk(char *buf, unsigned len)
  again:
   nread = cs.read(buf, len);
   if (nread < 0) {
+    #ifndef _WIN32
     if (nread == -EAGAIN) {
+    #else
+    if (nread == -WSAEWOULDBLOCK) {
+    #endif
       nread = 0;
     } else if (nread == -EINTR) {
       goto again;
