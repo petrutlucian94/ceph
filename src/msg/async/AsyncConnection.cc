@@ -283,13 +283,17 @@ ssize_t AsyncConnection::read_bulk(char *buf, unsigned len)
  again:
   nread = cs.read(buf, len);
   if (nread < 0) {
+    #ifndef _WIN32
     if (nread == -EAGAIN) {
+    #else
+    if (nread == -WSAEWOULDBLOCK) {
+    #endif
       nread = 0;
     } else if (nread == -EINTR) {
       goto again;
     } else {
       ldout(async_msgr->cct, 1) << __func__ << " reading from fd=" << cs.fd()
-                          << " : "<< strerror(nread) << dendl;
+                          << " : "<< nread << " " << strerror(nread) << dendl;
       return -1;
     }
   } else if (nread == 0) {
