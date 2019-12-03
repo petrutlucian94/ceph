@@ -287,6 +287,8 @@ int posix_memalign(void **memptr, size_t alignment, size_t size);
 
 char *strptime(const char *s, const char *format, struct tm *tm);
 
+int win_socketpair(int socks[2]);
+
 #ifdef __cplusplus
 }
 #endif
@@ -296,10 +298,12 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 // flag as a no-op.
 #define O_CLOEXEC 0
 #define SOCKOPT_VAL_TYPE char*
+#define SOCK_ERRNO WSAGetLastError()
 
 #else
 
 #define SOCKOPT_VAL_TYPE void*
+#define SOCK_ERRNO errno
 
 #endif /* WIN32 */
 
