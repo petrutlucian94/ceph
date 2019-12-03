@@ -14,6 +14,7 @@
 
 #include "acconfig.h"
 #include <sys/types.h>
+#include <errno.h>
 
 #if defined(__linux__)
 #define PROCPREFIX
@@ -290,6 +291,8 @@ int chown(const char *path, uid_t owner, gid_t group);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 
+int win_socketpair(int socks[2]);
+
 #ifdef __cplusplus
 }
 
@@ -342,5 +345,14 @@ int lchown(const char *path, uid_t owner, gid_t group);
 #else
 #define CEPH_PACKED(DECL) __pragma(pack(push, 1)) DECL __pragma(pack(pop))
 #endif
+
+/* This should only be used with the socket API. */
+static inline int ceph_sock_errno() {
+#ifdef _WIN32
+  return WSAGetLastError();
+#else
+  return errno;
+#endif
+}
 
 #endif /* !CEPH_COMPAT_H */
