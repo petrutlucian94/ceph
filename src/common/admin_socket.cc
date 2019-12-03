@@ -126,7 +126,11 @@ AdminSocket::~AdminSocket()
 std::string AdminSocket::create_wakeup_pipe(int *pipe_rd, int *pipe_wr)
 {
   int pipefd[2];
+  #ifdef _WIN32
+  if (win_socketpair(pipefd) < 0) {
+  #else
   if (pipe_cloexec(pipefd, O_NONBLOCK) < 0) {
+  #endif
     int e = errno;
     ostringstream oss;
     oss << "AdminSocket::create_wakeup_pipe error: " << cpp_strerror(e);
@@ -142,7 +146,11 @@ std::string AdminSocket::destroy_wakeup_pipe()
 {
   // Send a byte to the wakeup pipe that the thread is listening to
   char buf[1] = { 0x0 };
+  #ifndef _WIN32
   int ret = safe_write(m_wakeup_wr_fd, buf, sizeof(buf));
+  #else
+  int ret = send(m_wakeup_wr_fd, buf, sizeof(buf), 0) != 1;
+  #endif
 
   // Close write end
   retry_sys_call(::close, m_wakeup_wr_fd);
@@ -751,6 +759,10 @@ void AdminSocket::wakeup()
 {
   // Send a byte to the wakeup pipe that the thread is listening to
   char buf[1] = { 0x0 };
+  #ifndef _WIN32
   int r = safe_write(m_wakeup_wr_fd, buf, sizeof(buf));
+  #else
+  int r = send(m_wakeup_wr_fd, buf, sizeof(buf), 0);
+  #endif
   (void)r;
 }
