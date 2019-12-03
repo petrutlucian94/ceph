@@ -117,9 +117,7 @@ std::string AdminSocket::create_wakeup_pipe(int *pipe_rd, int *pipe_wr)
 {
   int pipefd[2];
   #ifdef _WIN32
-  // TODO: use sockets instead of pipes on Windows due to API limitations.
-  // In the long term, we may switch to completion ports.
-  if (pipe_cloexec(pipefd, 0) < 0) {
+  if (win_socketpair(pipefd) < 0) {
   #else
   if (pipe_cloexec(pipefd, O_NONBLOCK) < 0) {
   #endif
@@ -138,7 +136,11 @@ std::string AdminSocket::destroy_wakeup_pipe()
 {
   // Send a byte to the wakeup pipe that the thread is listening to
   char buf[1] = { 0x0 };
+  #ifndef _WIN32
   int ret = safe_write(m_wakeup_wr_fd, buf, sizeof(buf));
+  #else
+  int ret = send(m_wakeup_wr_fd, buf, sizeof(buf), 0) != 1;
+  #endif
 
   // Close write end
   retry_sys_call(::close, m_wakeup_wr_fd);
@@ -747,6 +749,10 @@ void AdminSocket::wakeup()
 {
   // Send a byte to the wakeup pipe that the thread is listening to
   char buf[1] = { 0x0 };
+  #ifndef _WIN32
   int r = safe_write(m_wakeup_wr_fd, buf, sizeof(buf));
+  #else
+  int r = send(m_wakeup_wr_fd, buf, sizeof(buf), 0);
+  #endif
   (void)r;
 }

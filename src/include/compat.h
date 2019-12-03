@@ -294,6 +294,8 @@ int chown(const char *path, uid_t owner, gid_t group);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 
+int win_socketpair(int socks[2]);
+
 #ifdef __cplusplus
 }
 
@@ -310,10 +312,12 @@ int lchown(const char *path, uid_t owner, gid_t group);
 // flag as a no-op.
 #define O_CLOEXEC 0
 #define SOCKOPT_VAL_TYPE char*
+#define SOCK_ERRNO WSAGetLastError()
 
 #else /* WIN32 */
 
 #define SOCKOPT_VAL_TYPE void*
+#define SOCK_ERRNO errno
 
 #define rpl_mkdir(pathname, mode) mkdir(pathname, mode)
 #define aligned_free(ptr) free(ptr)
