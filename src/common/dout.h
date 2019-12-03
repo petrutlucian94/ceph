@@ -160,8 +160,8 @@ struct is_dynamic<dynamic_marker_t<T>> : public std::true_type {};
   } while (0)
 #endif	// WITH_SEASTAR
 
-#define lsubdout(cct, sub, v)  dout_impl(cct, ceph_subsys_##sub, v) dout_prefix
-#define ldout(cct, v)  dout_impl(cct, dout_subsys, v) dout_prefix
+#define lsubdout(cct, sub, v)  dout_impl(cct, ceph_subsys_, -1) dout_prefix
+#define ldout(cct, v)  dout_impl(cct, ceph_subsys_, -1) dout_prefix
 #define lderr(cct) dout_impl(cct, ceph_subsys_, -1) dout_prefix
 
 #define ldpp_dout(dpp, v) 						\
