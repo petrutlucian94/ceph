@@ -52,8 +52,12 @@ class C_handle_notify : public EventCallback {
       r = read(fd_or_id, c, sizeof(c));
       #endif
       if (r < 0) {
-        if (errno != EAGAIN)
-          ldout(cct, 1) << __func__ << " read notify pipe failed: " << cpp_strerror(errno) << dendl;
+        #ifdef _WIN32
+        if (SOCK_ERRNO != EAGAIN && SOCK_ERRNO != WSAEWOULDBLOCK)
+        #else
+        if (SOCK_ERRNO != EAGAIN)
+        #endif
+          ldout(cct, 1) << __func__ << " read notify pipe failed: " << cpp_strerror(SOCK_ERRNO) << dendl;
       }
     } while (r > 0);
   }
@@ -153,7 +157,7 @@ int EventCenter::init(int nevent, unsigned center_id, const std::string &type)
     return -r;
   #else
   if (pipe_cloexec(fds, 0) < 0) {
-    int e = errno;
+    int e = SOCK_ERRNO;
     lderr(cct) << __func__ << " can't create notify pipe: " << cpp_strerror(e) << dendl;
     return -e;
   }
@@ -345,7 +349,12 @@ void EventCenter::wakeup()
   int n = write(notify_send_fd, &buf, sizeof(buf));
   #endif
   if (n < 0) {
-    if (errno != EAGAIN) {
+    #ifdef _WIN32
+    if (SOCK_ERRNO != EAGAIN && SOCK_ERRNO != WSAEWOULDBLOCK)
+    #else
+    if (SOCK_ERRNO != EAGAIN)
+    #endif
+    {
       ldout(cct, 1) << __func__ << " write notify pipe failed: "
                     << cpp_strerror(SOCK_ERRNO) << dendl;
       ceph_abort();
