@@ -32,6 +32,12 @@
 int clock_gettime(int clk_id, struct timespec *tp);
 #endif
 
+#ifdef _WIN32
+#define CLOCK_REALTIME_COARSE CLOCK_REALTIME
+#define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC
+// TODO check if MINGW uses QueryPerformanceCounter API
+#endif
+
 struct ceph_timespec;
 
 namespace ceph {
