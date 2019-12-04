@@ -20,4 +20,7 @@ target_link_libraries(global-static common)
 add_library(global STATIC
   $<TARGET_OBJECTS:libglobal_objs>
   $<TARGET_OBJECTS:global_common_objs>)
-target_link_libraries(global ceph-common erasure_code ${EXTRALIBS})
+target_link_libraries(global ceph-common ${EXTRALIBS})
+if(WIN32)
+  target_link_libraries(global erasure_code)
+endif()

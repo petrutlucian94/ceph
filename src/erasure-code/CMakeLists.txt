@@ -31,7 +31,6 @@ add_library(erasure_code STATIC ErasureCodePlugin.cc)
 if(WIN32)
   target_link_libraries(erasure_code ceph-common ${CMAKE_DL_LIBS})
 endif()
-
 add_library(erasure_code_objs OBJECT ErasureCode.cc)
 
 add_custom_target(erasure_code_plugins DEPENDS
