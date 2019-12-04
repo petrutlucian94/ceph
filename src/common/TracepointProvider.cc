@@ -39,7 +39,14 @@ void TracepointProvider::verify_config(const ConfigProxy& conf) {
     return;
   }
 
+  #ifdef _WIN32
   m_handle = open_shared_lib(m_library.c_str());
+  #else
+  // dlclose can cause issues with lttng. While RTLD_NODELETE
+  // is not available on Windows, this may not be a concern.
+  m_handle = dlopen(m_library.c_str(), RTLD_NOW | RTLD_NODELETE);
+  #endif
+
   ceph_assert(m_handle);
 }
 
