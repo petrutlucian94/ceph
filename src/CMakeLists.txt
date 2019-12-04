@@ -493,6 +493,10 @@ else()
     NAMELINK_SKIP)
 endif()
 
+if(WIN32)
+  set(win32_common common)
+endif()
+
 if(${WITH_LTTNG})
   add_subdirectory(tracing)
   add_dependencies(common-objs oprequest-tp)
