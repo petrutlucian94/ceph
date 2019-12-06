@@ -295,6 +295,7 @@ int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 
 int win_socketpair(int socks[2]);
+void free_test(int idx);
 
 #ifdef __cplusplus
 }

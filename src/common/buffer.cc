@@ -1736,17 +1736,22 @@ void buffer::list::encode_base64(buffer::list& o)
 
 void buffer::list::decode_base64(buffer::list& e)
 {
+  free_test(30);
   bufferptr bp(4 + ((e.length() * 3) / 4));
   int l = ceph_unarmor(bp.c_str(), bp.c_str() + bp.length(), e.c_str(), e.c_str() + e.length());
+  free_test(31);
   if (l < 0) {
     std::ostringstream oss;
     oss << "decode_base64: decoding failed:\n";
     hexdump(oss);
     throw buffer::malformed_input(oss.str().c_str());
   }
+  free_test(32);
   ceph_assert(l <= (int)bp.length());
   bp.set_length(l);
+  free_test(33);
   push_back(std::move(bp));
+  free_test(34);
 }
 
 ssize_t buffer::list::pread_file(const char *fn, uint64_t off, uint64_t len, std::string *error)

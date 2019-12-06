@@ -487,14 +487,21 @@ void CryptoKey::encode(bufferlist& bl) const
 void CryptoKey::decode(bufferlist::const_iterator& bl)
 {
   using ceph::decode;
+  free_test(50);
   decode(type, bl);
+  free_test(51);
   decode(created, bl);
+  free_test(52);
   __u16 len;
   decode(len, bl);
+  free_test(53);
   bufferptr tmp;
   bl.copy_deep(len, tmp);
-  if (_set_secret(type, tmp) < 0)
+  free_test(54);
+  if (_set_secret(type, tmp) < 0) {
     throw buffer::malformed_input("malformed secret");
+  }
+  free_test(55);
 }
 
 int CryptoKey::set_secret(int type, const bufferptr& s, utime_t c)

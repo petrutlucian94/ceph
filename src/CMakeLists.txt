@@ -58,6 +58,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
   else()
     # The MINGW headers are missing some "const" qualifiers.
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fpermissive")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -DPIC")
   endif()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wstrict-null-sentinel -Woverloaded-virtual")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-new-ttp-matching")

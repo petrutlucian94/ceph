@@ -9,6 +9,7 @@
 #endif
 #include "none/AuthNoneAuthorizeHandler.h"
 #include "common/ceph_context.h"
+#include "include/compat.h"
 #include "common/debug.h"
 #include "auth/KeyRing.h"
 
@@ -157,6 +158,7 @@ void AuthRegistry::_refresh_config()
     }
   }
   if (any_cephx) {
+    free_test(1);
     KeyRing k;
     int r = k.from_ceph_context(cct);
     if (r == -ENOENT) {

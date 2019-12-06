@@ -85,6 +85,7 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D Backtrace_INCLUDE_DIR="$backtraceDir/include" \
       -D Backtrace_LIBRARY="$backtraceDir/lib/libbacktrace.dll.a" \
       -D Boost_THREADAPI="pthread" \
+      -D WITH_STATIC_LIBSTDCXX=ON \
       -G "$generatorUsed" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 

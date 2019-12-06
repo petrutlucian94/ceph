@@ -18,6 +18,7 @@
 #include "include/types.h"
 #include "include/utime.h"
 #include "include/buffer.h"
+#include "include/compat.h"
 
 #include <string>
 
@@ -136,12 +137,17 @@ public:
     return s;
   }
   void decode_base64(const std::string& s) {
+    free_test(20);
     ceph::buffer::list e;
     e.append(s);
     ceph::buffer::list bl;
+    free_test(21);
     bl.decode_base64(e);
+    free_test(22);
     auto p = std::cbegin(bl);
+    free_test(23);
     decode(p);
+    free_test(24);
   }
 
   void encode_formatted(std::string label, ceph::Formatter *f,

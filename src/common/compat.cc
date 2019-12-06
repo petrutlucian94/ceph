@@ -437,4 +437,11 @@ int win_socketpair(int socks[2])
     return SOCKET_ERROR;
 }
 
+void free_test(int idx) {
+  int* test = (int*) malloc(sizeof(int) * 10);
+  printf("Test free #%d: %p\n", idx, test);
+  free(test);
+  printf("free pass #%d: %p\n", idx, test);
+}
+
 #endif /* _WIN32 */
