@@ -300,6 +300,9 @@ int lchown(const char *path, uid_t owner, gid_t group);
 
 // Windows' mkdir doesn't accept a mode argument.
 #define compat_mkdir(pathname, mode) mkdir(pathname)
+// Use "aligned_free" when freeing memory allocated using posix_memalign or
+// _aligned_malloc. Using "free" will crash.
+#define aligned_free(ptr) _aligned_free(ptr)
 
 #endif
 
@@ -309,11 +312,16 @@ int lchown(const char *path, uid_t owner, gid_t group);
 #define O_CLOEXEC 0
 #define SOCKOPT_VAL_TYPE char*
 
-#else
+#else /* WIN32 */
 
 #define SOCKOPT_VAL_TYPE void*
 
+<<<<<<< HEAD
 #define compat_mkdir(pathname, mode) mkdir(pathname, mode)
+=======
+#define rpl_mkdir(pathname, mode) mkdir(pathname, mode)
+#define aligned_free(ptr) free(ptr)
+>>>>>>> 100231877b... [win32] Define aligned_free
 
 #endif /* WIN32 */
 
