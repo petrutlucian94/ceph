@@ -18,6 +18,9 @@
 #include <limits.h>
 
 #include <sys/uio.h>
+#include <windows.h>
+#include <intrin.h>
+// #include <psdk_inc/intrin-impl.h>
 
 #include "include/ceph_assert.h"
 #include "include/types.h"
@@ -38,8 +41,14 @@
 
 using namespace ceph;
 
+#ifdef __CYGWIN__
+#define USE_ALIGN_HACK
+#endif
+
 #define CEPH_BUFFER_ALLOC_UNIT  4096u
 #define CEPH_BUFFER_APPEND_SIZE (CEPH_BUFFER_ALLOC_UNIT - sizeof(raw_combined))
+
+#define BUFFER_DEBUG 1
 
 #ifdef BUFFER_DEBUG
 static ceph::spinlock debug_lock;
@@ -116,6 +125,7 @@ static ceph::spinlock debug_lock;
 #else
       char *ptr = 0;
       int r = ::posix_memalign((void**)(void*)&ptr, align, rawlen + datalen);
+
       if (r)
 	throw bad_alloc();
 #endif /* DARWIN */
@@ -124,12 +134,17 @@ static ceph::spinlock debug_lock;
 
       // actual data first, since it has presumably larger alignment restriction
       // then put the raw_combined at the end
-      return new (ptr + datalen) raw_combined(ptr, len, align, mempool);
+      auto obj = new (ptr + datalen) raw_combined(ptr, len, align, mempool);
+      bdout << "raw_combined posix_memalign " << obj << " alloc " << (void *)ptr
+            << " l=" << len << ", align=" << align << bendl;
+      return obj;
     }
 
     static void operator delete(void *ptr) {
       raw_combined *raw = (raw_combined *)ptr;
+      bdout << "raw_combined delete " << raw << " free " << (void *)raw->data << bendl;
       ::free((void *)raw->data);
+      bdout << "raw_combined deleted " << bendl;
     }
   };
 
@@ -159,7 +174,7 @@ static ceph::spinlock debug_lock;
     }
   };
 
-#ifndef __CYGWIN__
+#ifndef USE_ALIGN_HACK
   class buffer::raw_posix_aligned : public buffer::raw {
     unsigned align;
   public:
@@ -190,11 +205,12 @@ static ceph::spinlock debug_lock;
   };
 #endif
 
-#ifdef __CYGWIN__
+#ifdef USE_ALIGN_HACK
   class buffer::raw_hack_aligned : public buffer::raw {
     unsigned align;
     char *realdata;
   public:
+    MEMPOOL_CLASS_HELPERS();
     raw_hack_aligned(unsigned l, unsigned _align) : raw(l) {
       align = _align;
       realdata = new char[len+align-1];
@@ -346,7 +362,7 @@ static ceph::spinlock debug_lock;
     // size passes 8KB.
     if ((align & ~CEPH_PAGE_MASK) == 0 ||
 	len >= CEPH_PAGE_SIZE * 2) {
-#ifndef __CYGWIN__
+#ifndef USE_ALIGN_HACK
       return ceph::unique_leakable_ptr<buffer::raw>(new raw_posix_aligned(len, align));
 #else
       return ceph::unique_leakable_ptr<buffer::raw>(new raw_hack_aligned(len, align));
@@ -391,6 +407,7 @@ static ceph::spinlock debug_lock;
   buffer::ptr::ptr(unsigned l) : _off(0), _len(l)
   {
     _raw = buffer::create(l).release();
+    printf("buffer::ptr::ptr created %p - %p", _raw, this);
     _raw->nref.store(1, std::memory_order_release);
     bdout << "ptr " << this << " get " << _raw << bendl;
   }
@@ -492,6 +509,7 @@ static ceph::spinlock debug_lock;
 	//cout << "hosing raw " << (void*)_raw << " len " << _raw->len << std::endl;
         ANNOTATE_HAPPENS_AFTER(&_raw->nref);
         ANNOTATE_HAPPENS_BEFORE_FORGET_ALL(&_raw->nref);
+    printf("ptr::release %p\n", delete_raw);
 	delete delete_raw;  // dealloc old (if any)
       } else {
         ANNOTATE_HAPPENS_BEFORE(&_raw->nref);
@@ -1734,6 +1752,13 @@ void buffer::list::encode_base64(buffer::list& o)
   o.push_back(std::move(bp));
 }
 
+// void print_stack_info() {
+//   NT_TIB* tib = (NT_TIB*)__readfsdword(0x18);
+//   size_t* stackBottom = (size_t*)tib->StackLimit;
+//   size_t* stackTop = (size_t*)tib->StackBase;
+//   printf("Stack base: %p Stack limit: %p \n", stackBottom, stackTop);
+// }
+
 void buffer::list::decode_base64(buffer::list& e)
 {
   free_test(30);
@@ -1750,6 +1775,8 @@ void buffer::list::decode_base64(buffer::list& e)
   ceph_assert(l <= (int)bp.length());
   bp.set_length(l);
   free_test(33);
+  // print_stack_info();
+  printf("decode_base64: push_back %p\n", &bp);
   push_back(std::move(bp));
   free_test(34);
 }
@@ -2314,8 +2341,14 @@ std::ostream& buffer::operator<<(std::ostream& out, const buffer::error& e)
 
 MEMPOOL_DEFINE_OBJECT_FACTORY(buffer::raw_malloc, buffer_raw_malloc,
 			      buffer_meta);
+#if USE_ALIGN_HACK
+MEMPOOL_DEFINE_OBJECT_FACTORY(buffer::raw_hack_aligned,
+			      buffer_raw_hack_aligned, buffer_meta);
+#else
 MEMPOOL_DEFINE_OBJECT_FACTORY(buffer::raw_posix_aligned,
-			      buffer_raw_posix_aligned, buffer_meta);
+            buffer_raw_posix_aligned, buffer_meta);
+#endif
+
 MEMPOOL_DEFINE_OBJECT_FACTORY(buffer::raw_char, buffer_raw_char, buffer_meta);
 MEMPOOL_DEFINE_OBJECT_FACTORY(buffer::raw_claimed_char, buffer_raw_claimed_char,
 			      buffer_meta);

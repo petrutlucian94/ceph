@@ -49,15 +49,15 @@ int KeyRing::from_ceph_context(CephContext *cct)
 	       << ": " << cpp_strerror(ret) << dendl;
   }
 
-  free_test(90)
+  free_test(90);
 
   if (!conf->key.empty()) {
     EntityAuth ea;
     try {
-      free_test(91)
+      free_test(91);
       ea.key.decode_base64(conf->key);
       add(conf->name, ea);
-      free_test(92)
+      free_test(92);
       return 0;
     }
     catch (buffer::error& e) {
@@ -66,7 +66,7 @@ int KeyRing::from_ceph_context(CephContext *cct)
     }
   }
 
-  free_test(93)
+  free_test(93);
 
   if (!conf->keyfile.empty()) {
     bufferlist bl;
@@ -79,16 +79,16 @@ int KeyRing::from_ceph_context(CephContext *cct)
     string k(bl.c_str(), bl.length());
     EntityAuth ea;
     try {
-      free_test(94)
+      free_test(94);
       ea.key.decode_base64(k);
       add(conf->name, ea);
-      free_test(95)
+      free_test(95);
     }
     catch (buffer::error& e) {
       lderr(cct) << "failed to decode key '" << k << "'" << dendl;
       return -EINVAL;
     }
-    free_test(96)
+    free_test(96);
     return 0;
   }
 
@@ -185,6 +185,7 @@ void KeyRing::decode_plaintext(bufferlist::const_iterator& bli)
   free_test(52);
 
   for (auto& [name, section] : cf) {
+    std::cerr << "Parsing section: " << name << "\n";
     if (name == "global")
       continue;
 
@@ -208,6 +209,8 @@ void KeyRing::decode_plaintext(bufferlist::const_iterator& bli)
       free_test(56);
       std::replace_copy(k.begin(), k.end(), back_inserter(key), '_', ' ');
       free_test(57);
+      std::cerr << "Setting modifier: " << key << ", value " << val
+                << ", ename " << ename << "caps" << caps << "\n";
       ret = set_modifier(key.c_str(), val.c_str(), ename, caps);
       free_test(58);
       if (ret < 0) {
@@ -216,8 +219,10 @@ void KeyRing::decode_plaintext(bufferlist::const_iterator& bli)
 	    << " val=" << val;
 	throw buffer::malformed_input(oss.str().c_str());
       }
+      free_test(59);
     }
   }
+  free_test(590);
 }
 
 void KeyRing::decode(bufferlist::const_iterator& bl) {

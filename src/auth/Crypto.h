@@ -20,6 +20,8 @@
 #include "include/buffer.h"
 #include "include/compat.h"
 
+#include <stdio.h>
+
 #include <string>
 
 class CephContext;
@@ -148,6 +150,9 @@ public:
     free_test(23);
     decode(p);
     free_test(24);
+
+    printf("e @ %p \n", &e);
+    printf("bl @ %p \n", &bl);
   }
 
   void encode_formatted(std::string label, ceph::Formatter *f,

@@ -249,7 +249,8 @@ int lchown(const char *path, uid_t owner, gid_t group) {
 }
 
 int posix_memalign(void **memptr, size_t alignment, size_t size) {
-  *memptr = _aligned_malloc(size, alignment);
+  // *memptr = _aligned_malloc(size, alignment);
+  *memptr = (char *) malloc(size);
   return *memptr ? 0 : errno;
 }
 
@@ -439,9 +440,9 @@ int win_socketpair(int socks[2])
 
 void free_test(int idx) {
   int* test = (int*) malloc(sizeof(int) * 10);
-  printf("Test free #%d: %p\n", idx, test);
+  printf("[%d] Test free #%d: %p\n", GetCurrentThreadId(), idx, test);
   free(test);
-  printf("free pass #%d: %p\n", idx, test);
+  printf("[%d] free pass #%d: %p\n", GetCurrentThreadId(), idx, test);
 }
 
 #endif /* _WIN32 */

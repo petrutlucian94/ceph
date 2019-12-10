@@ -390,6 +390,7 @@ inline namespace v14_2_0 {
     struct disposer {
       void operator()(ptr_node* const delete_this) {
 	if (!dispose_if_hypercombined(delete_this)) {
+          printf("delete %p \n", delete_this);
 	  delete delete_this;
 	}
       }
@@ -540,6 +541,7 @@ inline namespace v14_2_0 {
       }
 
       void push_back(reference item) {
+        printf("# Push back: %p\n", &item);
 	item.next = &_root;
 	// this updates _root.next when called on empty
 	_tail->next = &item;
@@ -548,6 +550,7 @@ inline namespace v14_2_0 {
       }
 
       void push_front(reference item) {
+        printf("# Push front: %p\n", &item);
 	item.next = _root.next;
 	_root.next = &item;
 	_tail = _tail == &_root ? &item : _tail;
@@ -632,14 +635,17 @@ inline namespace v14_2_0 {
 	}
       }
       void clear_and_dispose() {
+        printf("clear_and_dispose called: %p\n", this);
 	for (auto it = begin(); it != end(); /* nop */) {
 	  auto& node = *it;
 	  it = it->next;
+          printf("Calling disposer: %p\n", &node);
 	  ptr_node::disposer()(&node);
 	}
 	_root.next = &_root;
 	_tail = &_root;
 	_size = 0;
+        printf("clear_and_dispose exit\n");
       }
       iterator erase_after_and_dispose(iterator it) {
 	auto* to_dispose = &*std::next(it);
@@ -982,6 +988,7 @@ inline namespace v14_2_0 {
     list(list&& other) noexcept;
 
     ~list() {
+      printf("Disposing buffer list\n");
       _buffers.clear_and_dispose();
     }
 
