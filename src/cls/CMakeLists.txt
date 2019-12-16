@@ -98,7 +98,7 @@ set(cls_refcount_srcs
   refcount/cls_refcount_ops.cc
   ${CMAKE_SOURCE_DIR}/src/common/ceph_json.cc)
 add_library(cls_refcount SHARED ${cls_refcount_srcs})
-target_link_libraries(cls_refcount json_spirit)
+target_link_libraries(cls_refcount cls_log json_spirit)
 set_target_properties(cls_refcount PROPERTIES
   VERSION "1.0.0"
   SOVERSION "1"

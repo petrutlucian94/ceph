@@ -199,6 +199,7 @@ extern "C" {
 
 int pipe_cloexec(int pipefd[2], int flags);
 char *ceph_strerror_r(int errnum, char *buf, size_t buflen);
+unsigned get_page_size();
 
 #ifdef __cplusplus
 }
@@ -293,8 +294,13 @@ char *strptime(const char *s, const char *format, struct tm *tm);
 int chown(const char *path, uid_t owner, gid_t group);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
+int setenv(const char *name, const char *value, int overwrite);
 
 int win_socketpair(int socks[2]);
+
+#ifdef __MINGW32__
+extern _CRTIMP errno_t __cdecl _putenv_s(const char *_Name,const char *_Value);
+#endif
 
 #ifdef __cplusplus
 }
@@ -320,7 +326,7 @@ int win_socketpair(int socks[2]);
 #define SOCK_ERRNO errno
 
 #define rpl_mkdir(pathname, mode) mkdir(pathname, mode)
-#define aligned_free(ptr) free(ptr)
+#define aligned_free(ptr) free(ptr) 
 
 #endif /* WIN32 */
 

@@ -26,11 +26,7 @@ add_subdirectory(compressor)
 add_subdirectory(crush)
 add_subdirectory(direct_messenger)
 add_subdirectory(encoding)
-add_subdirectory(erasure-code)
-add_subdirectory(filestore)
-add_subdirectory(fs)
 add_subdirectory(journal)
-add_subdirectory(libcephfs)
 add_subdirectory(librados)
 add_subdirectory(librados_test_stub)
 if(WITH_LIBRADOSSTRIPER)
@@ -42,16 +38,25 @@ endif(WITH_RBD)
 if (WITH_CEPHFS)
   add_subdirectory(mds)
 endif()
-add_subdirectory(mon)
-add_subdirectory(mgr)
 add_subdirectory(msgr)
 add_subdirectory(ObjectMap)
 add_subdirectory(objectstore)
 add_subdirectory(os)
-add_subdirectory(osd)
-add_subdirectory(osdc)
 add_subdirectory(pybind)
-add_subdirectory(immutable_object_cache)
+
+# Not available on Windows for the time being.
+if(NOT WIN32)
+  add_subdirectory(erasure-code)
+  add_subdirectory(filestore)
+  add_subdirectory(fs)
+  add_subdirectory(libcephfs)
+  add_subdirectory(mon)
+  add_subdirectory(mgr)
+  add_subdirectory(osd)
+  add_subdirectory(osdc)
+  add_subdirectory(immutable_object_cache)
+endif()
+
 if(WITH_RADOSGW)
   set(rgw_libs rgw_a)
   if(WITH_RADOSGW_AMQP_ENDPOINT)
@@ -62,8 +67,8 @@ if(WITH_RADOSGW)
   endif()
   add_subdirectory(rgw)
 endif(WITH_RADOSGW)
-if(WITH_RBD)
-  add_subdirectory(rbd_mirror)
+if(WITH_RBD AND NOT WIN32)
+add_subdirectory(rbd_mirror)
 endif(WITH_RBD)
 if(WITH_SEASTAR)
   add_subdirectory(crimson)
@@ -127,7 +132,10 @@ if(WITH_LIBCEPHFS)
 endif(WITH_LIBCEPHFS)
 
 add_executable(test_build_librados buildtest_skeleton.cc)
-target_link_libraries(test_build_librados librados pthread ${CRYPTO_LIBS} ${EXTRALIBS} osdc osd os ceph-common cls_lock_client ${BLKID_LIBRARIES})
+target_link_libraries(test_build_librados librados pthread ${CRYPTO_LIBS} ${EXTRALIBS} os ceph-common cls_lock_client ${BLKID_LIBRARIES})
+if(NOT WIN32)
+  target_link_libraries(test_build_librados osdc osd)
+endif()
 
 # bench_log
 set(bench_log_srcs
@@ -417,14 +425,16 @@ install(TARGETS
 add_executable(ceph_test_keys
   testkeys.cc
   )
-target_link_libraries(ceph_test_keys mon global ${CMAKE_DL_LIBS})
+target_link_libraries(ceph_test_keys global ${CMAKE_DL_LIBS})
 
+if(NOT WIN32)
 # ceph_test_snap_mapper
 add_executable(ceph_test_snap_mapper
   test_snap_mapper.cc
   $<TARGET_OBJECTS:unit-main>
   )
 target_link_libraries(ceph_test_snap_mapper osd global ${BLKID_LIBRARIES} ${UNITTEST_LIBS})
+endif()
 
 add_executable(ceph_test_stress_watch
   test_stress_watch.cc
@@ -492,24 +502,28 @@ endif()
 add_dependencies(tests
   ceph-mon
   ceph-authtool
-  get_command_descriptions
-  crushtool
   ceph-conf
   rados
-  monmaptool
-  ceph-osd
-  ceph-dencoder
-  ceph-objectstore-tool
-  ceph-kvstore-tool
-  ceph-monstore-tool
-  osdmaptool
   ceph_example
   ceph_snappy
   cls_lock
   ceph_test_objectstore
-  ceph_erasure_code_non_regression
-  ceph_erasure_code
   cython${PY_BINDING_INFIX}_modules)
+if(NOT WIN32)
+  # Not currently supported on Windows
+  add_dependencies(tests
+  ceph_erasure_code_non_regression
+  get_command_descriptions
+  ceph_erasure_code
+  ceph-dencoder
+  ceph-objectstore-tool
+  ceph-kvstore-tool
+  ceph-monstore-tool
+  ceph-osd
+  osdmaptool
+  crushtool
+  monmaptool)
+endif(NOT WIN32)
 if (WITH_CEPHFS)
   add_dependencies(tests ceph-mds)
 endif()
@@ -653,6 +667,7 @@ add_executable(unittest_run_cmd
 add_ceph_unittest(unittest_run_cmd)
 target_link_libraries(unittest_run_cmd global)
 
+if(NOT WIN32)
 # signals
 add_executable(unittest_signals
   signals.cc
@@ -660,6 +675,7 @@ add_executable(unittest_signals
   )
 add_ceph_unittest(unittest_signals)
 target_link_libraries(unittest_signals global)
+endif()
 
 # unittest_simple_spin
 add_executable(unittest_simple_spin
@@ -857,13 +873,13 @@ endif(WITH_RBD)
 add_executable(unittest_ipaddr
   test_ipaddr.cc)
 add_ceph_unittest(unittest_ipaddr)
-target_link_libraries(unittest_ipaddr mon global)
+target_link_libraries(unittest_ipaddr global)
 
 # unittest_utime
 add_executable(unittest_utime
   test_utime.cc)
 add_ceph_unittest(unittest_utime)
-target_link_libraries(unittest_utime mon global)
+target_link_libraries(unittest_utime global)
 
 # unittest_texttable
 add_executable(unittest_texttable
@@ -871,14 +887,16 @@ add_executable(unittest_texttable
   $<TARGET_OBJECTS:common_texttable_obj>
   )
 add_ceph_unittest(unittest_texttable)
-target_link_libraries(unittest_texttable mon global)
+target_link_libraries(unittest_texttable global)
 
+if(NOT WIN32)
 # unittest_on_exit
 add_executable(unittest_on_exit
   on_exit.cc
   )
 add_ceph_unittest(unittest_on_exit)
 target_link_libraries(unittest_on_exit global)
+endif()
 
 # unittest_subprocess
 add_executable(unittest_subprocess
