@@ -277,11 +277,13 @@ if(WITH_CEPHFS)
   target_link_libraries(unittest_global_doublefree cephfs librados)
 endif(WITH_CEPHFS)
 
+if(NOT WIN32)
 add_executable(unittest_dns_resolve
   dns_resolve.cc
   $<TARGET_OBJECTS:unit-main>)
 target_link_libraries(unittest_dns_resolve global)
 add_ceph_unittest(unittest_dns_resolve)
+endif()
 
 add_executable(unittest_back_trace
   test_back_trace.cc)

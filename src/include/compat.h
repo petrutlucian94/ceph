@@ -225,6 +225,10 @@ unsigned get_page_size();
 #define WIN32_ERROR 0
 #undef ERROR
 
+#ifndef uint
+typedef unsigned int uint;
+#endif
+
 typedef _sigset_t sigset_t;
 
 typedef int uid_t;
@@ -266,6 +270,10 @@ struct iovec {
 #define ENODATA 120
 #endif
 
+#ifndef EDQUOT
+#define EDQUOT ENOSPC
+#endif
+
 #define ESHUTDOWN ECONNABORTED
 #define ESTALE 256
 #define EREMOTEIO 257
@@ -284,6 +292,7 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
 
 long int lrand48(void);
+int random();
 
 int pipe(int pipefd[2]);
 
@@ -295,6 +304,7 @@ int chown(const char *path, uid_t owner, gid_t group);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 int setenv(const char *name, const char *value, int overwrite);
+#define unsetenv(name) _putenv_s(name, NULL)
 
 int win_socketpair(int socks[2]);
 

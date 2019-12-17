@@ -281,6 +281,10 @@ long int lrand48(void) {
   return val;
 }
 
+int random() {
+  return rand();
+}
+
 int fsync(int fd) {
   HANDLE handle = (HANDLE*)_get_osfhandle(fd);
   if (handle == INVALID_HANDLE_VALUE)

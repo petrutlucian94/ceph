@@ -25,6 +25,7 @@
 
 #include "include/buffer.h"
 #include "include/buffer_raw.h"
+#include "include/compat.h"
 #include "include/utime.h"
 #include "include/coredumpctl.h"
 #include "include/encoding.h"
@@ -2261,9 +2262,11 @@ TEST(BufferList, read_file) {
   EXPECT_EQ(-ENOENT, bl.read_file("UNLIKELY", &error));
   snprintf(cmd, sizeof(cmd), "echo ABC > %s ; chmod 0 %s", FILENAME, FILENAME);
   EXPECT_EQ(0, ::system(cmd));
+  #ifndef _WIN32
   if (getuid() != 0) {
     EXPECT_EQ(-EACCES, bl.read_file(FILENAME, &error));
   }
+  #endif
   snprintf(cmd, sizeof(cmd), "chmod +r %s", FILENAME);
   EXPECT_EQ(0, ::system(cmd));
   EXPECT_EQ(0, bl.read_file(FILENAME, &error));

@@ -47,7 +47,7 @@ if (WITH_RBD)
     INSTALL_RPATH ""
     CXX_VISIBILITY_PRESET hidden)
   install(TARGETS cls_rbd DESTINATION ${cls_dir})
-  target_link_libraries(cls_rbd ${win32_common})
+  target_link_libraries(cls_rbd cls_log ${win32_common})
 
   set(cls_rbd_client_srcs rbd/cls_rbd_client.cc rbd/cls_rbd_types.cc)
   add_library(cls_rbd_client STATIC ${cls_rbd_client_srcs})
