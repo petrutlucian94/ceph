@@ -575,15 +575,19 @@ add_subdirectory(os)
 
 add_subdirectory(osd)
 
+set(class_api_srcs
+  osd/objclass.cc
+  objclass/class_api.cc)
+add_library(class_api STATIC ${class_api_srcs})
+target_link_libraries(class_api osd)
+
 set(ceph_osd_srcs
   # Link the Object Class API implementation directly as intermediary
   # static library (like libosd.a) nullifies the effect of `-rdynamic`.
-  osd/objclass.cc
-  objclass/class_api.cc
   ceph_osd.cc)
 add_executable(ceph-osd ${ceph_osd_srcs})
 add_dependencies(ceph-osd erasure_code_plugins)
-target_link_libraries(ceph-osd osd os global-static common
+target_link_libraries(ceph-osd class_api osd os global-static common
   ${BLKID_LIBRARIES})
 if(WITH_FUSE)
   target_link_libraries(ceph-osd ${FUSE_LIBRARIES})

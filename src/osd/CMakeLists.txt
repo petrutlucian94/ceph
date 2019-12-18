@@ -58,6 +58,7 @@ if(WITH_OSD_INSTRUMENT_FUNCTIONS)
   add_dependencies(osd cyg_profile_tp)
 endif()
 
+if(NOT WIN32)
 # libcls_* are runtime dependencies
 add_dependencies(osd cls_journal cls_hello cls_lock cls_log cls_numops
   cls_refcount cls_timeindex cls_user cls_version cls_cas)
@@ -70,3 +71,4 @@ endif()
 if(WITH_RADOSGW)
   add_dependencies(osd cls_otp cls_rgw cls_queue cls_rgw_gc)
 endif()
+endif(NOT WIN32)

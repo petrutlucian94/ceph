@@ -5,31 +5,7 @@ add_library(rbd_test_support STATIC ${librbd_test_support_srcs})
 target_link_libraries(rbd_test_support PRIVATE
   GTest::GTest)
 
-set(librbd_test
-  test_fixture.cc
-  test_librbd.cc
-  test_ImageWatcher.cc
-  test_internal.cc
-  test_mirroring.cc
-  test_BlockGuard.cc
-  test_DeepCopy.cc
-  test_Groups.cc
-  test_Migration.cc
-  test_MirroringWatcher.cc
-  test_ObjectMap.cc
-  test_Operations.cc
-  test_Trash.cc
-  journal/test_Entries.cc
-  journal/test_Replay.cc)
-add_library(rbd_test STATIC ${librbd_test})
-target_link_libraries(rbd_test PRIVATE
-  rbd_test_support
-  radostest
-  radostest-cxx
-  librados
-  Boost::thread
-  GMock::GMock
-  GTest::GTest)
+# 
 
 set(librbd_test_mock_srcs
   mock/MockImageCtx.cc
@@ -116,47 +92,52 @@ if(WITH_RBD_RWL)
      cache/test_mock_ReplicatedWriteLog.cc)
 endif(WITH_RBD_RWL)
 
-add_executable(unittest_librbd
-  ${unittest_librbd_srcs}
-  $<TARGET_OBJECTS:common_texttable_obj>)
-target_compile_definitions(unittest_librbd PRIVATE "TEST_LIBRBD_INTERNALS")
-target_link_libraries(unittest_librbd
-  cls_rbd
-  cls_rbd_client
-  cls_lock
-  cls_lock_client
-  journal
-  journal_test_mock
-  cls_journal
-  cls_journal_client
-  rados_test_stub
-  librados
-  rbd_test
-  rbd_test_mock
-  rbd_api
-  rbd_internal
-  rbd_types
-  osdc
-  ceph-common
-  global
-  ${UNITTEST_LIBS})
+# add_executable(unittest_librbd
+#   ${unittest_librbd_srcs}
+#   $<TARGET_OBJECTS:common_texttable_obj>)
+# target_compile_definitions(unittest_librbd PRIVATE "TEST_LIBRBD_INTERNALS")
+# target_link_libraries(unittest_librbd
+#   cls_rbd
+#   cls_rbd_client
+#   cls_lock
+#   cls_lock_client
+#   journal
+#   journal_test_mock
+#   cls_journal
+#   cls_journal_client
+#   rados_test_stub
+#   librados
+#   rbd_test
+#   rbd_test_mock
+#   rbd_api
+#   rbd_internal
+#   rbd_types
+#   osdc
+#   ceph-common
+#   global
+#   ${UNITTEST_LIBS})
 
-add_executable(ceph_test_librbd
-  test_main.cc
-  $<TARGET_OBJECTS:common_texttable_obj>)
-target_link_libraries(ceph_test_librbd
-  rbd_test
-  rbd_api
-  rbd_internal
-  rbd_types
-  journal
-  cls_journal_client
-  cls_rbd_client
-  librados
-  ${UNITTEST_LIBS}
-  radostest)
-target_compile_definitions(ceph_test_librbd PRIVATE "TEST_LIBRBD_INTERNALS")
+# add_executable(ceph_test_librbd
+#   test_main.cc
+#   $<TARGET_OBJECTS:common_texttable_obj>)
+# target_link_libraries(ceph_test_librbd
+#   rbd_test
+#   rbd_api
+#   rbd_internal
+#   rbd_types
+#   journal
+#   cls_journal_client
+#   cls_rbd_client
+#   librados
+#   ${UNITTEST_LIBS}
+#   radostest)
+# target_compile_definitions(ceph_test_librbd PRIVATE "TEST_LIBRBD_INTERNALS")
+# install(TARGETS
+#   ceph_test_librbd
+#   DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+if(NOT WIN32)
+# TODO: investigate duplicate section linking issues
 add_executable(ceph_test_librbd_fsx
   fsx.cc
   $<TARGET_OBJECTS:common_texttable_obj>
@@ -178,7 +159,4 @@ endif()
 install(TARGETS
   ceph_test_librbd_fsx
   DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-install(TARGETS
-  ceph_test_librbd
-  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif(NOT WIN32)
