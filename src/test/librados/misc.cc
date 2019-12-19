@@ -17,7 +17,9 @@
 #include "test/librados/TestCase.h"
 #include "gtest/gtest.h"
 #include <sys/time.h>
+#ifndef _WIN32
 #include <sys/resource.h>
+#endif
 
 #include <errno.h>
 #include <map>
@@ -323,6 +325,7 @@ static void shutdown_racer_func()
   }
 }
 
+#ifndef _WIN32
 // See trackers #20988 and #42026
 TEST_F(LibRadosMisc, ShutdownRace)
 {
@@ -343,3 +346,4 @@ TEST_F(LibRadosMisc, ShutdownRace)
     threads[i].join();
   ASSERT_EQ(setrlimit(RLIMIT_NOFILE, &rold), 0);
 }
+#endif /* _WIN32 */
