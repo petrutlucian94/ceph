@@ -568,7 +568,7 @@ option(WITH_SYSTEM_BOOST "require and build with system Boost" OFF)
 # Boost::thread depends on Boost::atomic, so list it explicitly.
 set(BOOST_COMPONENTS
   atomic chrono thread system regex random program_options date_time
-  iostreams)
+  iostreams filesystem)
 set(BOOST_HEADER_COMPONENTS container)
 
 if(WITH_MGR)
@@ -579,7 +579,7 @@ if(WITH_BOOST_CONTEXT)
   list(APPEND BOOST_COMPONENTS context coroutine)
 endif()
 if(WITH_SEASTAR)
-  list(APPEND BOOST_COMPONENTS filesystem timer)
+  list(APPEND BOOST_COMPONENTS timer)
 endif()
 
 set(Boost_USE_MULTITHREADED ON)
