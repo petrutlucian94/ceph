@@ -4,6 +4,7 @@ set(osdc_files
   Objecter.cc
   Striper.cc)
 add_library(osdc STATIC ${osdc_files})
+target_link_libraries(osdc ceph-common)
 if(WITH_EVENTTRACE)
   add_dependencies(osdc eventtrace_tp)
 endif()
