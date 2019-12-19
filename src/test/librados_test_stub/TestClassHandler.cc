@@ -4,12 +4,12 @@
 #include "test/librados_test_stub/TestClassHandler.h"
 #include "test/librados_test_stub/TestIoCtxImpl.h"
 #include <boost/algorithm/string/predicate.hpp>
-#include <dlfcn.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include "common/debug.h"
 #include "include/ceph_assert.h"
+#include "common/shared_lib.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rados
@@ -22,29 +22,30 @@ TestClassHandler::TestClassHandler() {
 TestClassHandler::~TestClassHandler() {
   for (ClassHandles::iterator it = m_class_handles.begin();
       it != m_class_handles.end(); ++it) {
-    dlclose(*it);
+    close_shared_lib(*it);
   }
 }
 
 void TestClassHandler::open_class(const std::string& name,
                                   const std::string& path) {
-  void *handle = dlopen(path.c_str(), RTLD_NOW);
+  lib_handle handle = open_shared_lib(path.c_str());
+  char* last_err = nullptr;
   if (handle == NULL) {
+    last_err = shared_lib_last_err();
     std::cerr << "Failed to load class: " << name << " (" << path << "): "
-              << dlerror() << std::endl;
+              << last_err << std::endl;
+    shared_lib_free_err_msg(last_err);
     return;
   }
 
-  // clear any existing error
-  dlerror();
-
   // initialize
   void (*cls_init)() = reinterpret_cast<void (*)()>(
-    dlsym(handle, "__cls_init"));
+    find_symbol(handle, "__cls_init"));
 
-  char* error = nullptr;
-  if ((error = dlerror()) != nullptr) {
-    std::cerr << "Error locating initializer: " << error << std::endl;
+  if (!cls_init) {
+    last_err = shared_lib_last_err();
+    std::cerr << "Error locating initializer: " << last_err << std::endl;
+    shared_lib_free_err_msg(last_err);
   } else if (cls_init) {
     m_class_handles.push_back(handle);
     cls_init();
@@ -53,7 +54,7 @@ void TestClassHandler::open_class(const std::string& name,
 
   std::cerr << "Class: " << name << " (" << path << ") missing initializer"
             << std::endl;
-  dlclose(handle);
+  close_shared_lib(handle);
 }
 
 void TestClassHandler::open_all_classes() {
@@ -71,7 +72,7 @@ void TestClassHandler::open_all_classes() {
   while ((pde = ::readdir(dir))) {
     std::string name(pde->d_name);
     if (!boost::algorithm::starts_with(name, "libcls_") ||
-        !boost::algorithm::ends_with(name, ".so")) {
+        !boost::algorithm::ends_with(name, SHARED_LIB_SUFFIX)) {
       continue;
     }
     names.insert(name);
