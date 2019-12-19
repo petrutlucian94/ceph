@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <gtest/gtest.h>
 
+#include "include/compat.h"
 #include "common/errno.h"
 #include "common/config.h"
 #include "os/ObjectStore.h"
@@ -33,7 +34,7 @@ static void rm_r(const string& path)
 void StoreTestFixture::SetUp()
 {
 
-  int r = ::mkdir(data_dir.c_str(), 0777);
+  int r = compat_mkdir(data_dir.c_str(), 0777);
   if (r < 0) {
     r = -errno;
     cerr << __func__ << ": unable to create " << data_dir << ": " << cpp_strerror(r) << std::endl;
