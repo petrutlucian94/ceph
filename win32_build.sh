@@ -71,8 +71,10 @@ if [[ -n $DEV_BUILD ]]; then
   echo "Dev build enabled."
   echo "Git versioning will be disabled."
   ENABLE_GIT_VERSION="OFF"
+  WITH_CEPH_DEBUG_MUTEX="ON"
 else
   ENABLE_GIT_VERSION="ON"
+  WITH_CEPH_DEBUG_MUTEX="OFF"
 fi
 
 # As opposed to Linux, Windows shared libraries can't have unresolved
@@ -86,17 +88,18 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D WITH_GSSAPI=OFF -D WITH_FUSE=OFF -D WITH_XFS=OFF \
       -D WITH_BLUESTORE=OFF -D WITH_LEVELDB=OFF \
       -D WITH_LTTNG=OFF -D WITH_BABELTRACE=OFF \
-      -D WITH_SYSTEM_BOOST=ON -D WITH_MGR=OFF \
+      -D WITH_SYSTEM_BOOST=ON -D WITH_MGR=OFF -D WITH_KVS=OFF \
       -D WITH_LIBCEPHFS=OFF -D WITH_KRBD=OFF -D WITH_RADOSGW=OFF \
-      -D ENABLE_SHARED=OFF -D WITH_RBD=ON -D BUILD_GMOCK=OFF \
+      -D ENABLE_SHARED=OFF -D WITH_RBD=ON -D BUILD_GMOCK=ON \
       -D WITH_CEPHFS=OFF -D WITH_MANPAGE=OFF \
-      -D WITH_MGR_DASHBOARD_FRONTEND=OFF -D WITH_SYSTEMD=OFF -D WITH_TESTS=OFF \
+      -D WITH_MGR_DASHBOARD_FRONTEND=OFF -D WITH_SYSTEMD=OFF -D WITH_TESTS=ON \
       -D LZ4_INCLUDE_DIR=$lz4Include -D LZ4_LIBRARY=$lz4Lib \
       -D Backtrace_Header="$backtraceDir/include/backtrace.h" \
       -D Backtrace_INCLUDE_DIR="$backtraceDir/include" \
       -D Backtrace_LIBRARY="$backtraceDir/lib/libbacktrace.dll.a" \
       -D Boost_THREADAPI="pthread" \
       -D ENABLE_GIT_VERSION=$ENABLE_GIT_VERSION \
+      -D WITH_CEPH_DEBUG_MUTEX=$WITH_CEPH_DEBUG_MUTEX \
       -G "$generatorUsed" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 
@@ -107,12 +110,15 @@ if [[ -z $SKIP_BUILD ]]; then
     # We're currently limitting the build scope to the rados/rbd binaries.
     if [[ -n $NINJA_BUILD ]]; then
         cd $BUILD_DIR
-        ninja -v rados.exe rbd.exe compressor | tee "${BUILD_DIR}/build.log"
+        ninja -v rados.exe rbd.exe test compressor | tee "${BUILD_DIR}/build.log"
     else
         cd $BUILD_DIR/src/tools
         make -j $NUM_WORKERS 2>&1 | tee "${BUILD_DIR}/build.log"
 
         cd $BUILD_DIR/src/compressor
+        make -j $NUM_WORKERS 2>&1 | tee -a "${BUILD_DIR}/build.log"
+
+        cd $BUILD_DIR/src/test
         make -j $NUM_WORKERS 2>&1 | tee -a "${BUILD_DIR}/build.log"
     fi
 fi
