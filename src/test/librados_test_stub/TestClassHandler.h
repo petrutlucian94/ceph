@@ -5,6 +5,7 @@
 #define CEPH_TEST_CLASS_HANDLER_H
 
 #include "objclass/objclass.h"
+#include "common/shared_lib.h"
 #include "common/snap_types.h"
 #include <boost/shared_ptr.hpp>
 #include <list>
@@ -62,7 +63,7 @@ public:
 private:
 
   typedef std::map<std::string, SharedClass> Classes;
-  typedef std::list<void*> ClassHandles;
+  typedef std::list<lib_handle> ClassHandles;
 
   Classes m_classes;
   ClassHandles m_class_handles;
