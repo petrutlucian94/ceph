@@ -47,7 +47,7 @@ static std::string get_temp_dir()
     ostringstream oss;
     oss << tmpdir << "/confutils_test_dir." << rand() << "." << getpid();
     umask(022);
-    int res = mkdir(oss.str().c_str(), 01777);
+    int res = compat_mkdir(oss.str().c_str(), 01777);
     if (res) {
       cerr << "failed to create temp directory '" << temp_dir << "'" << std::endl;
       return "";
