@@ -15,6 +15,7 @@ CLEAN_BUILD=${CLEAN_BUILD:-}
 SKIP_BUILD=${SKIP_BUILD:-}
 NUM_WORKERS=${NUM_WORKERS:-$num_vcpus}
 NINJA_BUILD=${NINJA_BUILD:-}
+DEV_BUILD=${DEV_BUILD:-}
 
 depsSrcDir="$DEPS_DIR/src"
 depsToolsetDir="$DEPS_DIR/mingw"
@@ -64,6 +65,14 @@ echo "Generating solution. Log: ${BUILD_DIR}/cmake.log"
 # for now.
 export CMAKE_PREFIX_PATH=$depsDirs
 
+if [[ -n $DEV_BUILD ]]; then
+  echo "Dev build enabled."
+  echo "Git versioning will be disabled."
+  ENABLE_GIT_VERSION="OFF"
+else
+  ENABLE_GIT_VERSION="ON"
+fi
+
 # As opposed to Linux, Windows shared libraries can't have unresolved
 # symbols. Until we fix the dependencies (which are either unspecified
 # or circular), we'll have to stick to static linking.
@@ -85,6 +94,7 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D Backtrace_INCLUDE_DIR="$backtraceDir/include" \
       -D Backtrace_LIBRARY="$backtraceDir/lib/libbacktrace.dll.a" \
       -D Boost_THREADAPI="pthread" \
+      -D ENABLE_GIT_VERSION=$ENABLE_GIT_VERSION \
       -G "$generatorUsed" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 
