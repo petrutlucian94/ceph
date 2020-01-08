@@ -106,7 +106,7 @@ int sched_setaffinity(pid_t pid, size_t cpusetsize,
 #endif /* __APPLE__ */
 
 #ifndef HOST_NAME_MAX
-#ifdef MAXHOSTNAMELEN 
+#ifdef MAXHOSTNAMELEN
 #define HOST_NAME_MAX MAXHOSTNAMELEN 
 #else
 #define HOST_NAME_MAX 255
@@ -215,6 +215,8 @@ unsigned get_page_size();
 
 #include <windows.h>
 
+#include "include/windows/win32_errno.h"
+
 // There are a few name collisions between Windows headers and Ceph.
 // Updating Ceph definitions would be the prefferable fix in order to avoid
 // confussion, unless it requires too many changes, in which case we're going
@@ -264,19 +266,6 @@ struct iovec {
 #ifndef SIGKILL
 #define SIGKILL 9
 #endif
-
-#ifndef ENODATA
-// mingw doesn't define this, the Windows SDK does.
-#define ENODATA 120
-#endif
-
-#ifndef EDQUOT
-#define EDQUOT ENOSPC
-#endif
-
-#define ESHUTDOWN ECONNABORTED
-#define ESTALE 256
-#define EREMOTEIO 257
 
 #define IOV_MAX 1024
 
