@@ -120,7 +120,8 @@ std::string AdminSocket::create_wakeup_pipe(int *pipe_rd, int *pipe_wr)
   if (win_socketpair(pipefd) < 0) {
   #else
   if (pipe_cloexec(pipefd, O_NONBLOCK) < 0) {
-    int e = errno;
+  #endif
+    int e = ceph_sock_errno();
     ostringstream oss;
     oss << "AdminSocket::create_wakeup_pipe error: " << cpp_strerror(e);
     return oss.str();
@@ -135,14 +136,10 @@ std::string AdminSocket::destroy_wakeup_pipe()
 {
   // Send a byte to the wakeup pipe that the thread is listening to
   char buf[1] = { 0x0 };
-  #ifndef _WIN32
-  int ret = safe_write(m_wakeup_wr_fd, buf, sizeof(buf));
-  #else
-  int ret = send(m_wakeup_wr_fd, buf, sizeof(buf), 0) != 1;
-  #endif
+  int ret = safe_send(m_wakeup_wr_fd, buf, sizeof(buf));
 
   // Close write end
-  retry_sys_call(::close, m_wakeup_wr_fd);
+  retry_sys_call(::compat_closesocket, m_wakeup_wr_fd);
   m_wakeup_wr_fd = -1;
 
   if (ret != 0) {
@@ -156,7 +153,7 @@ std::string AdminSocket::destroy_wakeup_pipe()
 
   // Close read end. Doing this before join() blocks the listenter and prevents
   // joining.
-  retry_sys_call(::close, m_wakeup_rd_fd);
+  retry_sys_call(::compat_closesocket, m_wakeup_rd_fd);
   m_wakeup_rd_fd = -1;
 
   return "";
@@ -177,7 +174,7 @@ std::string AdminSocket::bind_and_listen(const std::string &sock_path, int *fd)
   }
   int sock_fd = socket_cloexec(PF_UNIX, SOCK_STREAM, 0);
   if (sock_fd < 0) {
-    int err = errno;
+    int err = ceph_sock_errno();
     ostringstream oss;
     oss << "AdminSocket::bind_and_listen: "
 	<< "failed to create socket: " << cpp_strerror(err);
@@ -190,8 +187,12 @@ std::string AdminSocket::bind_and_listen(const std::string &sock_path, int *fd)
 	   "%s", sock_path.c_str());
   if (::bind(sock_fd, (struct sockaddr*)&address,
 	   sizeof(struct sockaddr_un)) != 0) {
-    int err = errno;
+    int err = ceph_sock_errno();
+    #ifdef _WIN32
+    if (err == WSAEADDRINUSE) {
+    #else
     if (err == EADDRINUSE) {
+    #endif
       AdminSocketClient client(sock_path);
       bool ok;
       client.ping(&ok);
@@ -205,7 +206,7 @@ std::string AdminSocket::bind_and_listen(const std::string &sock_path, int *fd)
 		 sizeof(struct sockaddr_un)) == 0) {
 	  err = 0;
 	} else {
-	  err = errno;
+	  err = ceph_sock_errno();
 	}
       }
     }
@@ -219,7 +220,7 @@ std::string AdminSocket::bind_and_listen(const std::string &sock_path, int *fd)
     }
   }
   if (listen(sock_fd, 5) != 0) {
-    int err = errno;
+    int err = ceph_sock_errno();
     ostringstream oss;
     oss << "AdminSocket::bind_and_listen: "
 	  << "failed to listen to socket: " << cpp_strerror(err);
@@ -246,7 +247,7 @@ void AdminSocket::entry() noexcept
     ldout(m_cct,20) << __func__ << " waiting" << dendl;
     int ret = poll(fds, 2, -1);
     if (ret < 0) {
-      int err = errno;
+      int err = ceph_sock_errno();
       if (err == EINTR) {
 	continue;
       }
@@ -311,7 +312,7 @@ void AdminSocket::do_accept()
   int connection_fd = accept_cloexec(m_sock_fd, (struct sockaddr*) &address,
 			     &address_length);
   if (connection_fd < 0) {
-    int err = errno;
+    int err = ceph_sock_errno();
     lderr(m_cct) << "AdminSocket: do_accept error: '"
 			   << cpp_strerror(err) << dendl;
     return;
@@ -322,13 +323,13 @@ void AdminSocket::do_accept()
   unsigned pos = 0;
   string c;
   while (1) {
-    int ret = safe_read(connection_fd, &cmd[pos], 1);
+    int ret = safe_recv(connection_fd, &cmd[pos], 1);
     if (ret <= 0) {
       if (ret < 0) {
         lderr(m_cct) << "AdminSocket: error reading request code: "
 		     << cpp_strerror(ret) << dendl;
       }
-      retry_sys_call(::close, connection_fd);
+      retry_sys_call(::compat_closesocket, connection_fd);
       return;
     }
     if (cmd[0] == '\0') {
@@ -362,7 +363,7 @@ void AdminSocket::do_accept()
     }
     if (++pos >= sizeof(cmd)) {
       lderr(m_cct) << "AdminSocket: error reading request too long" << dendl;
-      retry_sys_call(::close, connection_fd);
+      retry_sys_call(::compat_closesocket, connection_fd);
       return;
     }
   }
@@ -384,17 +385,22 @@ void AdminSocket::do_accept()
     out.claim_append(o);
   }
   uint32_t len = htonl(out.length());
-  int ret = safe_write(connection_fd, &len, sizeof(len));
+  int ret = safe_send(connection_fd, &len, sizeof(len));
   if (ret < 0) {
     lderr(m_cct) << "AdminSocket: error writing response length "
 		 << cpp_strerror(ret) << dendl;
   } else {
-    if (out.write_fd(connection_fd) < 0) {
+    #ifndef _WIN32
+    int r = out.write_fd(connection_fd);
+    #else
+    int r = out.send_fd(connection_fd);
+    #endif
+    if (r < 0) {
       lderr(m_cct) << "AdminSocket: error writing response payload "
 		   << cpp_strerror(ret) << dendl;
     }
   }
-  retry_sys_call(::close, connection_fd);
+  retry_sys_call(::compat_closesocket, connection_fd);
 }
 
 void AdminSocket::do_tell_queue()
@@ -729,7 +735,7 @@ void AdminSocket::shutdown()
     lderr(m_cct) << "AdminSocket::shutdown: error: " << err << dendl;
   }
 
-  retry_sys_call(::close, m_sock_fd);
+  retry_sys_call(::compat_closesocket, m_sock_fd);
 
   unregister_commands(version_hook.get());
   version_hook.reset();
@@ -748,10 +754,6 @@ void AdminSocket::wakeup()
 {
   // Send a byte to the wakeup pipe that the thread is listening to
   char buf[1] = { 0x0 };
-  #ifndef _WIN32
-  int r = safe_write(m_wakeup_wr_fd, buf, sizeof(buf));
-  #else
-  int r = send(m_wakeup_wr_fd, buf, sizeof(buf), 0);
-  #endif
+  int r = safe_send(m_wakeup_wr_fd, buf, sizeof(buf));
   (void)r;
 }
