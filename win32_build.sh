@@ -105,12 +105,15 @@ if [[ -z $SKIP_BUILD ]]; then
     # We're currently limitting the build scope to the rados/rbd binaries.
     if [[ -n $NINJA_BUILD ]]; then
         cd $BUILD_DIR
-        ninja -v rados.exe rbd.exe test | tee "${BUILD_DIR}/build.log"
+        ninja -v rados.exe rbd.exe test compressor | tee "${BUILD_DIR}/build.log"
     else
         cd $BUILD_DIR/src/tools
         make -j $NUM_WORKERS 2>&1 | tee "${BUILD_DIR}/build.log"
 
         cd $BUILD_DIR/src/test
+        make -j $NUM_WORKERS 2>&1 | tee -a "${BUILD_DIR}/build.log"
+
+        cd $BUILD_DIR/src/compressor
         make -j $NUM_WORKERS 2>&1 | tee -a "${BUILD_DIR}/build.log"
     fi
 fi
