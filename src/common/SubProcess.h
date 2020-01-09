@@ -129,7 +129,7 @@ private:
   int sigkill;
 
   #ifdef _WIN32
-  HANDLE monitor_stop_event;
+  std::thread *monitor;
   #endif
 };
 

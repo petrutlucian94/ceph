@@ -91,13 +91,14 @@ std::string run_cmd(const char *cmd, ...)
   va_list ap;
   va_start(ap, cmd);
   const char *c = cmd;
-  do {
+  c = va_arg(ap, const char*);
+  while (c != NULL) {
     p.add_cmd_arg(c);
     c = va_arg(ap, const char*);
-  } while (c != NULL);
+  }
   va_end(ap);
 
-  if (p.spawn() != 0) {
+  if (p.spawn() == 0) {
     p.join();
   }
 

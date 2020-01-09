@@ -49,6 +49,11 @@ void SubProcess::add_cmd_args(const char *arg, ...) {
 void SubProcess::add_cmd_arg(const char *arg) {
   ceph_assert(!is_spawned());
 
+  #ifdef _WIN32
+  if (!arg)
+    return;
+  #endif
+
   cmd_args.push_back(arg);
 }
 
@@ -281,7 +286,7 @@ SubProcessTimed::SubProcessTimed(const char *cmd, std_fd_op stdin_op,
 				 int timeout_, int sigkill_) :
   SubProcess(cmd, stdin_op, stdout_op, stderr_op),
   #ifdef _WIN32
-  monitor_stop_event(NULL),
+  monitor(NULL),
   #endif
   timeout(timeout_),
   sigkill(sigkill_) {
@@ -428,6 +433,10 @@ int SubProcess::join() {
            << ". Error code: " << GetLastError() << "\n";
   }
 
+  if (status) {
+    errstr << cmd << ": exit status: " << status;
+  }
+
   close_h(handle);
   pid = -1;
 
@@ -436,14 +445,17 @@ int SubProcess::join() {
 
 void SubProcess::kill(int signo) const {
   ceph_assert(is_spawned());
-  ceph_assert(TerminateProcess(handle, 1));
-}
+  ceph_assert(TerminateProcess(handle, 128 + SIGTERM));
 
+}
 int SubProcess::spawn() {
   std::ostringstream cmdline;
-  cmdline << cmd << " ";
-  std::copy(cmd_args.begin(), cmd_args.end(),
-            std::ostream_iterator<std::string>(cmdline, " "));
+  cmdline << cmd;
+  for (std::vector<std::string>::iterator i = cmd_args.begin();
+       i != cmd_args.end();
+       i++) {
+    cmdline << " \"" << i->c_str() << "\"";
+  }
 
   STARTUPINFO si = {0};
   PROCESS_INFORMATION pi = {0};
@@ -507,6 +519,11 @@ int SubProcess::spawn() {
   }
 
   handle = pi.hProcess;
+  pid = GetProcessId(handle);
+  if (pid <= 0) {
+    errstr << cmd << ": Could not get child process id.\n";
+    goto fail;
+  }
 
   // The following are used by the subprocess.
   CloseHandle(stdin_r);
@@ -541,36 +558,36 @@ int SubProcessTimed::spawn() {
   if (ret_val < 0)
     return ret_val;
 
-  monitor_stop_event = CreateEventA(
-    NULL, /* no security attributes */
-    1, /* manual reset */
-    0, /* initial state */
-    NULL /* name */);
-  ceph_assert(monitor_stop_event);
+  if (timeout) {
+    monitor = new std::thread([&](){
+      DWORD wait_status = WaitForSingleObject(handle, timeout * 1000);
+      ceph_assert(wait_status != WAIT_FAILED);
 
-  std::thread([&](){
-    DWORD wait_status = WaitForSingleObject(handle, timeout * 1000);
-    ceph_assert(wait_status != WAIT_FAILED);
+      if (wait_status == WAIT_TIMEOUT) {
+        // 128 + sigkill is just the return code, which is expected by
+        // the unit tests and possibly by other code. We can't pick a
+        // termination signal unless we use window events.
+        ceph_assert(TerminateProcess(handle, 128 + sigkill));
+        timedout = 1;
+      }
+    });
+  }
 
-    if (wait_status == WAIT_TIMEOUT) {
-      ceph_assert(TerminateProcess(handle, 1));
-      timedout = 1;
-    }
-
-    ceph_assert(SetEvent(monitor_stop_event));
-  });
-
-  return 0;
+  return ret_val;
 }
 
 int SubProcessTimed::join() {
   ceph_assert(is_spawned());
-  ceph_assert(WaitForSingleObject(monitor_stop_event, INFINITE) !=
-              WAIT_FAILED);
+  ceph_assert(monitor || !timeout);
+
+  if(monitor) {
+    if (monitor->joinable()) {
+      monitor->join();
+    }
+    delete monitor;
+  }
 
   int ret_val = SubProcess::join();
-
-  close_h(monitor_stop_event);
 
   return ret_val;
 }
