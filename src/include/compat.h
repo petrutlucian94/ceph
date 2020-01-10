@@ -306,6 +306,7 @@ extern _CRTIMP errno_t __cdecl _putenv_s(const char *_Name,const char *_Value);
 
 // Windows' mkdir doesn't accept a mode argument.
 #define rpl_mkdir(pathname, mode) mkdir(pathname)
+#define rpl_closesocket closesocket
 // Use "aligned_free" when freeing memory allocated using posix_memalign or
 // _aligned_malloc. Using "free" will crash.
 #define aligned_free(ptr) _aligned_free(ptr)
@@ -325,6 +326,7 @@ extern _CRTIMP errno_t __cdecl _putenv_s(const char *_Name,const char *_Value);
 #define SOCK_ERRNO errno
 
 #define rpl_mkdir(pathname, mode) mkdir(pathname, mode)
+#define rpl_closesocket close
 #define aligned_free(ptr) free(ptr)
 
 #endif /* WIN32 */

@@ -53,7 +53,7 @@ int NetHandler::create_socket(int domain, bool reuse_addr)
       r = SOCK_ERRNO;
       lderr(cct) << __func__ << " setsockopt SO_REUSEADDR failed: "
                  << strerror(r) << dendl;
-      close(s);
+      rpl_closesocket(s);
       return -r;
     }
   }
@@ -178,7 +178,7 @@ int NetHandler::generic_connect(const entity_addr_t& addr, const entity_addr_t &
   if (nonblock) {
     ret = set_nonblock(s);
     if (ret < 0) {
-      close(s);
+      rpl_closesocket(s);
       return ret;
     }
   }
@@ -193,7 +193,7 @@ int NetHandler::generic_connect(const entity_addr_t& addr, const entity_addr_t &
       if (ret < 0) {
         ret = SOCK_ERRNO;
         ldout(cct, 2) << __func__ << " client bind error " << ", " << cpp_strerror(ret) << dendl;
-        close(s);
+        rpl_closesocket(s);
         return -ret;
       }
     }
@@ -211,7 +211,7 @@ int NetHandler::generic_connect(const entity_addr_t& addr, const entity_addr_t &
       return s;
 
     ldout(cct, 10) << __func__ << " connect: " << cpp_strerror(ret) << dendl;
-    close(s);
+    rpl_closesocket(s);
     return -ret;
   }
 
