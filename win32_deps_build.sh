@@ -34,6 +34,9 @@ backtraceSrcDir="${depsSrcDir}/backtrace"
 snappySrcDir="${depsSrcDir}/snappy"
 snappyDir="${depsToolsetDir}/snappy"
 snappyTag="1.1.7"
+# Additional Windows libraries, which aren't provided by Mingw
+winLibDir="${depsToolsetDir}/windows/lib"
+
 
 MINGW_PREFIX="x86_64-w64-mingw32-"
 
@@ -204,9 +207,46 @@ cat > thread.patch <<EOL
  #endif
 EOL
 
+# Unix socket support for Windows is currently disabled by Boost.
+cat > sockaddr_un.patch <<EOL
+--- boost/asio/detail/socket_types.hpp       2019-11-29 16:50:58.647125797 +0000
++++ boost/asio/detail/socket_types.hpp.new   2020-01-13 11:45:05.015104678 +0000
+@@ -200,6 +200,8 @@
+ typedef ipv6_mreq in6_mreq_type;
+ typedef sockaddr_in6 sockaddr_in6_type;
+ typedef sockaddr_storage sockaddr_storage_type;
++struct sockaddr_un_type { u_short sun_family;
++  char sun_path[108]; }; /* copy from afunix.h */
+ typedef addrinfo addrinfo_type;
+ # endif
+ typedef ::linger linger_type;
+EOL
+cat > boost_conf_af_unix.patch <<EOL
+--- boost/asio/detail/config.hpp       2019-11-29 16:50:58.691126211 +0000
++++ boost/asio/detail/config.hpp.new   2020-01-13 13:09:17.966771750 +0000
+@@ -1142,13 +1142,9 @@
+ // UNIX domain sockets.
+ #if !defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+ # if !defined(BOOST_ASIO_DISABLE_LOCAL_SOCKETS)
+-#  if !defined(BOOST_ASIO_WINDOWS) \
+-  && !defined(BOOST_ASIO_WINDOWS_RUNTIME) \
+-  && !defined(__CYGWIN__)
++#  if !defined(BOOST_ASIO_WINDOWS_RUNTIME)
+ #   define BOOST_ASIO_HAS_LOCAL_SOCKETS 1
+-#  endif // !defined(BOOST_ASIO_WINDOWS)
+-         //   && !defined(BOOST_ASIO_WINDOWS_RUNTIME)
+-         //   && !defined(__CYGWIN__)
++#  endif // !defined(BOOST_ASIO_WINDOWS_RUNTIME)
+ # endif // !defined(BOOST_ASIO_DISABLE_LOCAL_SOCKETS)
+ #endif // !defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+EOL
+
 # TODO: send this upstream and maybe use a fork until it merges
 patch -N boost/thread/pthread/thread_data.hpp thread_data.patch
 patch -N boost/asio/detail/thread.hpp thread.patch
+# https://github.com/huangqinjin/asio/commit/d27a8ad1870
+patch -N boost/asio/detail/socket_types.hpp sockaddr_un.patch
+patch -N boost/asio/detail/config.hpp boost_conf_af_unix.patch
 
 ./bootstrap.sh
 
@@ -254,3 +294,38 @@ cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
       ../
 _make
 _make install
+
+# mswsock.lib is not provided by mingw, so we'll have to generate
+# it.
+mkdir -p $winLibDir
+cat > $winLibDir/mswsock.def <<EOF
+LIBRARY MSWSOCK.DLL
+EXPORTS
+AcceptEx@32
+EnumProtocolsA@12
+EnumProtocolsW@12
+GetAcceptExSockaddrs@32
+GetAddressByNameA@40
+GetAddressByNameW@40
+GetNameByTypeA@12
+GetNameByTypeW@12
+GetServiceA@28
+GetServiceW@28
+GetTypeByNameA@8
+GetTypeByNameW@8
+MigrateWinsockConfiguration@12
+NPLoadNameSpaces@12
+SetServiceA@24
+SetServiceW@24
+TransmitFile@28
+WSARecvEx@16
+dn_expand@20
+getnetbyname@4
+inet_network@4
+rcmd@24
+rexec@24rresvport@4
+s_perror@8sethostname@8
+EOF
+
+x86_64-w64-mingw32-dlltool -d $winLibDir/mswsock.def \
+                           -l $winLibDir/libmswsock.a

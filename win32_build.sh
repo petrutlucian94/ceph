@@ -27,6 +27,7 @@ boostDir="${depsToolsetDir}/boost"
 zlibDir="${depsToolsetDir}/zlib"
 backtraceDir="${depsToolsetDir}/backtrace"
 snappyDir="${depsToolsetDir}/snappy"
+winLibDir="${depsToolsetDir}/windows/lib"
 if [[ -n $NINJA_BUILD ]]; then
     generatorUsed="Ninja"
 else
@@ -36,6 +37,7 @@ fi
 pyVersion=`python -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))"`
 
 depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir;$snappyDir"
+depsDirs+=";$winLibDir"
 
 # That's actually a dll, we may want to rename the file.
 lz4Lib="${lz4Dir}/lib/liblz4.so.1.9.2"
