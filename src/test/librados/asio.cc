@@ -143,7 +143,7 @@ TEST_F(AsioRados, AsyncWriteCallback)
                         success_cb);
 
   auto failure_cb = [&] (boost::system::error_code ec) {
-    EXPECT_EQ(boost::system::errc::read_only_file_system, ec);
+    EXPECT_EQ(boost::system::errc::read_only_file_system, ec.value());
   };
   librados::async_write(service, snapio, "exist", bl, bl.length(), 0,
                         failure_cb);
@@ -189,7 +189,7 @@ TEST_F(AsioRados, AsyncWriteYield)
     boost::system::error_code ec;
     librados::async_write(service, snapio, "exist", bl, bl.length(), 0,
                           yield[ec]);
-    EXPECT_EQ(boost::system::errc::read_only_file_system, ec);
+    EXPECT_EQ(boost::system::errc::read_only_file_system, ec.value());
   };
   boost::asio::spawn(service, failure_cr);
 
@@ -292,7 +292,7 @@ TEST_F(AsioRados, AsyncWriteOperationCallback)
     librados::ObjectWriteOperation op;
     op.write_full(bl);
     auto failure_cb = [&] (boost::system::error_code ec) {
-      EXPECT_EQ(boost::system::errc::read_only_file_system, ec);
+      EXPECT_EQ(boost::system::errc::read_only_file_system, ec.value());
     };
     librados::async_operate(service, snapio, "exist", &op, 0, failure_cb);
   }
@@ -347,7 +347,7 @@ TEST_F(AsioRados, AsyncWriteOperationYield)
     op.write_full(bl);
     boost::system::error_code ec;
     librados::async_operate(service, snapio, "exist", &op, 0, yield[ec]);
-    EXPECT_EQ(boost::system::errc::read_only_file_system, ec);
+    EXPECT_EQ(boost::system::errc::read_only_file_system, ec.value());
   };
   boost::asio::spawn(service, failure_cr);
 
