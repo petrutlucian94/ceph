@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <sys/socket.h>
 
 ssize_t safe_read(int fd, void *buf, size_t count)
 {
@@ -43,6 +44,30 @@ ssize_t safe_read(int fd, void *buf, size_t count)
 	return cnt;
 }
 
+// "read" doesn't work with Windows sockets.
+ssize_t safe_recv(int fd, void *buf, size_t count)
+{
+  size_t cnt = 0;
+
+  while (cnt < count) {
+    ssize_t r = recv(fd, (SOCKOPT_VAL_TYPE)buf, count - cnt, 0);
+    if (r <= 0) {
+      if (r == 0) {
+        // EOF
+        return cnt;
+      }
+      int err = ceph_sock_errno();
+      if (err == EAGAIN || err == EINTR) {
+        continue;
+      }
+      return -err;
+    }
+    cnt += r;
+    buf = (char *)buf + r;
+  }
+  return cnt;
+}
+
 ssize_t safe_read_exact(int fd, void *buf, size_t count)
 {
         ssize_t ret = safe_read(fd, buf, count);
@@ -52,7 +77,17 @@ ssize_t safe_read_exact(int fd, void *buf, size_t count)
 		return -EDOM;
 	return 0;
 }
- 
+
+ssize_t safe_recv_exact(int fd, void *buf, size_t count)
+{
+        ssize_t ret = safe_recv(fd, buf, count);
+  if (ret < 0)
+    return ret;
+  if ((size_t)ret != count)
+    return -EDOM;
+  return 0;
+}
+
 ssize_t safe_write(int fd, const void *buf, size_t count)
 {
 	while (count > 0) {
@@ -66,6 +101,23 @@ ssize_t safe_write(int fd, const void *buf, size_t count)
 		buf = (char *)buf + r;
 	}
 	return 0;
+}
+
+ssize_t safe_send(int fd, const void *buf, size_t count)
+{
+  while (count > 0) {
+    ssize_t r = send(fd, (SOCKOPT_VAL_TYPE)buf, count, 0);
+    if (r < 0) {
+      int err = ceph_sock_errno();
+      if (err == EINTR || err == EAGAIN) {
+        continue;
+      }
+      return -err;
+    }
+    count -= r;
+    buf = (char *)buf + r;
+  }
+  return 0;
 }
 
 ssize_t safe_pread(int fd, void *buf, size_t count, off_t offset)
