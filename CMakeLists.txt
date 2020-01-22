@@ -83,6 +83,9 @@ include_directories(
 if(WIN32)
   include_directories(
   ${PROJECT_SOURCE_DIR}/src/include/windows)
+  # Boost is also defining some of the errno values, we'll have
+  # to avoid mismatches.
+  add_definitions(-include win32_errno.h)
 endif()
 
 if(OFED_PREFIX)
