@@ -74,6 +74,9 @@ if(WIN32)
   ${PROJECT_SOURCE_DIR}/src/include/win32)
   # Boost complains if winsock2.h (or windows.h) is included before asio.hpp.
   add_definitions(-include winsock_wrapper.h)
+  # Boost is also defining some of the errno values, we'll have
+  # to avoid mismatches.
+  add_definitions(-include win32_errno.h)
 endif()
 
 if(OFED_PREFIX)
