@@ -512,4 +512,9 @@ unsigned get_page_size() {
   return sysconf(_SC_PAGESIZE);
 }
 
+int get_self_exe_path(char* path, int buff_length) {
+  return readlink("/proc/self/exe", path,
+                  sizeof(buff_length) - 1);
+}
+
 #endif /* _WIN32 */
