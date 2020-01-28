@@ -58,6 +58,7 @@
 #include "global/global_init.h"
 #include "global/signal_handler.h"
 
+#include "include/compat.h"
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
 #include "include/stringify.h"
@@ -111,7 +112,14 @@ static void usage()
   generic_server_usage();
 }
 
-static int nbd = -1;
+
+#ifdef _WIN32
+#define NBD_FD_TYPE HANDLE
+#else
+#define NBD_FD_TYPE int
+#endif
+
+static NBD_FD_TYPE nbd = -1;
 static int nbd_index = -1;
 
 enum Command {
@@ -530,6 +538,7 @@ public:
   }
 };
 
+#ifndef _WIN32
 class NBDListIterator {
 public:
   bool get(int *pid, Config *cfg) {
@@ -771,7 +780,7 @@ static int try_ioctl_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
 
 close_nbd:
   if (r < 0) {
-    ioctl(nbd, NBD_CLEAR_SOCK);
+    ioctl(nbd, NBD_CLEAR_SOCK, NULL);
     cerr << "rbd-nbd: failed to map, status: " << cpp_strerror(-r) << std::endl;
   }
   close(nbd);
@@ -1046,6 +1055,72 @@ static int try_netlink_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
 
   return 0;
 }
+#else /* _WIN32 */
+
+static int try_netlink_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
+{
+  // ioctl will be used as a fallback when this returns 1.
+  return 1;
+}
+
+static int try_netlink_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
+{
+  // TODO
+  return -1;
+}
+
+static int netlink_resize(int nbd_index, uint64_t size)
+{
+  return -1;
+}
+
+static int netlink_disconnect(int index) {
+  return 1;
+}
+
+static int load_module(Config *cfg) {
+  // The driver should be already loaded.
+  return 0;
+}
+
+static int try_ioctl_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
+{
+  // TODO;
+  return -1;
+}
+
+static int check_device_size(int nbd_index, unsigned long expected_size)
+{
+  return 0;
+}
+
+int ioctl(HANDLE d, int request, void* argp) {
+    // TODO: check if we need an output buffer. Also, do we pass
+    // just the argp pointer as input buffer with a null size or
+    // should the input buffer point to argp?
+    // This may not be a drop-in replacement for the Linux ioctl
+    // requests, in which case we may need separate methods for
+    // each of the requests.
+    int bytes_returned;
+    if(!DeviceIoControl(d, request, argp, 0,
+                        NULL, 0, &bytes_returned, NULL)) {
+        derr << "ioctl(" << d << ", " << request << ", " << argp
+             << ") failed. Error: " << GetLastError();
+        return -1;
+    }
+
+    return 0;
+}
+
+class NBDListIterator {
+public:
+  bool get(int *pid, Config *cfg) {
+    // TODO
+    throw std::runtime_error("Not implemented.");
+  }
+}
+
+#endif /* _WIN32 */
 
 static void handle_signal(int signum)
 {
@@ -1062,7 +1137,7 @@ static void handle_signal(int signum)
   dout(20) << __func__ << ": " << "sending NBD_DISCONNECT" << dendl;
   ret = netlink_disconnect(nbd_index);
   if (ret == 1)
-    ret = ioctl(nbd, NBD_DISCONNECT);
+    ret = ioctl(nbd, NBD_DISCONNECT, NULL);
 
   if (ret != 0) {
     derr << "rbd-nbd: disconnect failed. Error: " << ret << dendl;
@@ -1096,7 +1171,7 @@ static void run_server(Preforker& forker, NBDServer *server, bool netlink_used)
   if (netlink_used)
     server->wait_for_disconnect();
   else
-    ioctl(nbd, NBD_DO_IT);
+    ioctl(nbd, NBD_DO_IT, NULL);
 
   unregister_async_signal_handler(SIGHUP, sighup_handler);
   unregister_async_signal_handler(SIGINT, handle_signal);
@@ -1271,7 +1346,7 @@ close_nbd:
     if (use_netlink) {
       netlink_disconnect(nbd_index);
     } else {
-      ioctl(nbd, NBD_CLEAR_SOCK);
+      ioctl(nbd, NBD_CLEAR_SOCK, NULL);
       cerr << "rbd-nbd: failed to map, status: " << cpp_strerror(-r)
 	   << std::endl;
     }
@@ -1310,7 +1385,7 @@ static int do_unmap(Config *cfg)
     return nbd;
   }
 
-  r = ioctl(nbd, NBD_DISCONNECT);
+  r = ioctl(nbd, NBD_DISCONNECT, NULL);
   if (r < 0) {
       cerr << "rbd-nbd: the device is not used" << std::endl;
   }
