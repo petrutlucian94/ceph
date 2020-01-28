@@ -21,13 +21,8 @@ namespace po = boost::program_options;
 static int call_nbd_cmd(const po::variables_map &vm,
                         const std::vector<std::string> &args,
                         const std::vector<std::string> &ceph_global_init_args) {
-  #ifdef _WIN32
-  std::cerr << "rbd: nbd device is not supported" << std::endl;
-  return -EOPNOTSUPP;
-  #else
   char exe_path[PATH_MAX];
-  ssize_t exe_path_bytes = readlink("/proc/self/exe", exe_path,
-				    sizeof(exe_path) - 1);
+  ssize_t exe_path_bytes = get_self_exe_path(exe_path, PATH_MAX);
   if (exe_path_bytes < 0) {
     strcpy(exe_path, "rbd-nbd");
   } else {
@@ -57,7 +52,6 @@ static int call_nbd_cmd(const po::variables_map &vm,
   }
 
   return 0;
-  #endif
 }
 
 int get_image_or_snap_spec(const po::variables_map &vm, std::string *spec) {
@@ -104,7 +98,7 @@ int parse_options(const std::vector<std::string> &options,
 
 int execute_list(const po::variables_map &vm,
                  const std::vector<std::string> &ceph_global_init_args) {
-#if defined(__FreeBSD__) || defined(_WIN32)
+#if defined(__FreeBSD__)
   std::cerr << "rbd: nbd device is not supported" << std::endl;
   return -EOPNOTSUPP;
 #endif
@@ -125,7 +119,7 @@ int execute_list(const po::variables_map &vm,
 
 int execute_map(const po::variables_map &vm,
                 const std::vector<std::string> &ceph_global_init_args) {
-#if defined(__FreeBSD__) || defined(_WIN32)
+#if defined(__FreeBSD__)
   std::cerr << "rbd: nbd device is not supported" << std::endl;
   return -EOPNOTSUPP;
 #endif
@@ -159,7 +153,7 @@ int execute_map(const po::variables_map &vm,
 
 int execute_unmap(const po::variables_map &vm,
                   const std::vector<std::string> &ceph_global_init_args) {
-#if defined(__FreeBSD__) || defined(_WIN32)
+#if defined(__FreeBSD__)
   std::cerr << "rbd: nbd device is not supported" << std::endl;
   return -EOPNOTSUPP;
 #endif
