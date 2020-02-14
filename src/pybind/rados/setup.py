@@ -108,7 +108,11 @@ def check_sanity():
     if 'CEPH_LIBDIR' in os.environ:
         # The setup.py has been invoked by a top-level Ceph make.
         # Set the appropriate CFLAGS and LDFLAGS
-        compiler.set_include_dirs([os.path.join(CEPH_SRC_DIR, 'include')])
+        include_dirs = [os.path.join(CEPH_SRC_DIR, 'include')]
+        if os.name == 'nt':
+            include_dirs += [os.path.join(CEPH_SRC_DIR, 'include/windows')]
+
+        compiler.set_include_dirs(include_dirs)
         compiler.set_library_dirs([os.environ.get('CEPH_LIBDIR')])
 
     try:
