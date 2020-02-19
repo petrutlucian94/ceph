@@ -36,6 +36,7 @@ zlibDir="${depsToolsetDir}/zlib"
 backtraceDir="${depsToolsetDir}/backtrace"
 snappyDir="${depsToolsetDir}/snappy"
 winLibDir="${depsToolsetDir}/windows/lib"
+dokanyFuseDir="${depsToolsetDir}/dokan_fuse"
 if [[ -n $NINJA_BUILD ]]; then
     generatorUsed="Ninja"
 else
@@ -93,7 +94,7 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D WITH_PYTHON2=OFF -D WITH_PYTHON3=ON \
       -D MGR_PYTHON_VERSION=$pyVersion \
       -D WITH_RDMA=OFF -D WITH_OPENLDAP=OFF \
-      -D WITH_GSSAPI=OFF -D WITH_FUSE=OFF -D WITH_XFS=OFF \
+      -D WITH_GSSAPI=OFF -D WITH_FUSE=ON -D WITH_XFS=OFF \
       -D WITH_BLUESTORE=OFF -D WITH_LEVELDB=OFF \
       -D WITH_LTTNG=OFF -D WITH_BABELTRACE=OFF \
       -D WITH_SYSTEM_BOOST=ON -D WITH_MGR=OFF -D WITH_KVS=OFF \
@@ -109,6 +110,8 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D ENABLE_GIT_VERSION=$ENABLE_GIT_VERSION \
       -D ALLOCATOR="$ALLOCATOR" -D CMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
       -D WITH_CEPH_DEBUG_MUTEX=$WITH_CEPH_DEBUG_MUTEX \
+      -D FUSE_INCLUDE_DIRS="$dokanyFuseDir/include" \
+      -D FUSE_LIBRARIES="$dokanyFuseDir/lib" \
       -G "$generatorUsed" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 

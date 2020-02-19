@@ -37,6 +37,10 @@ snappyTag="1.1.7"
 # Additional Windows libraries, which aren't provided by Mingw
 winLibDir="${depsToolsetDir}/windows/lib"
 
+dokanyUrl="https://github.com/dokan-dev/dokany"
+dokanyTag="v1.3.1.1000"
+dokanyFuseSrcDir="${depsSrcDir}/dokany/dokan_fuse"
+dokanyFuseDir="${depsToolsetDir}/dokan_fuse"
 
 MINGW_PREFIX="x86_64-w64-mingw32-"
 
@@ -327,3 +331,17 @@ EOF
 
 x86_64-w64-mingw32-dlltool -d $winLibDir/mswsock.def \
                            -l $winLibDir/libmswsock.a
+
+cd $depsSrcDir
+if [[ ! -d $dokanyFuseSrcDir ]]; then
+    git clone $dokanyUrl
+fi
+cd $dokanyFuseDir
+git checkout $dokanyTag
+
+mkdir -p $dokanyFuseDir
+cmake -DCMAKE_INSTALL_PREFIX=$dokanyFuseDir \
+      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
+      # -DCMAKE_INSTALL_BINDIR=$dokanyFuseDir
+_make
+_make install
