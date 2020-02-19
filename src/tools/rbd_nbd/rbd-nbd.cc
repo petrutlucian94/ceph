@@ -1211,6 +1211,8 @@ static int initialize_wnbd_connection()
     } a;
   socklen_t addrlen = sizeof(a.inaddr);
   int reuse = 1;
+  int conn = -1;
+  WIN_NBD_CONN_INFO conn_info = {0};
 
   int listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (listener == INVALID_SOCKET)
@@ -1232,7 +1234,6 @@ static int initialize_wnbd_connection()
   if(listen(listener, 1) == SOCKET_ERROR)
     goto error;
 
-  WIN_NBD_CONN_INFO conn_info = {0};
   conn_info.Address = INADDR_LOOPBACK;
   conn_info.Port = a.inaddr.sin_port;
 
@@ -1244,7 +1245,7 @@ static int initialize_wnbd_connection()
     goto error;
   }
 
-  int conn = accept(listener, NULL, NULL);
+  conn = accept(listener, NULL, NULL);
   if (conn == INVALID_SOCKET)
       goto error;
 
