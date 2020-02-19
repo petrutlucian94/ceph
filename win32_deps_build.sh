@@ -336,12 +336,12 @@ cd $depsSrcDir
 if [[ ! -d $dokanyFuseSrcDir ]]; then
     git clone $dokanyUrl
 fi
-cd $dokanyFuseDir
+cd $dokanyFuseSrcDir
 git checkout $dokanyTag
 
 mkdir -p $dokanyFuseDir
 cmake -DCMAKE_INSTALL_PREFIX=$dokanyFuseDir \
-      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
+      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE
       # -DCMAKE_INSTALL_BINDIR=$dokanyFuseDir
 _make
 _make install
