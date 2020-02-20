@@ -812,6 +812,7 @@ void MDSDaemon::suicide()
   }
 }
 
+#ifndef _WIN32
 void MDSDaemon::respawn()
 {
   // --- WARNING TO FUTURE COPY/PASTERS ---
@@ -871,7 +872,37 @@ void MDSDaemon::respawn()
   // to respawn expect it never to return.
   ceph_abort();
 }
+#else /* _WIN32 */
+void MDSDaemon::respawn()
+{
+  dout(1) << "respawn!" << dendl;
 
+  /* Dump recent in case the MDS was stuck doing something which caused it to
+   * be removed from the MDSMap leading to respawn. */
+  g_ceph_context->_log->dump_recent();
+
+  SubProcess p(orig_argv[0], SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE);
+
+  dout(1) << " e: '" << orig_argv[0] << "'" << dendl;
+  for (int i=1; i<orig_argc; i++) {
+    p.add_cmd_arg((char *)orig_argv[i]);
+    dout(1) << " " << i << ": '" << orig_argv[i] << "'" << dendl;
+  }
+
+  /* Print CWD for the user's interest */
+  char buf[PATH_MAX];
+  char *cwd = getcwd(buf, sizeof(buf));
+  ceph_assert(cwd);
+  dout(1) << " cwd " << cwd << dendl;
+
+  if (p.spawn()) {
+    dout(1) << "Respawn failed. Error: " << p.err() << dendl;
+    ceph_abort();
+  }
+
+  exit(0);
+}
+#endif /* _WIN32 */
 
 
 bool MDSDaemon::ms_dispatch2(const ref_t<Message> &m)

@@ -221,6 +221,7 @@ ssize_t get_self_exe_path(char* path, int buff_length);
 #include <windows.h>
 
 #include "include/windows/win32_errno.h"
+#include "include/windows/dirent.h"
 
 // There are a few name collisions between Windows headers and Ceph.
 // Updating Ceph definitions would be the prefferable fix in order to avoid

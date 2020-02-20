@@ -27,6 +27,10 @@
 #include <stdbool.h>
 #include <fcntl.h>
 
+#ifdef _WIN32
+#include "../compat.h"
+#endif
+
 #include "ceph_statx.h"
 
 #ifdef __cplusplus

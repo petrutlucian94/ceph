@@ -3256,6 +3256,7 @@ CInode* Server::prepare_new_inode(MDRequestRef& mdr, CDir *dir, inodeno_t useino
 
   dout(10) << oct << " dir mode 0" << diri->inode.mode << " new mode 0" << mode << dec << dendl;
 
+  #ifndef _WIN32
   if (diri->inode.mode & S_ISGID) {
     dout(10) << " dir is sticky" << dendl;
     in->inode.gid = diri->inode.gid;
@@ -3265,6 +3266,9 @@ CInode* Server::prepare_new_inode(MDRequestRef& mdr, CDir *dir, inodeno_t useino
     }
   } else 
     in->inode.gid = mdr->client_request->get_caller_gid();
+  #else
+    in->inode.gid = mdr->client_request->get_caller_gid();
+  #endif
 
   in->inode.uid = mdr->client_request->get_caller_uid();
 
@@ -6166,6 +6170,13 @@ void Server::handle_client_symlink(MDRequestRef& mdr)
 
 // LINK
 
+#ifdef _WIN32
+void Server::handle_client_link(MDRequestRef& mdr)
+{
+  dout(7) << "symlinks are currently unsupported on Windows." << dendl;
+  respond_to_request(mdr, -EOPNOTSUPP);
+}
+#else
 void Server::handle_client_link(MDRequestRef& mdr)
 {
   const cref_t<MClientRequest> &req = mdr->client_request;
@@ -6265,7 +6276,7 @@ void Server::handle_client_link(MDRequestRef& mdr)
     _link_remote(mdr, true, destdn, targeti);
   mds->balancer->maybe_fragment(dir, false);  
 }
-
+#endif /* _WIN32 */
 
 class C_MDS_link_local_finish : public ServerLogContext {
   CDentry *dn;

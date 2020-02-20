@@ -486,6 +486,69 @@ ssize_t get_self_exe_path(char* path, int buff_length) {
   return GetModuleFileName(NULL, path, buff_length - 1);
 }
 
+DIR* opendir(const char* name) {
+  if (!name || *name == 0) {
+    errno = ENOENT;
+    return nullptr;
+  }
+
+  char pattern[MAX_PATH];
+  strcpy(pattern, name);
+  strcpy(pattern, "\\*");
+
+  DIR* dir = (DIR*)(malloc(sizeof(DIR)));
+  dir->firstread = FALSE;
+  dir->handle = INVALID_HANDLE_VALUE;
+
+  dir->handle = FindFirstFileExA(
+    pattern,
+    FindExInfoBasic, // Do not want alternative name
+    &dir->data,
+    FindExSearchNameMatch,
+    NULL, // lpSearchFilter
+    0);
+
+  if (dir->handle == INVALID_HANDLE_VALUE) {
+    return nullptr;
+  }
+
+  strcpy_s(dir->entry.d_name, sizeof(dir->entry.d_name),
+    dir->data.cFileName);
+
+  return dir;
+}
+
+struct dirent* readdir(DIR* dirp) {
+  if (!dirp || dirp->handle == INVALID_HANDLE_VALUE) {
+    errno = EBADF;
+    return nullptr;
+  }
+
+  if (dirp->firstread) {
+    dirp->firstread = TRUE;
+    return &dirp->entry;
+  }
+
+  auto ret = FindNextFileA(dirp->handle, &dirp->data);
+
+  if (ret == 0) {
+    return nullptr;
+  }
+
+  strcpy_s(dirp->entry.d_name, sizeof(dirp->entry.d_name),
+    dirp->data.cFileName);
+
+  return &dirp->entry;
+}
+
+int closedir(DIR* dirp) {
+  if (INVALID_HANDLE_VALUE != dirp->handle) {
+    FindClose(dirp->handle);
+    free(dirp);
+  }
+  return 0;
+}
+
 #else
 
 unsigned get_page_size() {

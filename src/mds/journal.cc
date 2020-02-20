@@ -623,8 +623,12 @@ void EMetaBlob::remotebit::dump(Formatter *f) const
   switch(type) {
   case S_IFREG:
     type_string = "file"; break;
+  #ifndef _WIN32
   case S_IFLNK:
     type_string = "symlink"; break;
+  case S_IFSOCK:
+    type_string = "sock"; break;
+  #endif
   case S_IFDIR:
     type_string = "directory"; break;
   case S_IFIFO:
@@ -633,8 +637,6 @@ void EMetaBlob::remotebit::dump(Formatter *f) const
     type_string = "chr"; break;
   case S_IFBLK:
     type_string = "blk"; break;
-  case S_IFSOCK:
-    type_string = "sock"; break;
   default:
     assert (0 == "unknown d_type!");
   }
@@ -2380,8 +2382,10 @@ void rename_rollback::drec::dump(Formatter *f) const
   switch(type) {
   case S_IFREG:
     type_string = "file"; break;
+  #ifndef _WIN32
   case S_IFLNK:
     type_string = "symlink"; break;
+  #endif
   case S_IFDIR:
     type_string = "directory"; break;
   default:
