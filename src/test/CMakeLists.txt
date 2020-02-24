@@ -459,14 +459,14 @@ install(TARGETS
   ceph_test_stress_watch
   DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-if(WITH_FUSE)
+if(WITH_FUSE AND NOT WIN32)
   add_executable(ceph_test_cfuse_cache_invalidate
     test_cfuse_cache_invalidate.cc
     )
   target_link_libraries(ceph_test_cfuse_cache_invalidate
     ceph-common
   )
-endif(WITH_FUSE)
+endif(WITH_FUSE AND NOT WIN32)
 
 if(${WITH_CEPHFS})
   add_executable(test_c_headers

@@ -238,12 +238,12 @@ typedef unsigned int uint;
 
 typedef _sigset_t sigset_t;
 
-typedef int uid_t;
-typedef int gid_t;
+typedef unsigned int uid_t;
+typedef unsigned int gid_t;
 
-typedef long blksize_t;
-typedef long blkcnt_t;
-typedef long nlink_t;
+typedef unsigned int blksize_t;
+typedef unsigned __int64 blkcnt_t;
+typedef unsigned short nlink_t;
 
 typedef long long loff_t;
 
@@ -273,6 +273,7 @@ struct iovec {
 #endif
 
 #define IOV_MAX 1024
+#define MAXSYMLINKS  65000
 
 #ifdef __cplusplus
 extern "C" {
@@ -298,6 +299,12 @@ int chown(const char *path, uid_t owner, gid_t group);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 int setenv(const char *name, const char *value, int overwrite);
+
+int geteuid();
+int getegid();
+int getuid();
+int getgid();
+
 #define unsetenv(name) _putenv_s(name, "")
 
 int win_socketpair(int socks[2]);

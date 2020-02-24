@@ -11,3 +11,9 @@ set(libclient_srcs
   Delegation.cc)
 add_library(client STATIC ${libclient_srcs})
 target_link_libraries(client osdc)
+if(WIN32)
+  target_include_directories(
+    client SYSTEM PRIVATE
+    ${FUSE_INCLUDE_DIRS})
+  add_definitions(-include fuse/fuse_win.h)
+endif(WIN32)

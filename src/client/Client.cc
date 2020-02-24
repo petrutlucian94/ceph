@@ -23,13 +23,19 @@
 #include <sys/param.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#ifndef _WIN32
 #include <sys/utsname.h>
+#else
+// Dokany fuse wrapper. It defines some of the POSIX constants that we'll
+// be using.
+#include <fuse/fuse_win.h>
+#endif
 #include <sys/uio.h>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/fusion/include/std_pair.hpp>
 
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(_WIN32)
 #define XATTR_CREATE    0x1
 #define XATTR_REPLACE   0x2
 #else
@@ -123,6 +129,35 @@
 #endif
 
 #define DEBUG_GETATTR_CAPS (CEPH_CAP_XATTR_SHARED)
+
+#ifdef _WIN32
+#define S_ISTYPE(m, TYPE) ((m & S_IFMT) == TYPE)
+#define S_ISCHR(m)  S_ISTYPE(m, S_IFCHR)
+#define S_ISDIR(m)  S_ISTYPE(m, S_IFDIR)
+#define S_ISREG(m)  S_ISTYPE(m, S_IFREG)
+#define S_ISLNK(m)  S_ISTYPE(m, S_IFLNK)
+#define S_ISUID     04000
+#define S_ISGID     02000
+#define S_ISVTX     01000
+
+#define F_RDLCK     0
+
+#define LOCK_SH    1
+#define LOCK_EX    2
+#define LOCK_NB    4
+#define LOCK_UN    8
+#define LOCK_MAND  32
+#define LOCK_READ  64
+#define LOCK_WRITE 128
+#define LOCK_RW    192
+
+#define AT_SYMLINK_NOFOLLOW 0x100
+#define O_NOFOLLOW 0
+#define O_SYNC 0
+
+typedef long long int fsblkcnt_t;
+
+#endif /* _WIN32 */
 
 void client_flush_set_callback(void *p, ObjectCacher::ObjectSet *oset)
 {
@@ -1968,6 +2003,13 @@ MetaSession *Client::_get_or_open_mds_session(mds_rank_t mds)
 void Client::populate_metadata(const std::string &mount_root)
 {
   // Hostname
+  #ifdef _WIN32
+  // TODO: move this to compat.h
+  char hostname[64];
+  DWORD hostname_sz = 64;
+  GetComputerNameA(hostname, &hostname_sz);
+  metadata["hostname"] = hostname;
+  #else
   struct utsname u;
   int r = uname(&u);
   if (r >= 0) {
@@ -1976,6 +2018,7 @@ void Client::populate_metadata(const std::string &mount_root)
   } else {
     ldout(cct, 1) << __func__ << " failed to read hostname (" << cpp_strerror(r) << ")" << dendl;
   }
+  #endif
 
   metadata["pid"] = stringify(getpid());
 
@@ -7055,6 +7098,9 @@ void Client::stat_to_statx(struct stat *st, struct ceph_statx *stx)
 #ifdef __APPLE__
   stx->stx_mtime = st->st_mtimespec;
   stx->stx_atime = st->st_atimespec;
+#elif __WIN32
+  stx->stx_mtime.tv_sec = st->st_mtime;
+  stx->stx_atime.tv_sec = st->st_atime;
 #else
   stx->stx_mtime = st->st_mtim;
   stx->stx_atime = st->st_atim;
@@ -7337,12 +7383,18 @@ int Client::fill_stat(Inode *in, struct stat *st, frag_info_t *dirstat, nest_inf
       st->st_size = in->rstat.rbytes;
     else
       st->st_size = in->dirstat.size();
+    #ifndef _WIN32
     st->st_blocks = 1;
+    #endif
   } else {
     st->st_size = in->size;
+    #ifndef _WIN32
     st->st_blocks = (in->size + 511) >> 9;
+    #endif
   }
+  #ifndef _WIN32
   st->st_blksize = std::max<uint32_t>(in->layout.stripe_unit, 4096);
+  #endif
 
   if (dirstat)
     *dirstat = in->dirstat;
@@ -7865,7 +7917,7 @@ void Client::fill_dirent(struct dirent *de, const char *name, int type, uint64_t
 {
   strncpy(de->d_name, name, 255);
   de->d_name[255] = '\0';
-#ifndef __CYGWIN__
+#if !defined(__CYGWIN__) && !(defined(_WIN32))
   de->d_ino = ino;
 #if !defined(__APPLE__) && !defined(__FreeBSD__)
   de->d_off = next_off;
