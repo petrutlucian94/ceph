@@ -37,10 +37,10 @@ snappyTag="1.1.7"
 # Additional Windows libraries, which aren't provided by Mingw
 winLibDir="${depsToolsetDir}/windows/lib"
 
-dokanyUrl="https://github.com/dokan-dev/dokany"
-dokanyTag="v1.3.1.1000"
-dokanyFuseSrcDir="${depsSrcDir}/dokany/dokan_fuse"
-dokanyFuseDir="${depsToolsetDir}/dokan_fuse"
+dokanUrl="https://github.com/dokan-dev/dokany"
+dokanTag="v1.3.1.1000"
+dokanSrcDir="${depsSrcDir}/dokany"
+dokanLibDir="${depsToolsetDir}/dokany/lib"
 
 MINGW_PREFIX="x86_64-w64-mingw32-"
 
@@ -333,15 +333,17 @@ x86_64-w64-mingw32-dlltool -d $winLibDir/mswsock.def \
                            -l $winLibDir/libmswsock.a
 
 cd $depsSrcDir
-if [[ ! -d $dokanyFuseSrcDir ]]; then
-    git clone $dokanyUrl
+if [[ ! -d $dokanSrcDir ]]; then
+    git clone $dokanUrl
 fi
-cd $dokanyFuseSrcDir
-git checkout $dokanyTag
+cd $dokanSrcDir
+git checkout $dokanTag
 
-mkdir -p $dokanyFuseDir
-cmake -DCMAKE_INSTALL_PREFIX=$dokanyFuseDir \
-      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE
-      # -DCMAKE_INSTALL_BINDIR=$dokanyFuseDir
-_make
-_make install
+mkdir -p $dokanLibDir
+x86_64-w64-mingw32-dlltool -d $dokanSrcDir/dokan/dokan.def \
+                           -l $dokanLibDir/libdokan.a
+
+# That's probably the easiest way to deal with the dokan imports.
+# dokan.h is defined in both ./dokan and ./sys while both are using
+# sys/public.h without the "sys" prefix.
+cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokany/dokan

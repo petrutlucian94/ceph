@@ -13,7 +13,9 @@
  */
 
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <sys/utsname.h>
+#endif
 #include <iostream>
 #include <string>
 
@@ -34,7 +36,9 @@
 #endif
 #include "global/global_init.h"
 #include "global/signal_handler.h"
+#ifndef _WIN32
 #include "common/Preforker.h"
+#endif
 #include "common/safe_io.h"
 
 #include <sys/types.h>
@@ -125,10 +129,11 @@ int main(int argc, const char **argv, const char *envp[]) {
 #ifndef __LP64__
     cerr << std::endl;
     cerr << "WARNING: Ceph inode numbers are 64 bits wide, and FUSE on 32-bit kernels does" << std::endl;
-    cerr << "         not cope well with that situation.  Expect to crash shortly." << std::endl;
+    cerr << "         not cope well with that situation.  Expect to crash snrtly." << std::endl;
     cerr << std::endl;
 #endif
 
+  #ifndef _WIN32
   Preforker forker;
   auto daemonize = g_conf().get_val<bool>("daemonize");
   if (daemonize) {
@@ -154,11 +159,12 @@ int main(int argc, const char **argv, const char *envp[]) {
     }
     global_init_postfork_start(cct.get());
   }
+  #endif /* _WIN32 */
 
   {
     g_ceph_context->_conf.finalize_reexpand_meta();
     common_init_finish(g_ceph_context);
-   
+
     init_async_signal_handler();
     register_async_signal_handler(SIGHUP, sighup_handler);
 
@@ -243,7 +249,11 @@ int main(int argc, const char **argv, const char *envp[]) {
       client->set_filer_flags(filer_flags);
     }
 
+    #ifndef _WIN32
     cfuse = new CephFuse(client, forker.get_signal_fd());
+    #else
+    cfuse = new CephFuse(client, NULL);
+    #endif
 
     r = cfuse->init(newargc, newargv);
     if (r != 0) {

@@ -14,7 +14,9 @@
 
 #include <sys/file.h>
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 #include <limits.h>
 #include <signal.h>
 #include <stdio.h>
@@ -37,7 +39,9 @@
 
 #include "fuse_ll.h"
 #include <fuse.h>
+#ifndef _WIN32
 #include <fuse_lowlevel.h>
+#endif
 
 #define dout_context g_ceph_context
 
