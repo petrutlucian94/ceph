@@ -16,6 +16,7 @@
 
 #include "posix_acl.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sddl.h>
@@ -46,31 +47,6 @@ int g_UID = 0;
 int g_GID = 0;
 BOOL g_UseACL  = FALSE;
 struct ceph_mount_info *cmount;
-
-
-//deprecated:MinGW Now support dirent, so use MinGW's
-/*only d_name[256] is usefull*/
-//struct dirent {
-//  unsigned long long d_ino;     /* inode number */
-//  unsigned short d_reclen;  /* length of this record */
-//  unsigned short d_namlen;  /* length of this record */
-//  unsigned char  d_type;    /* type of file; not supported
-//                   by all file system types */
-//  unsigned long long d_time_create;
-//  unsigned long long d_time_access;
-//  unsigned long long d_time_write;
-//  unsigned long d_size;
-//  char      d_name[256]; /* filename */
-//};
-
-//MinGW Now support dirent, so use MinGW's
-#include <dirent.h>
-
-/* mingw/include/part/time.h already have this
-struct timespec {
-  unsigned long long tv_sec;
-  unsigned int tv_nsec;
-}; */
 
 #define __dev_t unsigned long long
 #define __ino_t unsigned long long
@@ -267,20 +243,28 @@ PrintUserName(PDOKAN_FILE_INFO  DokanFileInfo)
 
 static int
 WinCephCreateFile(
-  LPCWSTR                    FileName,
+  LPCWSTR FileName,
   PDOKAN_IO_SECURITY_CONTEXT SecurityContext,
-  DWORD                      AccessMode,
-  DWORD                      ShareMode,
-  DWORD                      CreationDisposition,
-  DWORD                      FlagsAndAttributes,
-  PDOKAN_FILE_INFO           DokanFileInfo)
+  ACCESS_MASK DesiredAccess,
+  ULONG FileAttributes,
+  ULONG ShareMode,
+  ULONG CreateDisposition,
+  ULONG CreateOptions,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
+  // TODO: use ZwCreateFile args by default and avoid conversions.
+  ACCESS_MASK AccessMode, ZwDesiredAccess = DesiredAccess;
+  DWORD FlagsAndAttributes, CreationDisposition;
+  DokanMapKernelToUserCreateFileFlags(
+    ZwDesiredAccess, FileAttributes, CreateOptions, CreateDisposition,
+    &DesiredAccess, &FlagsAndAttributes, &CreationDisposition);
+
   WCHAR filePath[MAX_PATH_CEPH];
   //DWORD fileAttr;
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"CreateFile : %s\n", filePath);
+  DbgPrintW(L"CreateFile : %ls\n", filePath);
 
   //PrintUserName(DokanFileInfo);
 
@@ -364,6 +348,31 @@ WinCephCreateFile(
   WinCephCheckFlag(FlagsAndAttributes, SECURITY_EFFECTIVE_ONLY);
   WinCephCheckFlag(FlagsAndAttributes, SECURITY_SQOS_PRESENT);
 
+  DbgPrintW(L"DokanFileInfo->IsDirectory = %d\n", DokanFileInfo->IsDirectory);
+  DbgPrintW(L"\tCreateOptions = 0x%x\n", CreateOptions);
+  WinCephCheckFlag(CreateOptions, FILE_DIRECTORY_FILE);
+  WinCephCheckFlag(CreateOptions, FILE_WRITE_THROUGH);
+  WinCephCheckFlag(CreateOptions, FILE_SEQUENTIAL_ONLY);
+  WinCephCheckFlag(CreateOptions, FILE_NO_INTERMEDIATE_BUFFERING);
+  WinCephCheckFlag(CreateOptions, FILE_SYNCHRONOUS_IO_ALERT);
+  WinCephCheckFlag(CreateOptions, FILE_SYNCHRONOUS_IO_NONALERT);
+  WinCephCheckFlag(CreateOptions, FILE_NON_DIRECTORY_FILE);
+  WinCephCheckFlag(CreateOptions, FILE_CREATE_TREE_CONNECTION);
+  WinCephCheckFlag(CreateOptions, FILE_COMPLETE_IF_OPLOCKED);
+  WinCephCheckFlag(CreateOptions, FILE_NO_EA_KNOWLEDGE);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_REMOTE_INSTANCE);
+  WinCephCheckFlag(CreateOptions, FILE_RANDOM_ACCESS);
+  WinCephCheckFlag(CreateOptions, FILE_DELETE_ON_CLOSE);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_BY_FILE_ID);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_FOR_BACKUP_INTENT);
+  WinCephCheckFlag(CreateOptions, FILE_NO_COMPRESSION);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_REQUIRING_OPLOCK);
+  WinCephCheckFlag(CreateOptions, FILE_DISALLOW_EXCLUSIVE);
+  WinCephCheckFlag(CreateOptions, FILE_RESERVE_OPFILTER);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_REPARSE_POINT);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_NO_RECALL);
+  WinCephCheckFlag(CreateOptions, FILE_OPEN_FOR_FREE_SPACE_QUERY);
+
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -371,18 +380,18 @@ WinCephCreateFile(
   struct fd_context fdc;
   memset(&fdc, 0, sizeof(struct fd_context));
 
-  //fwprintf(stderr, L"CreateFile ceph_open [%s]\n", FileName);
+  //fwprintf(stderr, L"CreateFile ceph_open [%ls]\n", FileName);
   //AlwaysCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_TEMPORARY);
   //AlwaysCheckFlag(FlagsAndAttributes, FILE_FLAG_DELETE_ON_CLOSE);
 
   if(FlagsAndAttributes&FILE_ATTRIBUTE_TEMPORARY)
   {
-    fwprintf(stderr, L"CreateFile ceph_open FILE_ATTRIBUTE_TEMPORARY[%s]\n", FileName);
+    fwprintf(stderr, L"CreateFile ceph_open FILE_ATTRIBUTE_TEMPORARY[%ls]\n", FileName);
     fdc.delete_on_close = TRUE;
   }
   if(FlagsAndAttributes&FILE_FLAG_DELETE_ON_CLOSE)
   {
-    fwprintf(stderr, L"CreateFile ceph_open FILE_FLAG_DELETE_ON_CLOSE[%s]\n", FileName);
+    fwprintf(stderr, L"CreateFile ceph_open FILE_FLAG_DELETE_ON_CLOSE[%ls]\n", FileName);
     fdc.delete_on_close = TRUE;
   }
 
@@ -418,13 +427,13 @@ WinCephCreateFile(
             fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
             if(fd<0){
               DbgPrint("\terror code = %d\n\n", fd);
-              fwprintf(stderr, L"CreateFile REG TRUNCATE_EXISTING ceph_open error [%s][ret=%d]\n", FileName, fd);
+              fwprintf(stderr, L"CreateFile REG TRUNCATE_EXISTING ceph_open error [%ls][ret=%d]\n", FileName, fd);
               return fd;
             }
 
             fdc.fd = fd;
             memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-            //fwprintf(stderr, L"CreateFile REG TRUNCATE_EXISTING ceph_open OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+            //fwprintf(stderr, L"CreateFile REG TRUNCATE_EXISTING ceph_open OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
             //  (int)DokanFileInfo->Context);
 
             return 0;
@@ -459,13 +468,13 @@ WinCephCreateFile(
               fd = ceph_open(cmount, file_name, O_RDWR, 0755);
             if(fd<0){
               DbgPrint("\terror code = %d\n\n", fd);
-              fwprintf(stderr, L"CreateFile REG OPEN_ALWAYS ceph_open error [%s][ret=%d]\n", FileName, fd);
+              fwprintf(stderr, L"CreateFile REG OPEN_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
               return fd;
             }
 
             fdc.fd = fd;
             memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-            //fwprintf(stderr, L"CreateFile ceph_open REG OPEN_ALWAYS OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+            //fwprintf(stderr, L"CreateFile ceph_open REG OPEN_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
             //  (int)DokanFileInfo->Context);
 
             return ERROR_ALREADY_EXISTS;
@@ -473,7 +482,7 @@ WinCephCreateFile(
             //open & return 0
             if(READ_ACCESS_REQUESTED(AccessMode))
             {
-              //fwprintf(stderr, L"CreateFile REG OPEN_EXISTING ceph_open ACL READ [%s]\n", FileName);
+              //fwprintf(stderr, L"CreateFile REG OPEN_EXISTING ceph_open ACL READ [%ls]\n", FileName);
               if(g_UseACL)
               {
                 /* permission check*/
@@ -486,7 +495,7 @@ WinCephCreateFile(
 
             if(WRITE_ACCESS_REQUESTED(AccessMode))
             {
-              //fwprintf(stderr, L"CreateFile REG OPEN_EXISTING ceph_open ACL WRITE [%s]\n", FileName);
+              //fwprintf(stderr, L"CreateFile REG OPEN_EXISTING ceph_open ACL WRITE [%ls]\n", FileName);
               if(g_UseACL)
               {
                 /* permission check*/
@@ -502,12 +511,12 @@ WinCephCreateFile(
               fd = ceph_open(cmount, file_name, O_RDWR, 0755);
             if(fd<0){
               DbgPrint("\terror code = %d\n\n", fd);
-              fwprintf(stderr, L"CreateFile ceph_open REG OPEN_EXISTING error [%s][ret=%d]\n", FileName, fd);
+              fwprintf(stderr, L"CreateFile ceph_open REG OPEN_EXISTING error [%ls][ret=%d]\n", FileName, fd);
               return fd;
             }
             fdc.fd = fd;
             memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-            /*fwprintf(stderr, L"CreateFile ceph_open REG OPEN_EXISTING OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+            /*fwprintf(stderr, L"CreateFile ceph_open REG OPEN_EXISTING OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
               (int)DokanFileInfo->Context);*/
 
             return 0;
@@ -524,13 +533,13 @@ WinCephCreateFile(
             fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
             if(fd<0){
               DbgPrint("\terror code = %d\n\n", fd);
-              fwprintf(stderr, L"CreateFile ceph_open error REG CREATE_ALWAYS [%s][ret=%d]\n", FileName, fd);
+              fwprintf(stderr, L"CreateFile ceph_open error REG CREATE_ALWAYS [%ls][ret=%d]\n", FileName, fd);
               return fd;
             }
 
             fdc.fd = fd;
             memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-            //fwprintf(stderr, L"CreateFile ceph_open REG CREATE_ALWAYS OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+            //fwprintf(stderr, L"CreateFile ceph_open REG CREATE_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
             //  (int)DokanFileInfo->Context);
 
             return ERROR_ALREADY_EXISTS;
@@ -538,7 +547,7 @@ WinCephCreateFile(
       }
       else if(S_ISDIR(st_buf.st_mode))
       {
-        //DokanFileInfo->IsDirectory = TRUE;
+        DokanFileInfo->IsDirectory = TRUE;
 
         switch (CreationDisposition) {
           case CREATE_NEW:
@@ -546,9 +555,8 @@ WinCephCreateFile(
           case TRUNCATE_EXISTING:
             return 0;
           case OPEN_ALWAYS:
-            return ERROR_ALREADY_EXISTS;
           case OPEN_EXISTING:
-            return 0;
+            return WinCephOpenDirectory(FileName, DokanFileInfo);
           case CREATE_ALWAYS:
             return ERROR_ALREADY_EXISTS;
         }
@@ -557,6 +565,12 @@ WinCephCreateFile(
     }
     else /*File Not Exists*/
     {
+      if(DokanFileInfo->IsDirectory)
+      {
+        // TODO: check create disposition. First, we should probably drop
+        // duplicated code.
+        return WinCephCreateDirectory(FileName, DokanFileInfo);
+      }
       switch (CreationDisposition) {
         case CREATE_NEW:
           //create & return 0
@@ -571,13 +585,13 @@ WinCephCreateFile(
           fd = ceph_open(cmount, file_name, O_CREAT|O_RDWR|O_EXCL, 0755);
           if(fd<0){
             DbgPrint("\terror code = %d\n\n", fd);
-            fwprintf(stderr, L"CreateFile NOF CREATE_NEW ceph_open error [%s][ret=%d]\n", FileName, fd);
+            fwprintf(stderr, L"CreateFile NOF CREATE_NEW ceph_open error [%ls][ret=%d]\n", FileName, fd);
             return -1;
           }
 
           fdc.fd = fd;
           memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          //fwprintf(stderr, L"CreateFile ceph_open NOF CREATE_NEW OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+          //fwprintf(stderr, L"CreateFile ceph_open NOF CREATE_NEW OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           //  (int)DokanFileInfo->Context);
 
           ceph_chown(cmount, file_name, g_UID, g_GID);
@@ -596,13 +610,13 @@ WinCephCreateFile(
           fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
           if(fd<0){
             DbgPrint("\terror code = %d\n\n", fd);
-            fwprintf(stderr, L"CreateFile NOF CREATE_ALWAYS ceph_open error [%s][ret=%d]\n", FileName, fd);
+            fwprintf(stderr, L"CreateFile NOF CREATE_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
             return -1;
           }
 
           fdc.fd = fd;
           memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          //fwprintf(stderr, L"CreateFile ceph_open NOF CREATE_ALWAYS_ALWAYS OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+          //fwprintf(stderr, L"CreateFile ceph_open NOF CREATE_ALWAYS_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           //  (int)DokanFileInfo->Context);
 
           ceph_chown(cmount, file_name, g_UID, g_GID);
@@ -620,13 +634,13 @@ WinCephCreateFile(
           fd = ceph_open(cmount, file_name, O_CREAT|O_RDWR, 0755);
           if(fd<=0){
             DbgPrint("\terror code = %d\n\n", fd);
-            fwprintf(stderr, L"CreateFile REG NOF OPEN_ALWAYS ceph_open error [%s][ret=%d]\n", FileName, fd);
+            fwprintf(stderr, L"CreateFile REG NOF OPEN_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
             return -1;
           }
 
           fdc.fd = fd;
           memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          //fwprintf(stderr, L"CreateFile ceph_open REG NOF OPEN_ALWAYS OK [%s][fd=%d][Context=%d]\n", FileName, fd,
+          //fwprintf(stderr, L"CreateFile ceph_open REG NOF OPEN_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           //  (int)DokanFileInfo->Context);
 
           ceph_chown(cmount, file_name, g_UID, g_GID);
@@ -646,9 +660,7 @@ WinCephCreateFile(
   return -1;
 }
 
-
-// TODO: remove this as it's not used by Dokany.
-static int
+int
 WinCephCreateDirectory(
   LPCWSTR          FileName,
   PDOKAN_FILE_INFO    DokanFileInfo)
@@ -656,14 +668,14 @@ WinCephCreateDirectory(
   WCHAR filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"CreateDirectory : %s\n", filePath);
+  DbgPrintW(L"CreateDirectory : %ls\n", filePath);
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  //fwprintf(stderr, L"CreateDirectory : %s\n", filePath);
+  //fwprintf(stderr, L"CreateDirectory : %ls\n", filePath);
   if(strcmp(file_name, "/")==0)
   {
     return 0;
@@ -682,7 +694,7 @@ WinCephCreateDirectory(
   int ret = ceph_stat(cmount, file_name, &st_buf);
   if(ret==0){
     if(S_ISDIR(st_buf.st_mode)){
-      fwprintf(stderr, L"CreateDirectory ceph_mkdir EXISTS [%s][ret=%d]\n", FileName, ret);
+      fwprintf(stderr, L"CreateDirectory ceph_mkdir EXISTS [%ls][ret=%d]\n", FileName, ret);
       return -ERROR_ALREADY_EXISTS;
     }
   }
@@ -690,23 +702,22 @@ WinCephCreateDirectory(
   ret = ceph_mkdir(cmount, file_name, 0755);
   if(ret == -2)
   {
-    fwprintf(stderr, L"CreateDirectory ceph_mkdir ENOENT [%s][ret=%d]\n", FileName, ret);
+    fwprintf(stderr, L"CreateDirectory ceph_mkdir ENOENT [%ls][ret=%d]\n", FileName, ret);
     return -ERROR_PATH_NOT_FOUND;
   }else if(ret){
     DbgPrint("\terror code = %d\n\n", ret);
-    fwprintf(stderr, L"CreateDirectory ceph_mkdir ERROR [%s][ret=%d]\n", FileName, ret);
+    fwprintf(stderr, L"CreateDirectory ceph_mkdir ERROR [%ls][ret=%d]\n", FileName, ret);
     return -5;
   }
 
   if(g_UseACL){
-	  ceph_chown(cmount, file_name, g_UID, g_GID);
-	  fuse_init_acl(cmount, file_name, 0040777); //S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
-	}
+    ceph_chown(cmount, file_name, g_UID, g_GID);
+    fuse_init_acl(cmount, file_name, 0040777); //S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
+  }
   return 0;
 }
 
-// TODO: remove this as it's not used by Dokany.
-static int
+int
 WinCephOpenDirectory(
   LPCWSTR          FileName,
   PDOKAN_FILE_INFO    DokanFileInfo)
@@ -717,20 +728,20 @@ WinCephOpenDirectory(
   //GetFilePath(filePath, MAX_PATH_CEPH, FileName);
   wcscpy(filePath, FileName);
 
-  DbgPrintW(L"OpenDirectory : %s\n", filePath);
+  DbgPrintW(L"OpenDirectory : %ls\n", filePath);
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, filePath, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  //fwprintf(stderr, L"OpenDirectoryLinux : %s\n", FileName);
+  //fwprintf(stderr, L"OpenDirectoryLinux : %ls\n", FileName);
 
   struct stat st_buf;
   int ret = ceph_stat(cmount, file_name, &st_buf);
   if(ret){
     DbgPrint("\terror code = %d\n\n", ret);
-    fwprintf(stderr, L"OpenDirectory ceph_stat ERROR [%s][ret=%d]\n", FileName, ret);
+    fwprintf(stderr, L"OpenDirectory ceph_stat ERROR [%ls][ret=%d]\n", FileName, ret);
     return -1;
   }
 
@@ -747,7 +758,7 @@ WinCephOpenDirectory(
     int fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
     if(fd <= 0){
       DbgPrint("OpenDirectory ceph_opendir error : %s [%d]\n", filePath, ret);
-      fwprintf(stderr, L"OpenDirectory ceph_opendir error : %s [fd:%d]\n", FileName, fd);
+      fwprintf(stderr, L"OpenDirectory ceph_opendir error : %ls [fd:%d]\n", FileName, fd);
       return -1;
     }
 
@@ -778,7 +789,7 @@ WinCephCloseFile(
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   if (DokanFileInfo->Context) {
-    DbgPrintW(L"CloseFile: %s\n", filePath);
+    DbgPrintW(L"CloseFile: %ls\n", filePath);
     DbgPrintW(L"\terror : not cleanuped file\n\n");
 
     char file_name[MAX_PATH_CEPH];
@@ -788,7 +799,7 @@ WinCephCloseFile(
     struct fd_context fdc;
     memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
 
-    //fwprintf(stderr, L"ceph_close [%s][fd=%d]\n", FileName, fd);
+    //fwprintf(stderr, L"ceph_close [%ls][fd=%d]\n", FileName, fd);
 
     int ret = ceph_close(cmount, fdc.fd);
     if(ret){
@@ -808,11 +819,11 @@ WinCephCloseFile(
         } else {
           DbgPrintW(L"DeleteOnClose ceph_unlink success\n\n");
         }
-        fwprintf(stderr, L"fdc.delete_on_close [%s]\n", FileName);
+        fwprintf(stderr, L"fdc.delete_on_close [%ls]\n", FileName);
       }
     }
   } else {
-    DbgPrintW(L"Close: %s\n\tinvalid handle\n\n", filePath);
+    DbgPrintW(L"Close: %ls\n\tinvalid handle\n\n", filePath);
     return 0;
   }
 
@@ -838,10 +849,10 @@ WinCephCleanup(
   if (DokanFileInfo->Context) {
     if (DokanFileInfo->DeleteOnClose) {
       DbgPrintW(L"\tDeleteOnClose\n");
-      //fwprintf(stderr, L"Cleanup DeleteOnClose: %s\n", filePath);
+      //fwprintf(stderr, L"Cleanup DeleteOnClose: %ls\n", filePath);
       if (DokanFileInfo->IsDirectory) {
         DbgPrintW(L"  DeleteDirectory ");
-        //fwprintf(stderr, L"cleanup ceph_rmdir [%s]\n", FileName);
+        //fwprintf(stderr, L"cleanup ceph_rmdir [%ls]\n", FileName);
         int ret = ceph_rmdir(cmount, file_name);
         if (ret != 0) {
           DbgPrintW(L"error code = %d\n\n", ret);
@@ -850,7 +861,7 @@ WinCephCleanup(
         }
       } else {
         DbgPrintW(L"  DeleteFile ");
-        //fwprintf(stderr, L"cleanup ceph_unlink [%s]\n", FileName);
+        //fwprintf(stderr, L"cleanup ceph_unlink [%ls]\n", FileName);
         int ret = ceph_unlink(cmount, file_name);
         if (ret != 0) {
           DbgPrintW(L" error code = %d\n\n", ret);
@@ -861,7 +872,7 @@ WinCephCleanup(
     }
 
   } else {
-    DbgPrintW(L"Cleanup: %s\n\tinvalid handle\n\n", filePath);
+    DbgPrintW(L"Cleanup: %ls\n\tinvalid handle\n\n", filePath);
     return -1;
   }
 
@@ -882,7 +893,7 @@ WinCephReadFile(
   BOOL  opened = FALSE;
   if(Offset > 1024*1024*1024*1024LL || Offset < 0 || BufferLength < 0
       || BufferLength > 128*1024*1024){
-    fwprintf(stderr, L"FIlE WIRTE TOO LARGE [fn:%s][Offset=%lld][BufferLength=%ld]\n",FileName, Offset, BufferLength);
+    fwprintf(stderr, L"FIlE WIRTE TOO LARGE [fn:%ls][Offset=%lld][BufferLength=%ld]\n",FileName, Offset, BufferLength);
     return -1; //ERROR_FILE_TOO_LARGE
   }
   if(BufferLength == 0)
@@ -893,7 +904,7 @@ WinCephReadFile(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"ReadFile : %s\n", filePath);
+  DbgPrintW(L"ReadFile : %ls\n", filePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -903,7 +914,7 @@ WinCephReadFile(
 
   if(BufferLength == 0)
   {
-    fwprintf(stderr, L"ceph_read BufferLength==0 [fn:%s][Offset=%ld]\n",FileName, Offset);
+    fwprintf(stderr, L"ceph_read BufferLength==0 [fn:%ls][Offset=%ld]\n",FileName, Offset);
     *ReadLength = 0;
     return 0;
   }
@@ -916,12 +927,12 @@ WinCephReadFile(
     int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
     ToLinuxFilePath(file_name);
 
-    fwprintf(stderr, L"ceph_read reopen fd [fn:%s][Offset=%ld]\n", FileName, Offset);
+    fwprintf(stderr, L"ceph_read reopen fd [fn:%ls][Offset=%ld]\n", FileName, Offset);
 
     int fd_new = ceph_open(cmount, file_name, O_RDONLY, 0);
     if(fd_new < 0)
     {
-      fwprintf(stderr, L"ceph_read reopen fd [fn:%s][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
+      fwprintf(stderr, L"ceph_read reopen fd [fn:%ls][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
       return -1;
     }
 
@@ -963,7 +974,7 @@ WinCephWriteFile(
   WCHAR  filePath[MAX_PATH_CEPH];
   if(Offset > 1024*1024*1024*1024LL || Offset < 0 || NumberOfBytesToWrite < 0
       || NumberOfBytesToWrite > 128*1024*1024){
-    fwprintf(stderr, L"FIlE WIRTE TOO LARGE [fn:%s][Offset=%lld][NumberOfBytesToWrite=%ld]\n", FileName, Offset, NumberOfBytesToWrite);
+    fwprintf(stderr, L"FIlE WIRTE TOO LARGE [fn:%ls][Offset=%lld][NumberOfBytesToWrite=%ld]\n", FileName, Offset, NumberOfBytesToWrite);
     return -1; //ERROR_FILE_TOO_LARGE
   }
   if(NumberOfBytesToWrite == 0)
@@ -973,7 +984,7 @@ WinCephWriteFile(
   }
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
-  DbgPrintW(L"WriteFile : %s, offset %I64d, length %d\n", filePath, Offset, NumberOfBytesToWrite);
+  DbgPrintW(L"WriteFile : %ls, offset %I64d, length %d\n", filePath, Offset, NumberOfBytesToWrite);
 
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -991,19 +1002,19 @@ WinCephWriteFile(
     int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
     ToLinuxFilePath(file_name);
 
-    fwprintf(stderr, L"ceph_write reopen fd [fn:%s][Offset=%ld]\n",FileName, Offset);
+    fwprintf(stderr, L"ceph_write reopen fd [fn:%ls][Offset=%ld]\n",FileName, Offset);
 
     int fd_new = ceph_open(cmount, file_name, O_RDONLY, 0);
     if(fd_new < 0)
     {
-      fwprintf(stderr, L"ceph_write reopen fd [fn:%s][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
+      fwprintf(stderr, L"ceph_write reopen fd [fn:%ls][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
       return -1;
     }
 
     int ret = ceph_write(cmount, fd_new, Buffer, NumberOfBytesToWrite, Offset);
     if(ret<0)
     {
-      fwprintf(stderr, L"ceph_write IO error [fn:%s][fd=%d][Offset=%lld][Length=%ld]\n", FileName, fd_new, Offset, NumberOfBytesToWrite);
+      fwprintf(stderr, L"ceph_write IO error [fn:%ls][fd=%d][Offset=%lld][Length=%ld]\n", FileName, fd_new, Offset, NumberOfBytesToWrite);
       ceph_close(cmount, fd_new);
       return ret;
     }
@@ -1016,7 +1027,7 @@ WinCephWriteFile(
     int ret = ceph_write(cmount, fdc.fd, Buffer, NumberOfBytesToWrite, Offset);
     if(ret<0)
     {
-      fwprintf(stderr, L"ceph_write IO error [fn:%s][fd=%d][Offset=%lld][Length=%ld]\n", FileName, fdc.fd, Offset, NumberOfBytesToWrite);
+      fwprintf(stderr, L"ceph_write IO error [fn:%ls][fd=%d][Offset=%lld][Length=%ld]\n", FileName, fdc.fd, Offset, NumberOfBytesToWrite);
       return ret;
     }
     *NumberOfBytesWritten = ret;
@@ -1035,8 +1046,8 @@ WinCephFlushFileBuffers(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"FlushFileBuffers : %s\n", filePath);
-  fwprintf(stderr, L"FlushFileBuffers : %s\n", filePath);
+  DbgPrintW(L"FlushFileBuffers : %ls\n", filePath);
+  fwprintf(stderr, L"FlushFileBuffers : %ls\n", filePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1047,13 +1058,13 @@ WinCephFlushFileBuffers(
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
   if(fdc.fd==0){
-    fwprintf(stderr, L"ceph_sync FD error [%s] fdc is NULL\n", FileName);
+    fwprintf(stderr, L"ceph_sync FD error [%ls] fdc is NULL\n", FileName);
     return -1;
   }
 
   int ret = ceph_fsync(cmount, fdc.fd, 0);
   if(ret){
-    fwprintf(stderr, L"ceph_sync error [%s][%df]\n", FileName, fdc.fd);
+    fwprintf(stderr, L"ceph_sync error [%ls][%df]\n", FileName, fdc.fd);
     return -1;
   }
 
@@ -1071,7 +1082,7 @@ WinCephGetFileInformation(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"GetFileInfo : %s\n", filePath);
+  DbgPrintW(L"GetFileInfo : %ls\n", filePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1087,18 +1098,18 @@ WinCephGetFileInformation(
   if (fdc.fd==0) {
     int ret = ceph_stat(cmount, file_name, &stbuf);
     if(ret){
-      //fwprintf(stderr, L"GetFileInformation ceph_stat error [%s]\n", FileName);
+      //fwprintf(stderr, L"GetFileInformation ceph_stat error [%ls]\n", FileName);
       return -1;
     }
   }else{
     int ret = ceph_fstat(cmount, fdc.fd, &stbuf);
     if(ret){
-      fwprintf(stderr, "GetFileInformation ceph_fstat error [%s]\n", FileName);
+      fwprintf(stderr, "GetFileInformation ceph_fstat error [%ls]\n", FileName);
       return -1;
     }
   }
 
-  //fwprintf(stderr, L"GetFileInformation1 [%s][size:%lld][time:%lld]\n", FileName, stbuf.st_size, stbuf.st_mtim.tv_sec);
+  //fwprintf(stderr, L"GetFileInformation1 [%ls][size:%lld][time:%lld]\n", FileName, stbuf.st_size, stbuf.st_mtim.tv_sec);
   //fill stbuf.st_size
   HandleFileInformation->nFileSizeLow = (stbuf.st_size << 32)>>32;
   HandleFileInformation->nFileSizeHigh = stbuf.st_size >> 32;
@@ -1108,7 +1119,7 @@ WinCephGetFileInformation(
   UnixTimeToFileTime(stbuf.st_mtime, &HandleFileInformation->ftLastAccessTime);
   UnixTimeToFileTime(stbuf.st_mtime, &HandleFileInformation->ftLastWriteTime);
 
-  //fwprintf(stderr, L"GetFileInformation6 [%s][size:%lld][time a:%lld m:%lld c:%lld]\n",
+  //fwprintf(stderr, L"GetFileInformation6 [%ls][size:%lld][time a:%lld m:%lld c:%lld]\n",
   //  FileName, stbuf.st_size, stbuf.st_atim.tv_sec, stbuf.st_mtim.tv_sec, stbuf.st_ctim.tv_sec);
 
   //fill stbuf.st_mode
@@ -1149,14 +1160,14 @@ WinCephFindFiles(
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   wcscat(filePath, yenStar);
-  DbgPrintW(L"FindFiles :%s\n", filePath);
+  DbgPrintW(L"FindFiles :%ls\n", filePath);
 
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
 
   ToLinuxFilePath(file_name);
 
-  //fwprintf(stderr, L"FindFiles ceph_opendir : [%s]\n", FileName);
+  //fwprintf(stderr, L"FindFiles ceph_opendir : [%ls]\n", FileName);
 
   if(g_UseACL)
   {
@@ -1170,11 +1181,11 @@ WinCephFindFiles(
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
   if(ret != 0){
-    fwprintf(stderr, L"ceph_opendir error : %s [%d]\n", FileName, ret);
+    fwprintf(stderr, L"ceph_opendir error : %ls [%d]\n", FileName, ret);
     return -1;
   }
 
-  //fwprintf(stderr, L"FindFiles ceph_opendir OK: %s\n", FileName);
+  //fwprintf(stderr, L"FindFiles ceph_opendir OK: %ls\n", FileName);
 
   while(1)
   {
@@ -1226,14 +1237,14 @@ WinCephFindFiles(
 
     FillFindData(&findData, DokanFileInfo);
     count++;
-    DbgPrintW(L"findData.cFileName is [%s]\n", findData.cFileName);
+    DbgPrintW(L"findData.cFileName is [%ls]\n", findData.cFileName);
 
     //fprintf(stderr, "ceph_readdir [%d][%s]\n", count, result.d_name);
   }
 
   ret = ceph_closedir(cmount, dirp);
 
-  DbgPrintW(L"\tFindFiles return %d entries in %s\n\n", count, filePath);
+  DbgPrintW(L"\tFindFiles return %d entries in %ls\n\n", count, filePath);
 
   return 0;
 }
@@ -1248,7 +1259,7 @@ WinCephDeleteFile(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"DeleteFile %s\n", filePath);
+  DbgPrintW(L"DeleteFile %ls\n", filePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1265,7 +1276,7 @@ WinCephDeleteFile(
       return -ERROR_ACCESS_DENIED;
   }
 
-  //fwprintf(stderr, L"ceph_unlink [%s]\n", FileName);
+  //fwprintf(stderr, L"ceph_unlink [%ls]\n", FileName);
   return 0;
 }
 
@@ -1282,7 +1293,7 @@ WinCephDeleteDirectory(
   ZeroMemory(filePath, sizeof(filePath));
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"DeleteDirectory %s\n", filePath);
+  DbgPrintW(L"DeleteDirectory %ls\n", filePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1290,7 +1301,7 @@ WinCephDeleteDirectory(
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  //fwprintf(stderr, L"DeleteDirectory ceph_rmdir [%s]\n", FileName);
+  //fwprintf(stderr, L"DeleteDirectory ceph_rmdir [%ls]\n", FileName);
 
   if(g_UseACL)
   {
@@ -1304,11 +1315,11 @@ WinCephDeleteDirectory(
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
   if(ret != 0){
-    fwprintf(stderr, L"ceph_opendir error : %s [%d]\n", FileName, ret);
+    fwprintf(stderr, L"ceph_opendir error : %ls [%d]\n", FileName, ret);
     return -1;
   }
 
-  //fwprintf(stderr, L"DeleteDirectory ceph_opendir OK: %s\n", FileName);
+  //fwprintf(stderr, L"DeleteDirectory ceph_opendir OK: %ls\n", FileName);
 
   while(1)
   {
@@ -1320,7 +1331,7 @@ WinCephDeleteDirectory(
         && strcmp(result->d_name, "..")!=0)
       {
         ceph_closedir(cmount, dirp);
-        DbgPrintW(L"  Directory is not empty: %s\n", findData.cFileName);
+        DbgPrintW(L"  Directory is not empty: %ls\n", findData.cFileName);
         return -(int)ERROR_DIR_NOT_EMPTY;
       }
     }else break;
@@ -1345,7 +1356,7 @@ WinCephMoveFile(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
   GetFilePath(newFilePath, MAX_PATH_CEPH, NewFileName);
 
-  DbgPrintW(L"MoveFile %s -> %s\n\n", filePath, newFilePath);
+  DbgPrintW(L"MoveFile %ls -> %ls\n\n", filePath, newFilePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1357,7 +1368,7 @@ WinCephMoveFile(
   len = wchar_to_char(newfile_name, NewFileName, MAX_PATH_CEPH);
   ToLinuxFilePath(newfile_name);
 
-  //fwprintf(stderr, L"MoveFile ceph_rename [%s][%s]\n", FileName, NewFileName);
+  //fwprintf(stderr, L"MoveFile ceph_rename [%ls][%ls]\n", FileName, NewFileName);
   if(g_UseACL)
   {
     /* permission check*/
@@ -1390,8 +1401,8 @@ WinCephLockFile(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"LockFile %s\n", filePath);
-  fwprintf(stderr, L"LockFile %s [offset:%lld][len:%lld]\n", filePath,ByteOffset,Length);
+  DbgPrintW(L"LockFile %ls\n", filePath);
+  fwprintf(stderr, L"LockFile %ls [offset:%lld][len:%lld]\n", filePath,ByteOffset,Length);
 
   return 0;
 }
@@ -1408,8 +1419,8 @@ WinCephSetEndOfFile(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"SetEndOfFile %s, %I64d\n", filePath, ByteOffset);
-  //fwprintf(stderr, L"SetEndOfFile %s, %I64d\n", filePath, ByteOffset);
+  DbgPrintW(L"SetEndOfFile %ls, %I64d\n", filePath, ByteOffset);
+  //fwprintf(stderr, L"SetEndOfFile %ls, %I64d\n", filePath, ByteOffset);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1421,15 +1432,15 @@ WinCephSetEndOfFile(
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
   if (fdc.fd==0) {
     DbgPrintW(L"\tinvalid handle\n\n");
-    fwprintf(stderr, L"SetEndOfFile fdc is NULL [%s]\n", FileName);
+    fwprintf(stderr, L"SetEndOfFile fdc is NULL [%ls]\n", FileName);
     return -1;
   }
 
-  //fwprintf(stderr, L"SetEndOfFile [%s][%d][ByteOffset:%lld]\n", FileName, fdc.fd, ByteOffset);
+  //fwprintf(stderr, L"SetEndOfFile [%ls][%d][ByteOffset:%lld]\n", FileName, fdc.fd, ByteOffset);
 
   int ret = ceph_ftruncate(cmount, fdc.fd, ByteOffset);
   if(ret){
-    fwprintf(stderr, L"SetEndOfFile ceph_ftruncate error [%s][%d][ByteOffset:%lld]\n", FileName, ret, ByteOffset);
+    fwprintf(stderr, L"SetEndOfFile ceph_ftruncate error [%ls][%d][ByteOffset:%lld]\n", FileName, ret, ByteOffset);
     return -1;
   }
 
@@ -1438,8 +1449,8 @@ WinCephSetEndOfFile(
 
 static int
 WinCephSetAllocationSize(
-  LPCWSTR        FileName,
-  LONGLONG      AllocSize,
+  LPCWSTR           FileName,
+  LONGLONG          AllocSize,
   PDOKAN_FILE_INFO  DokanFileInfo)
 {
   WCHAR      filePath[MAX_PATH_CEPH];
@@ -1449,8 +1460,8 @@ WinCephSetAllocationSize(
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
-  DbgPrintW(L"SetAllocationSize %s, %I64d\n", filePath, AllocSize);
-  //fwprintf(stderr,L"SetAllocationSize %s, %I64d\n", filePath, AllocSize);
+  DbgPrintW(L"SetAllocationSize %ls, %I64d\n", filePath, AllocSize);
+  //fwprintf(stderr,L"SetAllocationSize %ls, %I64d\n", filePath, AllocSize);
 
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -1460,30 +1471,30 @@ WinCephSetAllocationSize(
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
   if (fdc.fd==0) {
     DbgPrintW(L"\tinvalid handle\n\n");
-    fwprintf(stderr, L"SetAllocationSize fdc is NULL [%s]\n", FileName);
+    fwprintf(stderr, L"SetAllocationSize fdc is NULL [%ls]\n", FileName);
     return -1;
   }
 
-  fwprintf(stderr, L"SetAllocationSize [%s][%d][AllocSize:%lld]\n", FileName, fdc.fd, AllocSize);
+  fwprintf(stderr, L"SetAllocationSize [%ls][%d][AllocSize:%lld]\n", FileName, fdc.fd, AllocSize);
 
   struct stat stbuf;
   int ret = ceph_fstat(cmount, fdc.fd, &stbuf);
   if(ret){
-    fwprintf(stderr, L"SetAllocationSize ceph_stat error [%s][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
+    fwprintf(stderr, L"SetAllocationSize ceph_stat error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
     return -1;
   }
 
   if(AllocSize < stbuf.st_size){
     int ret = ceph_ftruncate(cmount, fdc.fd, AllocSize);
     if(ret){
-      fwprintf(stderr, L"SetAllocationSize ceph_ftruncate error [%s][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
+      fwprintf(stderr, L"SetAllocationSize ceph_ftruncate error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
       return -1;
     }
 
     return 0;
   }
   else{
-    //fwprintf(stderr, L"SetAllocationSize ceph_ftruncate EQUAL no need [%s][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
+    //fwprintf(stderr, L"SetAllocationSize ceph_ftruncate EQUAL no need [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
   }
 
   return 0;
@@ -1500,7 +1511,7 @@ WinCephSetFileAttributes(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"SetFileAttributes %s\n", filePath);
+  DbgPrintW(L"SetFileAttributes %ls\n", filePath);
 
   DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
@@ -1508,7 +1519,7 @@ WinCephSetFileAttributes(
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  //fwprintf(stderr, L"SetFileAttributes [%s][%d]\n", FileName, FileAttributes);
+  //fwprintf(stderr, L"SetFileAttributes [%ls][%d]\n", FileName, FileAttributes);
 
   return 0;
 }
@@ -1526,7 +1537,7 @@ WinCephSetFileTime(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"SetFileTime %s\n", filePath);
+  DbgPrintW(L"SetFileTime %ls\n", filePath);
 
   /*
     SetFileTime Call has some bug on Microsoft Office programs.
@@ -1559,11 +1570,11 @@ WinCephSetFileTime(
   //  FileTimeToUnixTime(*LastWriteTime, &stbuf.st_mtim.tv_sec);
   //}
 
-  //fwprintf(stderr, L"SetFileTime [%s][st_atim:%lld][st_mtim:%lld]\n", FileName, stbuf.st_atim.tv_sec, stbuf.st_mtim.tv_sec);
+  //fwprintf(stderr, L"SetFileTime [%ls][st_atim:%lld][st_mtim:%lld]\n", FileName, stbuf.st_atim.tv_sec, stbuf.st_mtim.tv_sec);
   //
   //int ret = ceph_setattr(cmount, file_name, &stbuf, mask);
   //if(ret){
-  //  fwprintf(stderr, L"SetFileTime ceph_setattr error [%s]\n", FileName);
+  //  fwprintf(stderr, L"SetFileTime ceph_setattr error [%ls]\n", FileName);
   //  return -1;
   //}
   DbgPrintW(L"\n");
@@ -1583,8 +1594,8 @@ WinCephUnlockFile(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"UnlockFile %s\n", filePath);
-  fwprintf(stderr, L"UnlockFile %s [offset:%lld][len:%lld]\n", filePath,ByteOffset,Length);
+  DbgPrintW(L"UnlockFile %ls\n", filePath);
+  fwprintf(stderr, L"UnlockFile %ls [offset:%lld][len:%lld]\n", filePath,ByteOffset,Length);
 
   return 0;
 }
@@ -1604,7 +1615,7 @@ WinCephGetFakeFileSecurity(
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"GetFileSecurity %s\n", filePath);
+  DbgPrintW(L"GetFileSecurity %ls\n", filePath);
 
   char file_name[MAX_PATH_CEPH];
   int len = wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -1613,7 +1624,7 @@ WinCephGetFakeFileSecurity(
   struct stat stbuf;
   int ret = ceph_stat(cmount, file_name, &stbuf);
   if(ret){
-    fwprintf(stderr, L"GetFileSecurity ceph_stat error [%s]\n", FileName);
+    fwprintf(stderr, L"GetFileSecurity ceph_stat error [%ls]\n", FileName);
     return 0;
   }
 
@@ -1628,7 +1639,7 @@ WinCephGetFakeFileSecurity(
       0,
       NULL);
     if (handle == INVALID_HANDLE_VALUE) {
-      DbgPrint(L"\tCreateFile error : %d\n\n", GetLastError());
+      DbgPrintW(L"\tCreateFile error : %d\n\n", GetLastError());
       return -1;
     }
     opened = TRUE;
@@ -1644,7 +1655,7 @@ WinCephGetFakeFileSecurity(
       FILE_FLAG_BACKUP_SEMANTICS,
       NULL);
     if (handle == INVALID_HANDLE_VALUE) {
-      DbgPrint(L"\tCreateFile error : %d\n\n", GetLastError());
+      DbgPrintW(L"\tCreateFile error : %d\n\n", GetLastError());
       return -1;
     }
     opened = TRUE;
@@ -1689,7 +1700,7 @@ WinCephGetFileSecurity(
   WCHAR  filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DbgPrintW(L"GetFileSecurity %s\n", filePath);
+  DbgPrintW(L"GetFileSecurity %ls\n", filePath);
 
   return WinCephGetFakeFileSecurity(FileName, SecurityInformation,
       SecurityDescriptor, BufferLength, LengthNeeded, DokanFileInfo);
@@ -1706,7 +1717,7 @@ WinCephSetFileSecurity(
   WCHAR filePath[MAX_PATH_CEPH];
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-  DbgPrintW(L"SetFileSecurity %s\n", filePath);
+  DbgPrintW(L"SetFileSecurity %ls\n", filePath);
 
   return 0;
 }
@@ -1858,7 +1869,7 @@ main(int argc, char* argv[])
   for (command = 0; command < argc; command++) {
     MultiByteToWideChar(CP_UTF8, 0, (LPCTSTR)argv[command], -1, wargv[command], 512);
     //fprintf(stderr,  "argv command:[%d] %s\n",command, argv[command]);
-    fwprintf(stderr, L"argv command:[%d] %s\n",command, wargv[command]);
+    fwprintf(stderr, L"argv command:[%d] %ls\n", command, wargv[command]);
   }
 
   wcscpy(Wargv0, wargv[0]);
@@ -1869,7 +1880,7 @@ main(int argc, char* argv[])
       command++;
       strcpy(ceph_conf_file, argv[command]);
       wcscpy(Wceph_conf_file, wargv[command]);
-      DbgPrintW(L"ceph_conf_file: %s\n", ceph_conf_file);
+      DbgPrintW(L"ceph_conf_file: %ls\n", ceph_conf_file);
       break;
     case L'l':
       command++;
@@ -1908,7 +1919,7 @@ main(int argc, char* argv[])
       strcpy(sub_mount_path, argv[command]);
       break;
     default:
-      fwprintf(stderr, L"unknown command: %s\n", wargv[command]);
+      fwprintf(stderr, L"unknown command: %ls\n", wargv[command]);
       return -1;
     }
   }
