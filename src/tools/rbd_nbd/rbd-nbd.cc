@@ -41,6 +41,21 @@
 #include <libnl3/netlink/genl/mngt.h>
 #else
 #include "nbd-win32.h"
+#include <winsock2.h>
+#include <windows.h>
+#include <winioctl.h>
+#include <shlobj.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <winioctl.h>
+#include "wnbdvmcfg.h"
+#include "wnbdvmuserioctl.h"
+#include "wnbdspintf.h"
+#include <ntddscsi.h>
+#include <setupapi.h>
+#include <string.h>
+
+#include "wnbd.h"
 #endif
 
 #include <fstream>
@@ -64,6 +79,8 @@
 
 #include "global/global_init.h"
 #ifndef _WIN32
+
+#pragma comment(lib,"setupapi.lib")
 #include "global/signal_handler.h"
 #endif
 
@@ -100,6 +117,37 @@ struct Config {
   bool pretty_format = false;
 };
 
+#ifdef _WIN32
+
+DWORD wnbdDisconnect(CHAR* instanceName);
+DWORD wnbdConnect(
+  CHAR* PathName, CHAR* HostName, CHAR* PortName,
+  CHAR* ExportName, uint64_t DiskSizeMB, BOOLEAN Removable);
+
+
+void printerror(char* Prefix)
+{
+    LPVOID lpMsgBuf;
+
+    FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_SYSTEM |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        GetLastError(),
+        0,
+        (LPTSTR) &lpMsgBuf,
+        0,
+        NULL
+        );
+
+    fprintf(stderr, "%s: %s", Prefix, (LPTSTR) lpMsgBuf);
+
+    LocalFree(lpMsgBuf);
+}
+
+#endif
+
 static void usage()
 {
   std::cout << "Usage: rbd-nbd [options] map <image-or-snap-spec>  Map an image to nbd device\n"
@@ -126,7 +174,7 @@ static void usage()
 typedef HANDLE NBD_FD_TYPE;
 #define nbd_close CloseHandle
 
-int do_ioctl(HANDLE d, int request, unsigned long argp) {
+int do_ioctl(HANDLE d, int request, uint64_t argp) {
     // TODO: check if we need an output buffer. Also, do we pass
     // just the argp pointer as input buffer with a null size or
     // should the input buffer point to argp?
@@ -138,7 +186,7 @@ int do_ioctl(HANDLE d, int request, unsigned long argp) {
                         NULL, 0, &bytes_returned, NULL)) {
         // derr << "ioctl(" << d << ", " << request << ", " << argp
         //      << ") failed. Error: " << GetLastError();
-        return -1;
+        return 0;
     }
 
     return 0;
@@ -311,14 +359,21 @@ private:
 
   void reader_entry()
   {
+	  dout(20) << "imt reader_entry()" << dendl;
     while (!terminated) {
       std::unique_ptr<IOContext> ctx(new IOContext());
       ctx->server = this;
 
       dout(20) << __func__ << ": waiting for nbd request" << dendl;
 
+#ifdef _WIN32
+      int r = safe_recv_exact(fd, &ctx->request, sizeof(struct nbd_request));
+      if (r < 0) r = 0;
+#else
       int r = safe_read_exact(fd, &ctx->request, sizeof(struct nbd_request));
+#endif
       if (r < 0) {
+	derr << "failed to read R: " << r << dendl;
 	derr << "failed to read nbd request header: " << cpp_strerror(r)
 	     << dendl;
 	goto signal;
@@ -328,6 +383,8 @@ private:
 	derr << "invalid nbd request header" << dendl;
 	goto signal;
       }
+
+      dout(20) << "NBD_REQUEST_MAGIC ok" << dendl;
 
       ctx->request.from = ntohll(ctx->request.from);
       ctx->request.type = ntohl(ctx->request.type);
@@ -348,7 +405,12 @@ private:
           goto signal;
         case NBD_CMD_WRITE:
           bufferptr ptr(ctx->request.len);
+#ifdef _WIN32
+	  dout(20) << "NBD_CMD_WRITE ok" << dendl;
+	  r = safe_recv_exact(fd, ptr.c_str(), ctx->request.len);
+#else
 	  r = safe_read_exact(fd, ptr.c_str(), ctx->request.len);
+#endif
           if (r < 0) {
 	    derr << *ctx << ": failed to read nbd request data: "
 		 << cpp_strerror(r) << dendl;
@@ -359,6 +421,7 @@ private:
       }
 
       IOContext *pctx = ctx.release();
+      dout(20) << "NBD_CMD_WRITE ok" << dendl;
       io_start(pctx);
       librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(pctx, aio_callback);
       switch (pctx->command)
@@ -367,6 +430,7 @@ private:
           image.aio_write(pctx->request.from, pctx->request.len, pctx->data, c);
           break;
         case NBD_CMD_READ:
+	  dout(20) << "NBD_CMD_READ ok" << dendl;
           image.aio_read(pctx->request.from, pctx->request.len, pctx->data, c);
           break;
         case NBD_CMD_FLUSH:
@@ -381,6 +445,7 @@ private:
           goto signal;
       }
     }
+    dout(20) << "Terminated readomg" << dendl;
     dout(20) << __func__ << ": terminated" << dendl;
 
 signal:
@@ -390,6 +455,7 @@ signal:
 
   void writer_entry()
   {
+	  dout(20) << "imt writer_entry()" << dendl;
     while (!terminated) {
       dout(20) << __func__ << ": waiting for io request" << dendl;
       std::unique_ptr<IOContext> ctx(wait_io_finish());
@@ -400,14 +466,18 @@ signal:
 
       dout(20) << __func__ << ": got: " << *ctx << dendl;
 
+#ifdef _WIN32
+      int r = safe_send(fd, &ctx->reply, sizeof(struct nbd_reply));
+#else
       int r = safe_write(fd, &ctx->reply, sizeof(struct nbd_reply));
+#endif
       if (r < 0) {
 	derr << *ctx << ": failed to write reply header: " << cpp_strerror(r)
 	     << dendl;
         return;
       }
       if (ctx->command == NBD_CMD_READ && ctx->reply.error == htonl(0)) {
-	r = ctx->data.write_fd(fd);
+	r = ctx->data.send_fd(fd);
         if (r < 0) {
 	  derr << *ctx << ": failed to write replay data: " << cpp_strerror(r)
 	       << dendl;
@@ -517,14 +587,14 @@ private:
   bool use_netlink;
   librados::IoCtx &io_ctx;
   librbd::Image &image;
-  unsigned long size;
+  uint64_t size;
 public:
   NBDWatchCtx(NBD_FD_TYPE _fd,
               int _nbd_index,
               bool _use_netlink,
               librados::IoCtx &_io_ctx,
               librbd::Image &_image,
-              unsigned long _size)
+              uint64_t _size)
     : fd(_fd)
     , nbd_index(_nbd_index)
     , use_netlink(_use_netlink)
@@ -539,7 +609,7 @@ public:
   {
     librbd::image_info_t info;
     if (image.stat(info, sizeof(info)) == 0) {
-      unsigned long new_size = info.size;
+      uint64_t new_size = info.size;
       int ret;
 
       if (new_size != size) {
@@ -659,7 +729,7 @@ static int load_module(Config *cfg)
 
   if (!access("/sys/module/nbd", F_OK)) {
     if (cfg->nbds_max || cfg->set_max_part)
-      cerr << "rbd-nbd: ignoring kernel module parameter options: nbd module already loaded"
+      dout(20) << "rbd-nbd: ignoring kernel module parameter options: nbd module already loaded"
            << std::endl;
     return 0;
   }
@@ -672,13 +742,13 @@ static int load_module(Config *cfg)
   return ret;
 }
 
-static int check_device_size(int nbd_index, unsigned long expected_size)
+static int check_device_size(int nbd_index, uint64_t expected_size)
 {
   // There are bugs with some older kernel versions that result in an
   // overflow for large image sizes. This check is to ensure we are
   // not affected.
 
-  unsigned long size = 0;
+  uint64_t size = 0;
   std::string path = "/sys/block/nbd" + stringify(nbd_index) + "/size";
   std::ifstream ifs;
   ifs.open(path.c_str(), std::ifstream::in);
@@ -802,7 +872,7 @@ static int try_ioctl_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
   do_ioctl(nbd, NBD_SET_FLAGS, flags);
 
   if (cfg->timeout >= 0) {
-    r = do_ioctl(nbd, NBD_SET_TIMEOUT, (unsigned long)cfg->timeout);
+    r = do_ioctl(nbd, NBD_SET_TIMEOUT, (uint64_t)cfg->timeout);
     if (r < 0) {
       r = -errno;
       cerr << "rbd-nbd: failed to set timeout: " << cpp_strerror(r)
@@ -1125,7 +1195,7 @@ static int try_ioctl_setup(Config *cfg, int fd, uint64_t size, uint64_t flags)
   return -1;
 }
 
-static int check_device_size(int nbd_index, unsigned long expected_size)
+static int check_device_size(int nbd_index, uint64_t expected_size)
 {
   return 0;
 }
@@ -1185,6 +1255,7 @@ static NBDServer *start_server(int fd, librbd::Image& image)
 
 static int open_wnbd_device() {
   // TODO: open the right device.
+#if 0
   char* device_name = "\\\\.\\GLOBALROOT\\Device\\wnbd";
   nbd = CreateFileA(
     device_name,
@@ -1195,13 +1266,14 @@ static int open_wnbd_device() {
     FILE_ATTRIBUTE_NORMAL,
     NULL);
   if (nbd == INVALID_HANDLE_VALUE) {
-    cerr << "rbd-nbd: failed to open device: " << device_name << std::endl;
+    std::cerr << "rbd-nbd: failed to open device: " << device_name << endl;
     return -GetLastError();
-  }
+  }a
+#endif
   return 0;
 }
 
-static int initialize_wnbd_connection()
+static int initialize_wnbd_connection(Config *cfg, uint64_t size)
 {
   // On Windows, we can't pass socket descriptors to our driver. Instead,
   // we're going to open a tcp server and request the driver to connect to it.
@@ -1222,10 +1294,13 @@ static int initialize_wnbd_connection()
   a.inaddr.sin_family = AF_INET;
   a.inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   a.inaddr.sin_port = 0;
+  char yes='1';
 
   if(setsockopt(
       listener, SOL_SOCKET, SO_REUSEADDR,
       (char*) &reuse, (socklen_t) sizeof(reuse)) == -1)
+    goto error;
+  if (setsockopt(listener,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof(int)) == -1) 
     goto error;
   if(bind(listener, &a.addr, addrlen) == SOCKET_ERROR)
     goto error;
@@ -1234,13 +1309,23 @@ static int initialize_wnbd_connection()
   if(listen(listener, 1) == SOCKET_ERROR)
     goto error;
 
+  char port[100];
+  snprintf(port, 100, "%d", ntohs(a.inaddr.sin_port));
+  dout(20) << "Port Name: " << port << dendl;
+  char* hostname;
+  hostname = inet_ntoa(a.inaddr.sin_addr);
+  dout(20) << "Host Name: " << hostname << dendl;
+  if (cfg->devpath.empty()) {
+     cfg->devpath = "test" + stringify(port);
+  }
+  dout(20) << "Instance name: " << cfg->devpath.c_str() << dendl;
+  dout(20) << "Instance size: " << size << dendl;
   conn_info.Address = INADDR_LOOPBACK;
   conn_info.Port = a.inaddr.sin_port;
 
   DWORD bytes_returned;
-  if (!DeviceIoControl(nbd, NBD_WIN_CONNECT, &conn_info,
-                       sizeof(WIN_NBD_CONN_INFO),
-                       NULL, 0, &bytes_returned, NULL)) {
+
+  if (wnbdConnect(cfg->devpath.c_str(), hostname, port, "", size, FALSE)) {
     cerr << "Failed to initialize NBD connection. Error: " << GetLastError();
     goto error;
   }
@@ -1249,7 +1334,9 @@ static int initialize_wnbd_connection()
   if (conn == INVALID_SOCKET)
       goto error;
 
-  closesocket(listener);
+  dout(20) << "All good cu conectiunea" << dendl;
+
+  //closesocket(listener);
 
   return conn;
 
@@ -1260,10 +1347,13 @@ static int initialize_wnbd_connection()
 
 static void run_server(NBDServer *server, bool netlink_used)
 {
+dout(20) << "run_server(NBDServer *server, bool netlink_used)" << dendl;
   if (netlink_used)
     server->wait_for_disconnect();
   else
     do_ioctl(nbd, NBD_DO_IT, NULL);
+dout(20) << "after do_ioctl(nbd, NBD_DO_IT, NULL)" << dendl;
+server->wait_for_disconnect();
 
   #ifndef _WIN32
   unregister_async_signal_handler(SIGHUP, sighup_handler);
@@ -1271,6 +1361,7 @@ static void run_server(NBDServer *server, bool netlink_used)
   unregister_async_signal_handler(SIGTERM, handle_signal);
   shutdown_async_signal_handler();
   #endif
+dout(20) << "run_server_over" << dendl;
 }
 
 static int do_map(int argc, const char *argv[], Config *cfg)
@@ -1283,8 +1374,8 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   librbd::Image image;
 
   int read_only = 0;
-  unsigned long flags;
-  unsigned long size;
+  uint64_t flags;
+  uint64_t size;
   bool use_netlink;
 
   int fd[2];
@@ -1332,16 +1423,6 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   global_init_chdir(g_ceph_context);
 
   #ifdef _WIN32
-  if (open_wnbd_device() < -1) {
-    goto close_ret;
-  }
-
-  fd[0] = INVALID_HANDLE_VALUE;
-  fd[1] = initialize_wnbd_connection();
-  if (fd[1] < 0) {
-    r = -1;
-    goto close_ret;
-  }
   #else
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd) == -1) {
     r = -errno;
@@ -1392,10 +1473,10 @@ static int do_map(int argc, const char *argv[], Config *cfg)
     read_only = 1;
   }
 
-  if (info.size > ULONG_MAX) {
+  if (info.size > ULLONG_MAX) {
     r = -EFBIG;
     cerr << "rbd-nbd: image is too large (" << byte_u_t(info.size)
-         << ", max is " << byte_u_t(ULONG_MAX) << ")" << std::endl;
+         << ", max is " << byte_u_t(ULLONG_MAX) << ")" << std::endl;
     goto close_fd;
   }
 
@@ -1405,7 +1486,21 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   if (r < 0)
     goto close_fd;
 
+#ifdef _WIN32
+  if (open_wnbd_device() < -1) {
+    goto close_ret;
+  }
+
+  fd[0] = INVALID_HANDLE_VALUE;
+  fd[1] = initialize_wnbd_connection(cfg, size);
+  if (fd[1] < 0) {
+    r = -1;
+    goto close_ret;
+  }
+#endif
+
   server = start_server(fd[1], image);
+
 
   use_netlink = cfg->try_netlink;
   if (use_netlink) {
@@ -1416,7 +1511,7 @@ static int do_map(int argc, const char *argv[], Config *cfg)
       use_netlink = false;
     }
   }
-
+#if 0
   if (!use_netlink) {
     r = try_ioctl_setup(cfg, fd[0], size, flags);
     if (r < 0)
@@ -1427,22 +1522,28 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   if (r < 0)
     goto close_nbd;
 
-  r = do_ioctl(nbd, BLKROSET, (unsigned long) &read_only);
+  r = do_ioctl(nbd, BLKROSET, (uint64_t) &read_only);
   if (r < 0) {
     r = -errno;
     goto close_nbd;
   }
+#endif
 
   {
     uint64_t handle;
 
+    dout(20) << "nbd_index: " << nbd_index << dendl;
+
+    sscanf(cfg->devpath.c_str(), "/dev/nbd%d", &nbd_index);
+
     NBDWatchCtx watch_ctx(nbd, nbd_index, use_netlink, io_ctx, image,
                           info.size);
+    dout(20) << "nbd_index: " << nbd_index << dendl;
     r = image.update_watch(&watch_ctx, &handle);
     if (r < 0)
       goto close_nbd;
 
-    cout << cfg->devpath << std::endl;
+    cout << cfg->devpath.c_str() << std::endl;
 
     #ifndef _WIN32
     if (g_conf()->daemonize) {
@@ -1450,8 +1551,9 @@ static int do_map(int argc, const char *argv[], Config *cfg)
       forker.daemonize();
     }
     #endif
-
+dout(20) << "before run_server(server, use_netlink);" << dendl;
     run_server(server, use_netlink);
+dout(20) << "after run_server(server, use_netlink);" << dendl;
 
     r = image.update_unwatch(handle);
     ceph_assert(r == 0);
@@ -1467,12 +1569,13 @@ close_nbd:
 	   << std::endl;
     }
   }
+  dout(20) << "nbd_close" << dendl;
   nbd_close(nbd);
 free_server:
   delete server;
 close_fd:
-  compat_closesocket(fd[0]);
-  compat_closesocket(fd[1]);
+  //compat_closesocket(fd[0]);
+  //compat_closesocket(fd[1]);
 close_ret:
   image.close();
   io_ctx.close();
@@ -1493,21 +1596,30 @@ static int do_unmap(Config *cfg)
    * The netlink disconnect call supports devices setup with netlink or ioctl,
    * so we always try that first.
    */
-  r = netlink_disconnect_by_path(cfg->devpath);
-  if (r != 1)
-    return r;
+  dout(20) << "do_unmap" << dendl;
 
-  nbd = open(cfg->devpath.c_str(), O_RDWR);
-  if (nbd < 0) {
-    cerr << "rbd-nbd: failed to open device: " << cfg->devpath << std::endl;
-    return nbd;
-  }
+#ifdef _WIN32
+  	r = wnbdDisconnect(cfg->devpath.c_str());
+		if (r != 0) {
+					cerr << "rbd-nbd: failed to open device: " << cfg->devpath << std::endl;
+							return -r;
+								}
+#else
+		  r = netlink_disconnect_by_path(cfg->devpath);
+		    if (r != 1)
+			        return r;
 
-  r = do_ioctl(nbd, NBD_DISCONNECT, NULL);
-  if (r < 0) {
-      cerr << "rbd-nbd: the device is not used" << std::endl;
-  }
+		      nbd = open(cfg->devpath.c_str(), O_RDWR);
+		        if (nbd < 0) {
+				    cerr << "rbd-nbd: failed to open device: " << cfg->devpath << std::endl;
+				        return nbd;
+					  }
 
+			  r = do_ioctl(nbd, NBD_DISCONNECT, NULL);
+			    if (r < 0) {
+				          cerr << "rbd-nbd: the device is not used" << std::endl;
+					    }
+#endif
   nbd_close(nbd);
   return r;
 }
@@ -1804,3 +1916,409 @@ int main(int argc, const char *argv[])
   }
   return 0;
 }
+
+#ifdef _WIN32
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#undef THIS_FILE
+static char THIS_FILE[] = __FILE__;
+#endif
+
+#define IOCTL_MINIPORT_PROCESS_SERVICE_IRP CTL_CODE(IOCTL_SCSI_BASE,  0x040e, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+
+
+HANDLE
+ConnectToScsiPort(
+    VOID
+) {
+
+    HDEVINFO                         devInfo;
+    SP_DEVICE_INTERFACE_DATA         devInterfaceData;
+    PSP_DEVICE_INTERFACE_DETAIL_DATA devInterfaceDetailData = NULL;
+    ULONG                            devIndex;
+    ULONG                            requiredSize;
+    ULONG                            code;
+    HANDLE                           wnbdDriverHandle;
+    DWORD							 bytesReturned;
+    COMMAND_IN						 command;
+    BOOL							 devStatus;
+
+    //
+    // Open a handle to the device using the
+    //  device interface that the driver registers
+    //
+    //
+
+    //
+    // Get the device information set for all of the
+    //  devices of our class (the GUID we defined
+    //  in nothingioctl.h and registered in the driver
+    //  with DfwDeviceCreateDeviceInterface) that are present in the
+    //  system
+    //
+    devInfo = SetupDiGetClassDevs(&GUID_WNBD_VIRTUALMINIPORT /*GUID_DEVINTERFACE_STORAGEPORT*/,
+        NULL,
+        NULL,
+        DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (devInfo == INVALID_HANDLE_VALUE) {
+
+        printf("SetupDiGetClassDevs failed with error 0x%x\n", GetLastError());
+
+        return INVALID_HANDLE_VALUE;
+
+    }
+
+    //
+    // Now get information about each device installed...
+    //
+
+    //
+    // This needs to be set before calling
+    //  SetupDiEnumDeviceInterfaces
+    //
+    devInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+
+    //
+    // Start with the first device...
+    //
+    devIndex = 0;
+
+    while (SetupDiEnumDeviceInterfaces(devInfo,
+        NULL,
+        &GUID_WNBD_VIRTUALMINIPORT/*GUID_DEVINTERFACE_STORAGEPORT*/,
+        devIndex++,
+        &devInterfaceData)) {
+
+        //
+        // If you actually had a reason to keep
+        //  track of all the devices in the system
+        //  you obviously wouldn't want to just
+        //  throw these away. Since we're just
+        //  running through to print them out
+        //  and picking whatever the last one
+        //  is we'll alloc and free these
+        //  as we go...
+        //
+        if (devInterfaceDetailData != NULL) {
+
+            free(devInterfaceDetailData);
+
+            devInterfaceDetailData = NULL;
+
+        }
+
+        //
+        // The entire point of this exercise is
+        //  to get a string that we can hand to
+        //  CreateFile to get a handle to the device,
+        //  so we need to call SetupDiGetDeviceInterfaceDetail
+        //  (which will give us the string we need)
+        //
+
+        //
+        // First call it with a NULL output buffer to
+        //  get the number of bytes needed...
+        //
+        if (!SetupDiGetDeviceInterfaceDetail(devInfo,
+            &devInterfaceData,
+            NULL,
+            0,
+            &requiredSize,
+            NULL)) {
+
+            code = GetLastError();
+
+            //
+            // We're expecting ERROR_INSUFFICIENT_BUFFER.
+            //  If we get anything else there's something
+            //  wrong...
+            //
+            if (code != ERROR_INSUFFICIENT_BUFFER) {
+                printf("SetupDiGetDeviceInterfaceDetail failed with error 0x%x\n", code);
+
+                //
+                // Clean up the mess...
+                //
+                SetupDiDestroyDeviceInfoList(devInfo);
+
+                return INVALID_HANDLE_VALUE;
+
+            }
+
+        }
+
+        //
+        // Allocated a PSP_DEVICE_INTERFACE_DETAIL_DATA...
+        //
+        devInterfaceDetailData =
+            (PSP_DEVICE_INTERFACE_DETAIL_DATA)malloc(requiredSize);
+
+        if (!devInterfaceDetailData) {
+
+            printf("Unable to allocate resources...Exiting\n");
+
+            //
+            // Clean up the mess...
+            //
+            SetupDiDestroyDeviceInfoList(devInfo);
+
+            return INVALID_HANDLE_VALUE;
+
+        }
+
+        //
+        // This needs to be set before calling
+        //  SetupDiGetDeviceInterfaceDetail. You
+        //  would *think* that you should be setting
+        //  cbSize to requiredSize, but that's not the
+        //  case.
+        //
+        devInterfaceDetailData->cbSize =
+            sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+
+
+        if (!SetupDiGetDeviceInterfaceDetail(devInfo,
+            &devInterfaceData,
+            devInterfaceDetailData,
+            requiredSize,
+            &requiredSize,
+            NULL)) {
+
+            printf("SetupDiGetDeviceInterfaceDetail failed with error 0x%x\n", GetLastError());
+
+            //
+            // Clean up the mess...
+            //
+            SetupDiDestroyDeviceInfoList(devInfo);
+
+            free(devInterfaceDetailData);
+
+            return INVALID_HANDLE_VALUE;
+
+        }
+
+        //
+        // Got one!
+        //
+        printf("Device found! %s\n", devInterfaceDetailData->DevicePath);
+
+        printf("Opening device interface %s\n",
+            devInterfaceDetailData->DevicePath);
+
+        wnbdDriverHandle = CreateFile(devInterfaceDetailData->DevicePath,  // Name of the NT "device" to open
+            GENERIC_READ | GENERIC_WRITE,  // Access rights requested
+            0,                           // Share access - NONE
+            0,                           // Security attributes - not used!
+            OPEN_EXISTING,               // Device must exist to open it.
+            FILE_FLAG_OVERLAPPED,        // Open for overlapped I/O
+            0);                          // extended attributes - not used!
+
+        command.IoControlCode = IOCTL_WNBDVMPORT_SCSIPORT;
+
+        devStatus = DeviceIoControl(wnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
+            &command, sizeof(command), &command, sizeof(command), &bytesReturned, NULL);
+
+        if (!devStatus) {
+            DWORD error = GetLastError();
+            printf("\\\\.\\SCSI%s: error:%d.\n",
+                devInterfaceDetailData->DevicePath, error);
+            CloseHandle(wnbdDriverHandle);
+            wnbdDriverHandle = INVALID_HANDLE_VALUE;
+            printerror("wnbd-client");
+            continue;
+        }
+        else {
+            //
+            // Clean up the mess...
+            //
+            SetupDiDestroyDeviceInfoList(devInfo);
+
+            free(devInterfaceDetailData);
+            return wnbdDriverHandle;
+        }
+    }
+
+    code = GetLastError();
+
+    //
+    // We shouldn't get here until SetupDiGetDeviceInterfaceDetail
+    //  runs out of devices to enumerate
+    //
+    if (code != ERROR_NO_MORE_ITEMS) {
+
+        printf("SetupDiGetDeviceInterfaceDetail failed with error 0x%x\n", code);
+
+        //
+        // Clean up the mess...
+        //
+        SetupDiDestroyDeviceInfoList(devInfo);
+
+        free(devInterfaceDetailData);
+
+        return INVALID_HANDLE_VALUE;
+
+    }
+
+    SetupDiDestroyDeviceInfoList(devInfo);
+
+    if (devInterfaceDetailData == NULL) {
+
+        printf("Unable to find any Nothing devices!\n");
+
+        return INVALID_HANDLE_VALUE;
+
+    }
+    return INVALID_HANDLE_VALUE;
+
+}
+/* This function is a wrapper that transforms a char * into a wchar_t * */
+static boolean
+tranform_wide(char *name, wchar_t *wide_name)
+{
+    uint64_t size = strlen(name) + 1;
+    long long ret = 0;
+
+    if (wide_name == NULL) {
+        printf("Provided wide string is NULL\n");
+        return FALSE;
+    }
+
+    ret = mbstowcs(wide_name, name, size);
+
+    if (ret == -1) {
+        printf("Invalid multibyte character is encountered\n");
+        return FALSE;
+    } else if (ret == size) {
+        printf("Returned wide string not NULL terminated\n");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+DWORD wnbdConnect(
+  CHAR* PathName, CHAR* HostName, CHAR* PortName,
+  CHAR* ExportName, uint64_t DiskSizeMB, BOOLEAN Removable)
+{
+    CONNECT_IN  connectIn;
+    HANDLE      wnbdDriverHandle;
+    DWORD       status = ERROR_SUCCESS;
+    DWORD       bytesReturned;
+    BOOL		devStatus;
+    WCHAR pathName[MAX_NAME_LENGTH], hostName[MAX_NAME_LENGTH], portName[MAX_NAME_LENGTH], exportName[MAX_NAME_LENGTH];
+    if (!tranform_wide(PathName, pathName)) {
+        return ERROR_INVALID_PARAMETER;
+    }
+    if (!tranform_wide(HostName, hostName)) {
+        return ERROR_INVALID_PARAMETER;
+    }
+    if (!tranform_wide(PortName, portName)) {
+        return ERROR_INVALID_PARAMETER;
+    }
+    if (!tranform_wide(ExportName, exportName)) {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    memset(&connectIn, 0, sizeof(CONNECT_IN));
+
+    if (wcslen(pathName) > MAX_NAME_LENGTH) {
+
+        return ERROR_INVALID_PARAMETER;
+
+    }
+
+    wnbdDriverHandle = ConnectToScsiPort();
+
+    if (wnbdDriverHandle == INVALID_HANDLE_VALUE) {
+
+        status = GetLastError();
+        OutputDebugString("Unable to connect to WNBD Scsi Port Connection Manager.\n");
+
+        return status;
+
+    }
+
+    memcpy(&connectIn.InstanceName[0], pathName, std::min<int>(wcslen(pathName), MAX_NAME_LENGTH) * sizeof(WCHAR));
+    memcpy(&connectIn.Hostname[0], hostName, std::min<int>(wcslen(hostName), MAX_NAME_LENGTH) * sizeof(WCHAR));
+    memcpy(&connectIn.PortName[0], portName, std::min<int>(wcslen(portName), MAX_NAME_LENGTH) * sizeof(WCHAR));
+    memcpy(&connectIn.ExportName[0], exportName, std::min<int>(wcslen(exportName), MAX_NAME_LENGTH) * sizeof(WCHAR));
+    dout(20) << "Passing size: " << DiskSizeMB << dendl;
+    dout(20) << "sizeof(CONNCT_IN): " << sizeof(CONNECT_IN) << dendl;
+    connectIn.DiskSizeMB = DiskSizeMB;
+    connectIn.Command.IoControlCode = IOCTL_WNBDVMPORT_CONNECT;
+    connectIn.Removable = Removable;
+
+    devStatus = DeviceIoControl(wnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP, &connectIn, sizeof(CONNECT_IN),
+        NULL, 0, &bytesReturned, NULL);
+
+    if (!devStatus) {
+
+        status = GetLastError();
+        OutputDebugString("Unable to connect to WNBD Scsi Port Connection Manager.\n");
+        CloseHandle(wnbdDriverHandle);
+        printerror("wnbd-client");
+        return status;
+
+    }
+
+    CloseHandle(wnbdDriverHandle);
+
+    return ERROR_SUCCESS;
+}
+
+
+DWORD wnbdDisconnect(CHAR* instanceName)
+{
+    CONNECT_IN  disconnectIn;
+    HANDLE      wnbdDriverHandle;
+    DWORD       status = ERROR_SUCCESS;
+    DWORD       bytesReturned;
+    BOOL		devStatus;
+    WCHAR InstanceName[MAX_NAME_LENGTH];
+    if (!tranform_wide(instanceName, InstanceName)) {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    memset(&disconnectIn, 0, sizeof(CONNECT_IN));
+
+    if (wcslen(InstanceName) > MAX_NAME_LENGTH) {
+
+        return ERROR_INVALID_PARAMETER;
+
+    }
+
+    wnbdDriverHandle = ConnectToScsiPort();
+
+    if (wnbdDriverHandle == INVALID_HANDLE_VALUE) {
+
+        status = GetLastError();
+        OutputDebugString("Unable to connect to WNBD Scsi Port Connection Manager.\n");
+        printerror("wnbd-client");
+        return status;
+
+    }
+
+    memcpy(&disconnectIn.InstanceName[0], InstanceName, std::min<int>(wcslen(InstanceName), MAX_NAME_LENGTH) * sizeof(WCHAR));
+    disconnectIn.Command.IoControlCode = IOCTL_WNBDVMPORT_DISCONNECT;
+
+    devStatus = DeviceIoControl(wnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
+        &disconnectIn, sizeof(CONNECT_IN),
+        NULL, 0, &bytesReturned, NULL);
+
+    if (!devStatus) {
+
+        status = GetLastError();
+        OutputDebugString("Unable to disconnect WNBD Scsi Port Connection Manager.\n");
+        printerror("wnbd-client");
+        CloseHandle(wnbdDriverHandle);
+
+        return status;
+
+    }
+
+    CloseHandle(wnbdDriverHandle);
+
+    return ERROR_SUCCESS;
+}
+#endif
