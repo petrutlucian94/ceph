@@ -42,6 +42,9 @@ Current status
 The rados and rbd binaries and libs compile successfully and can be used on
 Windows, successfully connecting to the cluster and consuming pools.
 
+Ceph filesystems can be mounted using the ``ceph-dokan`` command, which
+requires the Dokany package to be installed.
+
 The libraries have to be built statically at the moment. The reason is that
 there are a few circular library dependencies or unspecified dependencies,
 which isn't supported when building DLLs. This mostly affects ``cls`` libraries.
