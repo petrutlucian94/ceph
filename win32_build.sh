@@ -36,6 +36,9 @@ zlibDir="${depsToolsetDir}/zlib"
 backtraceDir="${depsToolsetDir}/backtrace"
 snappyDir="${depsToolsetDir}/snappy"
 winLibDir="${depsToolsetDir}/windows/lib"
+dokanSrcDir="${depsSrcDir}/dokany"
+dokanLibDir="${depsToolsetDir}/dokany/lib"
+
 if [[ -n $NINJA_BUILD ]]; then
     generatorUsed="Ninja"
 else
@@ -93,11 +96,12 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D WITH_PYTHON2=OFF -D WITH_PYTHON3=ON \
       -D MGR_PYTHON_VERSION=$pyVersion \
       -D WITH_RDMA=OFF -D WITH_OPENLDAP=OFF \
-      -D WITH_GSSAPI=OFF -D WITH_FUSE=OFF -D WITH_XFS=OFF \
+      -D WITH_GSSAPI=OFF -D WITH_XFS=OFF \
+      -D WITH_FUSE=OFF -D WITH_DOKAN=ON \
       -D WITH_BLUESTORE=OFF -D WITH_LEVELDB=OFF \
       -D WITH_LTTNG=OFF -D WITH_BABELTRACE=OFF \
       -D WITH_SYSTEM_BOOST=ON -D WITH_MGR=OFF -D WITH_KVS=OFF \
-      -D WITH_LIBCEPHFS=OFF -D WITH_KRBD=OFF -D WITH_RADOSGW=OFF \
+      -D WITH_LIBCEPHFS=ON -D WITH_KRBD=OFF -D WITH_RADOSGW=OFF \
       -D ENABLE_SHARED=OFF -D WITH_RBD=ON -D BUILD_GMOCK=ON \
       -D WITH_CEPHFS=OFF -D WITH_MANPAGE=OFF \
       -D WITH_MGR_DASHBOARD_FRONTEND=OFF -D WITH_SYSTEMD=OFF -D WITH_TESTS=ON \
@@ -109,6 +113,8 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D ENABLE_GIT_VERSION=$ENABLE_GIT_VERSION \
       -D ALLOCATOR="$ALLOCATOR" -D CMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
       -D WITH_CEPH_DEBUG_MUTEX=$WITH_CEPH_DEBUG_MUTEX \
+      -D DOKAN_INCLUDE_DIRS="$dokanSrcDir/dokan" \
+      -D DOKAN_LIBRARIES="$dokanLibDir/libdokan.a" \
       -G "$generatorUsed" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 
@@ -116,10 +122,12 @@ if [[ -z $SKIP_BUILD ]]; then
     echo "Building using $NUM_WORKERS workers. Log: ${BUILD_DIR}/build.log"
     echo "NINJA_BUILD = $NINJA_BUILD"
 
-    # We're currently limitting the build scope to the rados/rbd binaries.
+    # We're only building the ceph components that have been ported so far.
+    # In order to keep the CMake files simple, we'll do the filtering here
+    # for now.
     if [[ -n $NINJA_BUILD ]]; then
         cd $BUILD_DIR
-        ninja -v rados.exe rbd.exe test compressor | tee "${BUILD_DIR}/build.log"
+        ninja -v rados.exe rbd.exe test compressor cephfs ceph-dokan | tee "${BUILD_DIR}/build.log"
     else
         cd $BUILD_DIR/src/tools
         make -j $NUM_WORKERS 2>&1 | tee "${BUILD_DIR}/build.log"
@@ -129,5 +137,11 @@ if [[ -z $SKIP_BUILD ]]; then
 
         cd $BUILD_DIR/src/test
         make -j $NUM_WORKERS 2>&1 | tee -a "${BUILD_DIR}/build.log"
+
+        cd $BUILD_DIR/src
+        make -j $NUM_WORKERS cephfs 2>&1 | tee -a "${BUILD_DIR}/build.log"
+
+        cd $BUILD_DIR/src/dokan
+        make -j $NUM_WORKERS ceph-dokan 2>&1 | tee -a "${BUILD_DIR}/build.log"
     fi
 fi
