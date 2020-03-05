@@ -18,6 +18,10 @@
 #define CEPH_CEPH_STATX_H
 #include <stdint.h>
 
+#ifdef _WIN32
+#define AT_SYMLINK_NOFOLLOW 0x100
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
