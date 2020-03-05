@@ -18,6 +18,8 @@
 
 #include <errno.h>
 
+#include "include/int_types.h"
+
 #ifndef EBADMSG
 #define EBADMSG 104
 #endif
@@ -123,5 +125,7 @@
 #ifndef EDQUOT
 #define EDQUOT 311
 #endif
+
+__u32 errno_to_ntstatus(__u32 r);
 
 #define ESHUTDOWN 312
