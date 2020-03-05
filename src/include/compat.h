@@ -235,12 +235,12 @@ typedef unsigned int uint;
 
 typedef _sigset_t sigset_t;
 
-typedef int uid_t;
-typedef int gid_t;
+typedef unsigned int uid_t;
+typedef unsigned int gid_t;
 
-typedef long blksize_t;
-typedef long blkcnt_t;
-typedef long nlink_t;
+typedef unsigned int blksize_t;
+typedef unsigned __int64 blkcnt_t;
+typedef unsigned short nlink_t;
 
 typedef long long loff_t;
 
@@ -257,9 +257,26 @@ struct iovec {
     size_t iov_len;
 };
 
+#define S_ISTYPE(m, TYPE) ((m & S_IFMT) == TYPE)
+#define S_ISLNK(m)  S_ISTYPE(m, S_IFLNK)
+#define S_ISUID     04000
+#define S_ISGID     02000
+#define S_ISVTX     01000
+
 #define SHUT_RD SD_RECEIVE
 #define SHUT_WR SD_SEND
 #define SHUT_RDWR SD_BOTH
+
+#define LOCK_SH    1
+#define LOCK_EX    2
+#define LOCK_NB    4
+#define LOCK_UN    8
+#define LOCK_MAND  32
+#define LOCK_READ  64
+#define LOCK_WRITE 128
+#define LOCK_RW    192
+
+#define AT_SYMLINK_NOFOLLOW 0x100
 
 #ifndef SIGINT
 #define SIGINT 2
@@ -270,6 +287,7 @@ struct iovec {
 #endif
 
 #define IOV_MAX 1024
+#define MAXSYMLINKS  65000
 
 #ifdef __cplusplus
 extern "C" {
@@ -295,6 +313,12 @@ int chown(const char *path, uid_t owner, gid_t group);
 int fchown(int fd, uid_t owner, gid_t group);
 int lchown(const char *path, uid_t owner, gid_t group);
 int setenv(const char *name, const char *value, int overwrite);
+
+int geteuid();
+int getegid();
+int getuid();
+int getgid();
+
 #define unsetenv(name) _putenv_s(name, "")
 
 int win_socketpair(int socks[2]);
