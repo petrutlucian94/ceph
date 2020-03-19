@@ -23,6 +23,15 @@ static int call_nbd_cmd(const po::variables_map &vm,
                         const std::vector<std::string> &ceph_global_init_args) {
   char exe_path[PATH_MAX];
   ssize_t exe_path_bytes = get_self_exe_path(exe_path, PATH_MAX);
+
+  #ifdef _WIN32
+  if(exe_path_bytes > 4) {
+    // Drop .exe suffix as we're going to add the "-nbd" suffix.
+    exe_path[strlen(exe_path) - 4] = '\0';
+    exe_path_bytes -= 4;
+  }
+  #endif /* _WIN32 */
+
   if (exe_path_bytes < 0) {
     strcpy(exe_path, "rbd-nbd");
   } else {
@@ -158,9 +167,11 @@ int execute_unmap(const po::variables_map &vm,
   return -EOPNOTSUPP;
 #endif
   std::string device_name = utils::get_positional_argument(vm, 0);
+#ifndef _WIN32
   if (!boost::starts_with(device_name, "/dev/")) {
     device_name.clear();
   }
+#endif
 
   std::string image_name;
   if (device_name.empty()) {
