@@ -23,7 +23,7 @@ char* shared_lib_last_err() {
   // As opposed to dlerror messages, this has to be freed.
   DWORD err_code = ::GetLastError();
   LPSTR msg = NULL;
-  size_t msgLen = FormatMessageA(
+  FormatMessageA(
     FORMAT_MESSAGE_ALLOCATE_BUFFER |
     FORMAT_MESSAGE_FROM_SYSTEM |
     FORMAT_MESSAGE_IGNORE_INSERTS,

@@ -79,16 +79,6 @@ typedef mode_t umode_t;
 #define S_IXUSR 00100
 #endif
 
-#define S_IRWXG 00070
-#define S_IRGRP 00040
-#define S_IWGRP 00020
-#define S_IXGRP 00010
-
-#define S_IRWXO 00007
-#define S_IROTH 00004
-#define S_IWOTH 00002
-#define S_IXOTH 00001
-
 #define S_IRWXUGO  (S_IRWXU|S_IRWXG|S_IRWXO)
 #define S_IALLUGO  (S_ISUID|S_ISGID|S_ISVTX|S_IRWXUGO)
 #define S_IRUGO    (S_IRUSR|S_IRGRP|S_IROTH)
@@ -151,9 +141,9 @@ struct posix_acl {
 //  return (void *) error;
 //}
 #define ERR_PTR(error) (void *)error
-#define PTR_ERR(ptr) (long)ptr
-#define IS_ERR(ptr) IS_ERR_VALUE((unsigned long)ptr)
-#define IS_ERR_OR_NULL(ptr) (!ptr || IS_ERR_VALUE((unsigned long)ptr))
+#define PTR_ERR(ptr) (uintptr_t)ptr
+#define IS_ERR(ptr) IS_ERR_VALUE((uintptr_t)ptr)
+#define IS_ERR_OR_NULL(ptr) (!ptr || IS_ERR_VALUE((uintptr_t)ptr))
 
 struct posix_acl * posix_acl_from_xattr(const void *value, size_t size);
 struct posix_acl *
