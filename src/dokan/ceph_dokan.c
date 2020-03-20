@@ -546,14 +546,14 @@ static NTSTATUS
 WinCephReadFile(
   LPCWSTR        FileName,
   LPVOID         Buffer,
-  DWORD        BufferLength,
+  DWORD          BufferLength,
   LPDWORD        ReadLength,
   LONGLONG       Offset,
   PDOKAN_FILE_INFO   DokanFileInfo)
 {
   WCHAR  filePath[MAX_PATH_CEPH];
-  if(Offset > 1024*1024*1024*1024LL || Offset < 0 || BufferLength < 0
-      || BufferLength > 128*1024*1024){
+  if(Offset > 1024*1024*1024*1024LL || Offset < 0 ||
+     BufferLength > 128*1024*1024){
     fwprintf(stderr, L"File write too large [fn:%ls][Offset=%lld][BufferLength=%ld]\n",FileName, Offset, BufferLength);
     return STATUS_FILE_TOO_LARGE;
   }
@@ -632,8 +632,8 @@ WinCephWriteFile(
   PDOKAN_FILE_INFO  DokanFileInfo)
 {
   WCHAR  filePath[MAX_PATH_CEPH];
-  if(Offset > 1024*1024*1024*1024LL || Offset < 0 || NumberOfBytesToWrite < 0
-      || NumberOfBytesToWrite > 128*1024*1024){
+  if(Offset > 1024*1024*1024*1024LL || Offset < 0 ||
+      NumberOfBytesToWrite > 128*1024*1024){
     fwprintf(stderr, L"FILE WIRTE TOO LARGE [fn:%ls][Offset=%lld][NumberOfBytesToWrite=%ld]\n", FileName, Offset, NumberOfBytesToWrite);
     return STATUS_FILE_TOO_LARGE;
   }
@@ -1176,17 +1176,17 @@ WinCephSetFileTime(
    // On Windows, st_ctime is the creation time while on Linux it's the time
    // of the last metadata change. We'll try to stick with the Windows
    // semantics, although this might be overridden by Linux hosts.
-   FileTimeToUnixTime(*CreationTime, &stbuf.stx_ctime);
+   FileTimeToUnixTime(*CreationTime, &stbuf.stx_ctime.tv_sec);
   }
   if(LastAccessTime != NULL)
   {
    mask |= CEPH_SETATTR_ATIME;
-   FileTimeToUnixTime(*LastAccessTime, &stbuf.stx_atime);
+   FileTimeToUnixTime(*LastAccessTime, &stbuf.stx_atime.tv_sec);
   }
   if(LastWriteTime != NULL)
   {
    mask |= CEPH_SETATTR_MTIME;
-   FileTimeToUnixTime(*LastWriteTime, &stbuf.stx_mtime);
+   FileTimeToUnixTime(*LastWriteTime, &stbuf.stx_mtime.tv_sec);
   }
 
   DbgPrintW(L"SetFileTime [%ls][st_atim:%lld][st_mtim:%lld]\n",
