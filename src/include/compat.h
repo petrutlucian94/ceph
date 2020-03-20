@@ -220,6 +220,7 @@ ssize_t get_self_exe_path(char* path, int buff_length);
 #include "include/windows/windefs.h"
 
 #include <windows.h>
+#include <time.h>
 
 #include "include/windows/win32_errno.h"
 
