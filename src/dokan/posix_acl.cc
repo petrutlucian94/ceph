@@ -28,7 +28,7 @@ inline void * __must_check ERR_CAST(const void *ptr)
   return (void *) ptr;
 }
 
-inline int __must_check PTR_RET(const void *ptr)
+inline uintptr_t __must_check PTR_RET(const void *ptr)
 {
   if (IS_ERR(ptr))
     return PTR_ERR(ptr);
@@ -576,13 +576,13 @@ __free_quit:
 
 int fuse_check_acl(struct ceph_mount_info *cmount, const char *path, const char *acl_xattr, int length, kuid_t uid, kgid_t gid, int mask)
 {
-  int error=-EAGAIN;
+  int64_t error=-EAGAIN;
 
   struct posix_acl *acl;
   acl = posix_acl_from_xattr(acl_xattr, length);
   if(IS_ERR(acl)) {
     error = PTR_ERR(acl);
-    printf("error1 = %d\n", error);
+    printf("error1 = %lld\n", error);
     return error;
   }
 
@@ -637,8 +637,7 @@ int permission_walk_parent(struct ceph_mount_info *cmount, const char *path, uid
 
 int fuse_init_acl(struct ceph_mount_info *cmount, const char *path, umode_t i_mode)
 {
-  //fprintf(stderr, "%s %d\n", path, i_mode);
-  int error=-EAGAIN;
+  int64_t error=-EAGAIN;
 
   /*get parent dir's default ACL*/
   int l = strlen(path);
@@ -659,7 +658,7 @@ int fuse_init_acl(struct ceph_mount_info *cmount, const char *path, umode_t i_mo
   acl = posix_acl_from_xattr(acl_xattr, length);
   if(IS_ERR(acl)) {
     error = PTR_ERR(acl);
-    printf("error1 = %d\n", error);
+    printf("error1 = %lld\n", error);
     return error;
   }
 
@@ -675,7 +674,7 @@ int fuse_init_acl(struct ceph_mount_info *cmount, const char *path, umode_t i_mo
       error = ceph_setxattr(cmount, path, POSIX_ACL_XATTR_DEFAULT,
                             buffer, real_len, 0);
       if (error){
-        fprintf(stderr, "ceph_setxattr1 error %s %d\n", path, error);
+        fprintf(stderr, "ceph_setxattr1 error %s %lld\n", path, error);
         goto cleanup;
       }
     }
@@ -690,7 +689,7 @@ int fuse_init_acl(struct ceph_mount_info *cmount, const char *path, umode_t i_mo
       int real_len = posix_acl_to_xattr(acl, buffer, XATTR_MAX_SIZE);
       error = ceph_setxattr(cmount, path, POSIX_ACL_XATTR_ACCESS, buffer, real_len, 0);
       if (error){
-        fprintf(stderr, "ceph_setxattr2 error %s %d\n", path, error);
+        fprintf(stderr, "ceph_setxattr2 error %s %lld\n", path, error);
         goto cleanup;
       }
     }
@@ -702,7 +701,7 @@ cleanup:
 
 int fuse_disable_acl_mask(struct ceph_mount_info *cmount, const char *path)
 {
-  int error=-EAGAIN;
+  int64_t error=-EAGAIN;
 
   char acl_xattr[XATTR_MAX_SIZE];
   memset(acl_xattr, 0x00, sizeof(acl_xattr));
@@ -755,7 +754,7 @@ path need to be full-path
 */
 int fuse_inherit_acl(struct ceph_mount_info *cmount, const char *path)
 {
-  int error=-EAGAIN;
+  int64_t error=-EAGAIN;
 
   /*get parent dir's default ACL*/
   int l = strlen(path);
