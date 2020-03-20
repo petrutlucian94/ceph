@@ -217,6 +217,7 @@ unsigned get_page_size();
 #include "include/windows/windefs.h"
 
 #include <windows.h>
+#include <time.h>
 
 #include "include/windows/win32_errno.h"
 
