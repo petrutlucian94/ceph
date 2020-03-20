@@ -65,7 +65,7 @@ void PrintUserName(PDOKAN_FILE_INFO DokanFileInfo)
 
   tokenUser = (PTOKEN_USER)buffer;
 
-  if (!LookupAccountSid(NULL, tokenUser->User.Sid, accountName,
+  if (!LookupAccountSidW(NULL, tokenUser->User.Sid, accountName,
       &accountLength, domainName, &domainLength, &snu)) {
     DbgPrintW(L"  LookupAccountSid failed: %d\n", GetLastError());
     return;
