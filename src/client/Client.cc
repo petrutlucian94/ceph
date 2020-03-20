@@ -2667,7 +2667,7 @@ bool Client::ms_dispatch2(const MessageRef &m)
   if (unmounting) {
     ldout(cct, 10) << "unmounting: trim pass, size was " << lru.lru_get_size() 
              << "+" << inode_map.size() << dendl;
-    long unsigned size = lru.lru_get_size() + inode_map.size();
+    uint64_t size = lru.lru_get_size() + inode_map.size();
     trim_cache();
     if (size < lru.lru_get_size() + inode_map.size()) {
       ldout(cct, 10) << "unmounting: trim pass, cache shrank, poking unmount()" << dendl;
@@ -7002,8 +7002,8 @@ int Client::_do_setattr(Inode *in, struct ceph_statx *stx, int mask,
     return -EROFS;
   }
   if ((mask & CEPH_SETATTR_SIZE) &&
-      (unsigned long)stx->stx_size > in->size &&
-      is_quota_bytes_exceeded(in, (unsigned long)stx->stx_size - in->size,
+      (uint64_t)stx->stx_size > in->size &&
+      is_quota_bytes_exceeded(in, (uint64_t)stx->stx_size - in->size,
 			      perms)) {
     return -EDQUOT;
   }
@@ -7161,7 +7161,7 @@ force_request:
       CEPH_CAP_FILE_WR;
   }
   if (mask & CEPH_SETATTR_SIZE) {
-    if ((unsigned long)stx->stx_size < mdsmap->get_max_filesize()) {
+    if ((uint64_t)stx->stx_size < mdsmap->get_max_filesize()) {
       req->head.args.setattr.size = stx->stx_size;
       ldout(cct,10) << "changing size to " << stx->stx_size << dendl;
     } else { //too big!
@@ -7906,7 +7906,7 @@ int Client::opendir(const char *relpath, dir_result_t **dirpp, const UserPerm& p
   r = _opendir(in.get(), dirpp, perms);
   /* if ENOTDIR, dirpp will be an uninitialized point and it's very dangerous to access its value */
   if (r != -ENOTDIR)
-      tout(cct) << (unsigned long)*dirpp << std::endl;
+      tout(cct) << (uintptr_t)*dirpp << std::endl;
   return r;
 }
 
@@ -7925,7 +7925,7 @@ int Client::closedir(dir_result_t *dir)
 {
   std::lock_guard lock(client_lock);
   tout(cct) << __func__ << std::endl;
-  tout(cct) << (unsigned long)dir << std::endl;
+  tout(cct) << (uintptr_t)dir << std::endl;
 
   ldout(cct, 3) << __func__ << "(" << dir << ") = 0" << dendl;
   _closedir(dir);
@@ -13171,7 +13171,7 @@ int Client::ll_opendir(Inode *in, int flags, dir_result_t** dirpp,
   }
 
   int r = _opendir(in, dirpp, perms);
-  tout(cct) << (unsigned long)*dirpp << std::endl;
+  tout(cct) << (uintptr_t)*dirpp << std::endl;
 
   ldout(cct, 3) << "ll_opendir " << vino << " = " << r << " (" << *dirpp << ")"
 		<< dendl;
@@ -13183,7 +13183,7 @@ int Client::ll_releasedir(dir_result_t *dirp)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << "ll_releasedir " << dirp << dendl;
   tout(cct) << "ll_releasedir" << std::endl;
-  tout(cct) << (unsigned long)dirp << std::endl;
+  tout(cct) << (uintptr_t)dirp << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13197,7 +13197,7 @@ int Client::ll_fsyncdir(dir_result_t *dirp)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << "ll_fsyncdir " << dirp << dendl;
   tout(cct) << "ll_fsyncdir" << std::endl;
-  tout(cct) << (unsigned long)dirp << std::endl;
+  tout(cct) << (uintptr_t)dirp << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13235,7 +13235,7 @@ int Client::ll_open(Inode *in, int flags, Fh **fhp, const UserPerm& perms)
   if (fhptr) {
     ll_unclosed_fh_set.insert(fhptr);
   }
-  tout(cct) << (unsigned long)fhptr << std::endl;
+  tout(cct) << (uintptr_t)fhptr << std::endl;
   ldout(cct, 3) << "ll_open " << vino << " " << ceph_flags_sys2wire(flags) <<
       " = " << r << " (" << fhptr << ")" << dendl;
   return r;
@@ -13314,7 +13314,7 @@ out:
       ino = inode->ino;
   }
 
-  tout(cct) << (unsigned long)*fhp << std::endl;
+  tout(cct) << (uintptr_t)*fhp << std::endl;
   tout(cct) << ino << std::endl;
   ldout(cct, 8) << "_ll_create " << vparent << " " << name << " 0" << oct <<
     mode << dec << " " << ceph_flags_sys2wire(flags) << " = " << r << " (" <<
@@ -13399,7 +13399,7 @@ int Client::ll_read(Fh *fh, loff_t off, loff_t len, bufferlist *bl)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << "ll_read " << fh << " " << fh->inode->ino << " " << " " << off << "~" << len << dendl;
   tout(cct) << "ll_read" << std::endl;
-  tout(cct) << (unsigned long)fh << std::endl;
+  tout(cct) << (uintptr_t)fh << std::endl;
   tout(cct) << off << std::endl;
   tout(cct) << len << std::endl;
 
@@ -13544,7 +13544,7 @@ int Client::ll_write(Fh *fh, loff_t off, loff_t len, const char *data)
   ldout(cct, 3) << "ll_write " << fh << " " << fh->inode->ino << " " << off <<
     "~" << len << dendl;
   tout(cct) << "ll_write" << std::endl;
-  tout(cct) << (unsigned long)fh << std::endl;
+  tout(cct) << (uintptr_t)fh << std::endl;
   tout(cct) << off << std::endl;
   tout(cct) << len << std::endl;
 
@@ -13580,7 +13580,7 @@ int Client::ll_flush(Fh *fh)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << "ll_flush " << fh << " " << fh->inode->ino << " " << dendl;
   tout(cct) << "ll_flush" << std::endl;
-  tout(cct) << (unsigned long)fh << std::endl;
+  tout(cct) << (uintptr_t)fh << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13593,7 +13593,7 @@ int Client::ll_fsync(Fh *fh, bool syncdataonly)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << "ll_fsync " << fh << " " << fh->inode->ino << " " << dendl;
   tout(cct) << "ll_fsync" << std::endl;
-  tout(cct) << (unsigned long)fh << std::endl;
+  tout(cct) << (uintptr_t)fh << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13611,7 +13611,7 @@ int Client::ll_sync_inode(Inode *in, bool syncdataonly)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << "ll_sync_inode " << *in << " " << dendl;
   tout(cct) << "ll_sync_inode" << std::endl;
-  tout(cct) << (unsigned long)in << std::endl;
+  tout(cct) << (uintptr_t)in << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13756,7 +13756,7 @@ int Client::ll_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
   std::lock_guard lock(client_lock);
   ldout(cct, 3) << __func__ << " " << fh << " " << fh->inode->ino << " " << dendl;
   tout(cct) << __func__ << " " << mode << " " << offset << " " << length << std::endl;
-  tout(cct) << (unsigned long)fh << std::endl;
+  tout(cct) << (uintptr_t)fh << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13792,7 +13792,7 @@ int Client::ll_release(Fh *fh)
   ldout(cct, 3) << __func__ << " (fh)" << fh << " " << fh->inode->ino << " " <<
     dendl;
   tout(cct) << __func__ << " (fh)" << std::endl;
-  tout(cct) << (unsigned long)fh << std::endl;
+  tout(cct) << (uintptr_t)fh << std::endl;
 
   if (ll_unclosed_fh_set.count(fh))
     ll_unclosed_fh_set.erase(fh);
@@ -13804,7 +13804,7 @@ int Client::ll_getlk(Fh *fh, struct flock *fl, uint64_t owner)
   std::lock_guard lock(client_lock);
 
   ldout(cct, 3) << "ll_getlk (fh)" << fh << " " << fh->inode->ino << dendl;
-  tout(cct) << "ll_getk (fh)" << (unsigned long)fh << std::endl;
+  tout(cct) << "ll_getk (fh)" << (uintptr_t)fh << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13817,7 +13817,7 @@ int Client::ll_setlk(Fh *fh, struct flock *fl, uint64_t owner, int sleep)
   std::lock_guard lock(client_lock);
 
   ldout(cct, 3) << __func__ << "  (fh) " << fh << " " << fh->inode->ino << dendl;
-  tout(cct) << __func__ << " (fh)" << (unsigned long)fh << std::endl;
+  tout(cct) << __func__ << " (fh)" << (uintptr_t)fh << std::endl;
 
   if (unmounting)
     return -ENOTCONN;
@@ -13830,7 +13830,7 @@ int Client::ll_flock(Fh *fh, int cmd, uint64_t owner)
   std::lock_guard lock(client_lock);
 
   ldout(cct, 3) << __func__ << "  (fh) " << fh << " " << fh->inode->ino << dendl;
-  tout(cct) << __func__ << " (fh)" << (unsigned long)fh << std::endl;
+  tout(cct) << __func__ << " (fh)" << (uintptr_t)fh << std::endl;
 
   if (unmounting)
     return -ENOTCONN;

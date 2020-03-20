@@ -296,9 +296,10 @@ static bool timedout = false; // only used after fork
 void timeout_sighandler(int sig) {
   timedout = true;
 }
-static void dummy_sighandler(int sig) {}
 
 #ifndef _WIN32
+static void dummy_sighandler(int sig) {}
+
 void SubProcessTimed::exec() {
   ceph_assert(is_child());
 
@@ -504,7 +505,7 @@ int SubProcess::spawn() {
   }
 
   // We've transfered ownership from those handles.
-  stdin_w = stdout_r = stdout_r = NULL;
+  stdin_w = stdout_r = stderr_r = NULL;
 
   if (!CreateProcess(
       NULL, const_cast<char*>(cmdline.str().c_str()),
