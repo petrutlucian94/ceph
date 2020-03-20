@@ -27,7 +27,7 @@ int wchar_to_char(char *strGBK, LPCWSTR FileName, int strlen)
   }
   WideCharToMultiByte(CP_UTF8, 0, FileName, -1, strGBK, len, NULL, NULL);
 
-  return;
+  return 0;
 }
 
 int char_to_wchar(LPCWSTR FileName, char *strUtf8, int strlen)
