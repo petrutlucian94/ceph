@@ -3,6 +3,7 @@
 #include <iphlpapi.h>
 #include <ws2tcpip.h>
 #include <ifaddrs.h>
+#include <stdio.h>
 
 #include "include/compat.h"
 
