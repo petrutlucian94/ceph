@@ -54,13 +54,10 @@ generatorUsed="Unix Makefiles"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
 
-pyVersion=`python -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))"`
-
 depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir;$snappyDir"
 depsDirs+=";$winLibDir"
 
-# That's actually a dll, we may want to rename the file.
-lz4Lib="${lz4Dir}/lib/liblz4.so.1.9.2"
+lz4Lib="${lz4Dir}/lib/dll/liblz4-1.dll"
 lz4Include="${lz4Dir}/lib"
 curlLib="${curlDir}/lib/libcurl.dll.a"
 curlInclude="${curlDir}/include"
@@ -103,8 +100,6 @@ fi
 # or circular), we'll have to stick to static linking.
 cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D CMAKE_TOOLCHAIN_FILE="$CEPH_DIR/cmake/toolchains/mingw32.cmake" \
-      -D WITH_PYTHON2=OFF -D WITH_PYTHON3=ON \
-      -D MGR_PYTHON_VERSION=$pyVersion \
       -D WITH_RDMA=OFF -D WITH_OPENLDAP=OFF \
       -D WITH_GSSAPI=OFF -D WITH_XFS=OFF \
       -D WITH_FUSE=OFF -D WITH_DOKAN=ON \
@@ -116,10 +111,8 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D WITH_CEPHFS=OFF -D WITH_MANPAGE=OFF \
       -D WITH_MGR_DASHBOARD_FRONTEND=OFF -D WITH_SYSTEMD=OFF -D WITH_TESTS=ON \
       -D LZ4_INCLUDE_DIR=$lz4Include -D LZ4_LIBRARY=$lz4Lib \
-      -D Backtrace_Header="$backtraceDir/include/backtrace.h" \
       -D Backtrace_INCLUDE_DIR="$backtraceDir/include" \
       -D Backtrace_LIBRARY="$backtraceDir/lib/libbacktrace.dll.a" \
-      -D Boost_THREADAPI="pthread" \
       -D ENABLE_GIT_VERSION=$ENABLE_GIT_VERSION \
       -D ALLOCATOR="$ALLOCATOR" -D CMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
       -D WITH_CEPH_DEBUG_MUTEX=$WITH_CEPH_DEBUG_MUTEX \
@@ -160,6 +153,7 @@ if [[ -z $SKIP_DLL_COPY ]]; then
     mingwTargetLibDir="/usr/lib/gcc/x86_64-w64-mingw32/$mingwVersion"
     required_dlls=(
         $zlibDir/zlib1.dll
+        $lz4Dir/lib/dll/liblz4-1.dll
         $sslDir/bin/libcrypto-1_1-x64.dll
         $sslDir/bin/libssl-1_1-x64.dll
         $mingwTargetLibDir/libstdc++-6.dll
