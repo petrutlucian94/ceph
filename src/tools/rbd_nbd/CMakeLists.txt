@@ -1,4 +1,15 @@
-find_package(nl REQUIRED genl)
-add_executable(rbd-nbd rbd-nbd.cc)
-target_link_libraries(rbd-nbd librbd librados global nl::genl)
+if(WIN32)
+    add_executable(rbd-nbd rbd-nbd-win32.cc wnbd_wmi.cc wnbd_ioctl.c)
+    target_link_libraries(rbd-nbd setupapi wbemuuid oleaut32 ${Boost_FILESYSTEM_LIBRARY})
+    set_target_properties(rbd-nbd PROPERTIES COMPILE_FLAGS "-fpermissive")
+else()
+    add_executable(rbd-nbd rbd-nbd.cc)
+endif()
+target_link_libraries(rbd-nbd librbd librados global)
+
+if(LINUX)
+    find_package(nl REQUIRED genl)
+    target_link_libraries(rbd-nbd nl::genl)
+endif(LINUX)
+
 install(TARGETS rbd-nbd DESTINATION bin)
