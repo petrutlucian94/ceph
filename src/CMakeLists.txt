@@ -538,10 +538,12 @@ if(NOT CEPH_BUILD_VIRTUALENV)
   set(CEPH_BUILD_VIRTUALENV ${CMAKE_BINARY_DIR})
 endif()
 
+if(NOT WIN32)
 add_subdirectory(pybind)
 add_subdirectory(ceph-volume)
 add_subdirectory(python-common)
 add_subdirectory(cephadm)
+endif(NOT WIN32)
 
 # Monitor
 add_subdirectory(mon)
@@ -822,6 +824,7 @@ configure_file(
   ${CMAKE_BINARY_DIR}/include/acconfig.h
 )
 
+if(NOT WIN32)
 # Everything you need to spin up a cluster with vstart.sh
 add_custom_target(vstart-base DEPENDS
     ceph-osd
@@ -858,6 +861,7 @@ endif()
 if(WITH_MGR)
   add_dependencies(vstart ceph-volume-venv-setup)
 endif()
+endif(NOT WIN32)
 
 # Everything you need to run CephFS tests
 add_custom_target(cephfs_testing DEPENDS
