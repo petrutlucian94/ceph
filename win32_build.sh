@@ -73,7 +73,9 @@ if [[ -n $CLEAN_BUILD ]]; then
     rm -rf $BUILD_DIR
 fi
 
-if [[ ! -d $DEPS_DIR ]]; then
+# libdokan is the last dependency to be retrieved. If libdokan.a
+# is available, we assume that all dependencies have been covered.
+if [[ ! -f ${dokanLibDir}/libdokan.a ]]; then
     echo "Preparing dependencies: $DEPS_DIR"
     NUM_WORKERS=$NUM_WORKERS DEPS_DIR=$DEPS_DIR \
         "$SCRIPT_DIR/win32_deps_build.sh"
