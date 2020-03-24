@@ -342,6 +342,9 @@ fi
 cd $dokanSrcDir
 
 mkdir -p $dokanLibDir
+# win32_build.sh assumes that this is the last dependency to be compiled.
+# We can either make sure that any new dependency goes before this, or we can
+# switch to a file flag.
 x86_64-w64-mingw32-dlltool -d $dokanSrcDir/dokan/dokan.def \
                            -l $dokanLibDir/libdokan.a
 
@@ -349,4 +352,3 @@ x86_64-w64-mingw32-dlltool -d $dokanSrcDir/dokan/dokan.def \
 # dokan.h is defined in both ./dokan and ./sys while both are using
 # sys/public.h without the "sys" prefix.
 cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokan
-
