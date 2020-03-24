@@ -350,3 +350,4 @@ x86_64-w64-mingw32-dlltool -d $dokanSrcDir/dokan/dokan.def \
 # sys/public.h without the "sys" prefix.
 cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokan
 
+touch $depsToolsetDir/completed
