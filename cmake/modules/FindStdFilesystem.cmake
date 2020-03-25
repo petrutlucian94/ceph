@@ -18,6 +18,9 @@ endmacro()
 
 
 if(NOT StdFilesystem_LIBRARY)
+  try_std_filesystem_library("stdc++" StdFilesystem_LIBRARY)
+endif()
+if(NOT StdFilesystem_LIBRARY)
   try_std_filesystem_library("stdc++fs" StdFilesystem_LIBRARY)
 endif()
 if(NOT StdFilesystem_LIBRARY)
