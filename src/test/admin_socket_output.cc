@@ -14,7 +14,11 @@
 
 #include <iostream>
 #include <regex>                 // For regex, regex_search
-#include <experimental/filesystem> // For extension
+#if __cplusplus >= 201703L && __has_include(<filesystem>)  // For extension
+#include <filesystem>
+#else
+#include <experimental/filesystem>
+#endif
 
 #include "common/admin_socket_client.h"     // For AdminSocketClient
 #include "common/ceph_json.h"               // For JSONParser, JSONObjIter
