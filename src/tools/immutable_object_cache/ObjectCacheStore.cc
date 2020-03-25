@@ -3,7 +3,13 @@
 
 #include "ObjectCacheStore.h"
 #include "Utils.h"
+#if __cplusplus >= 201703L && __has_include(<filesystem>)
+#include <filesystem>
+namespace efs = std::filesystem;
+#else
 #include <experimental/filesystem>
+namespace efs = std::experimental::filesystem;
+#endif
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_immutable_obj_cache
@@ -11,7 +17,6 @@
 #define dout_prefix *_dout << "ceph::cache::ObjectCacheStore: " << this << " " \
                            << __func__ << ": "
 
-namespace efs = std::experimental::filesystem;
 
 namespace ceph {
 namespace immutable_obj_cache {
