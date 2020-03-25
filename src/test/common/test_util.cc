@@ -16,7 +16,11 @@
 #include "include/util.h"
 #include "gtest/gtest.h"
 
+#if __cplusplus >= 201703L && __has_include(<filesystem>)
+#include <filesystem>
+#else
 #include <experimental/filesystem>
+#endif
 
 #if defined(__linux__)
 TEST(util, collect_sys_info)
