@@ -98,7 +98,8 @@ Configuring
 
 The default location for the ``ceph.conf`` file on Windows is
 ``%ProgramData%\ceph\ceph.conf``, which usually expands to
-``C:\ProgramFiles\ceph\ceph.conf``.
+``C:\ProgramData\ceph\ceph.conf``. (Note - Directories with spaces
+in their names are not currently supported.)
 
 Below you may find a sample. Please fill in the monitor addresses
 accordingly.
