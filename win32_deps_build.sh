@@ -42,7 +42,51 @@ dokanTag="v1.3.1.1000"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
 
+# Allow for OS specific customizations through the OS flag (normally
+# passed through from win32_build).
+# Valid options are currently "ubuntu" and "suse".
+OS=${OS:-"ubuntu"}
+
+# MINGW Settings:
+# Due to inconsistencies between distributions, mingw versions, binaries,
+# and directories must be determined (or defined) first.
+# -Common mingw settings-
 MINGW_PREFIX="x86_64-w64-mingw32-"
+MINGW_BASE="x86_64-w64-mingw32"
+MINGW_CPP="${MINGW_BASE}-c++"
+MINGW_DLLTOOL="${MINGW_BASE}-dlltool"
+MINGW_WINDRES="${MINGW_BASE}-windres"
+MINGW_STRIP="${MINGW_BASE}-strip"
+# -Distribution specific mingw settings-
+case "$OS" in
+    ubuntu)
+        mingwPosix="-posix"
+        mingwLibDir="/usr/lib/gcc"
+        mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
+        mingwTargetLibDir="${mingwLibDir}/${MINGW_BASE}/${mingwVersion}"
+        mingwLibpthreadDir="/usr/${MINGW_BASE}/lib"
+        PTW32Include=/usr/share/mingw-w64/include
+        PTW32Lib=/usr/x86_64-w64-mingw32/lib
+       ;;
+    suse)
+        mingwPosix=""
+        mingwLibDir="/usr/lib64/gcc"
+        mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
+        mingwTargetLibDir="/usr/${MINGW_BASE}/sys-root/mingw/bin"
+        mingwLibpthreadDir="$mingwTargetLibDir"
+        PTW32Include=/usr/x86_64-w64-mingw32/sys-root/mingw/include
+        PTW32Lib=/usr/x86_64-w64-mingw32/sys-root/mingw/lib
+        ;;
+    *)
+        echo "$ID is unknown, automatic configuration is not possible."
+        exit 1
+        ;;
+esac
+# -Common mingw settings, dependent upon distribution specific settings-
+MINGW_FIND_ROOT_LIB_PATH="${mingwLibDir}/\${TOOLCHAIN_PREFIX}/${mingwVersion}"
+MINGW_CC="${MINGW_BASE}-gcc${mingwPosix}"
+MINGW_CXX="${MINGW_BASE}-g++${mingwPosix}"
+# End MINGW configuration
 
 function _make() {
   make -j $NUM_WORKERS $@
@@ -55,15 +99,15 @@ mkdir -p $depsSrcDir
 MINGW_CMAKE_FILE="$DEPS_DIR/mingw.cmake"
 cat > $MINGW_CMAKE_FILE <<EOL
 set(CMAKE_SYSTEM_NAME Windows)
-set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)
+set(TOOLCHAIN_PREFIX ${MINGW_BASE})
 
 # We'll need to use posix threads in order to use
 # C++11 features, such as std::thread.
-set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}-gcc-posix)
-set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}-g++-posix)
+set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}-gcc${mingwPosix})
+set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}-g++${mingwPosix})
 set(CMAKE_RC_COMPILER \${TOOLCHAIN_PREFIX}-windres)
 
-set(CMAKE_FIND_ROOT_PATH /usr/\${TOOLCHAIN_PREFIX} /usr/lib/gcc/\${TOOLCHAIN_PREFIX}/7.3-posix)
+set(CMAKE_FIND_ROOT_PATH /usr/\${TOOLCHAIN_PREFIX} ${MINGW_FIND_ROOT_LIB_PATH})
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
@@ -79,7 +123,7 @@ if [[ ! -d $zlibSrcDir ]]; then
 fi
 cd $zlibSrcDir
 # Apparently the configure script is broken...
-sed -e s/"PREFIX = *$"/"PREFIX = x86_64-w64-mingw32-"/ -i win32/Makefile.gcc
+sed -e s/"PREFIX = *$"/"PREFIX = ${MINGW_PREFIX}"/ -i win32/Makefile.gcc
 _make -f win32/Makefile.gcc
 _make BINARY_PATH=$zlibDir \
      INCLUDE_PATH=$zlibDir/include \
@@ -93,9 +137,9 @@ if [[ ! -d $lz4Dir ]]; then
     cd $lz4Dir; git checkout $lz4Tag
 fi
 cd $lz4Dir
-_make BUILD_STATIC=no CC=x86_64-w64-mingw32-gcc \
-      DLLTOOL=x86_64-w64-mingw32-dlltool \
-      WINDRES=x86_64-w64-mingw32-windres \
+_make BUILD_STATIC=no CC=${MINGW_CC%-posix*} \
+      DLLTOOL=${MINGW_DLLTOOL} \
+      WINDRES=${MINGW_WINDRES} \
       TARGET_OS=Windows_NT
 
 cd $depsSrcDir
@@ -104,7 +148,7 @@ if [[ ! -d $sslSrcDir ]]; then
 fi
 cd $sslSrcDir
 mkdir -p $sslDir
-CROSS_COMPILE="x86_64-w64-mingw32-" ./Configure \
+CROSS_COMPILE="${MINGW_PREFIX}" ./Configure \
     mingw64 shared --prefix=$sslDir
 _make depend
 _make
@@ -118,7 +162,7 @@ fi
 cd $curlSrcDir
 ./buildconf
 ./configure --prefix=$curlDir --with-ssl=$sslDir --with-zlib=$zlibDir \
-            --host=x86_64-w64-mingw32
+            --host=${MINGW_BASE}
 _make
 _make install
 
@@ -129,7 +173,7 @@ if [[ ! -d $boostSrcDir ]]; then
 fi
 
 cd $boostSrcDir
-echo "using gcc : mingw32 : x86_64-w64-mingw32-g++-posix ;" > user-config.jam
+echo "using gcc : mingw32 : ${MINGW_CXX} ;" > user-config.jam
 
 # Workaround for https://github.com/boostorg/thread/issues/156
 # Older versions of mingw provided a different pthread lib.
@@ -140,8 +184,8 @@ sed -i 's/mthreads/pthreads/g' ./tools/build/src/tools/gcc.jam
 sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.py
 sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.jam
 
-export PTW32_INCLUDE=/usr/share/mingw-w64/include
-export PTW32_LIB=/usr/x86_64-w64-mingw32/lib
+export PTW32_INCLUDE=${PTW32Include}
+export PTW32_LIB=${PTW32Lib}
 
 # Fix getting Windows page size
 # TODO: send this upstream and maybe use a fork until it merges.
@@ -268,7 +312,7 @@ fi
 mkdir -p $backtraceSrcDir/build
 cd $backtraceSrcDir/build
 ../configure --prefix=$backtraceDir --exec-prefix=$backtraceDir \
-             --host x86_64-w64-mingw32 --enable-host-shared
+             --host ${MINGW_BASE} --enable-host-shared
 _make LDFLAGS="-no-undefined"
 _make install
 cp $backtraceDir/lib/libbacktrace.a $backtraceDir/lib/libbacktrace.dll.a
@@ -331,8 +375,8 @@ rexec@24rresvport@4
 s_perror@8sethostname@8
 EOF
 
-x86_64-w64-mingw32-dlltool -d $winLibDir/mswsock.def \
-                           -l $winLibDir/libmswsock.a
+$MINGW_DLLTOOL -d $winLibDir/mswsock.def \
+               -l $winLibDir/libmswsock.a
 
 cd $depsSrcDir
 if [[ ! -d $dokanSrcDir ]]; then
@@ -345,8 +389,8 @@ mkdir -p $dokanLibDir
 # win32_build.sh assumes that this is the last dependency to be compiled.
 # We can either make sure that any new dependency goes before this, or we can
 # switch to a file flag.
-x86_64-w64-mingw32-dlltool -d $dokanSrcDir/dokan/dokan.def \
-                           -l $dokanLibDir/libdokan.a
+$MINGW_DLLTOOL -d $dokanSrcDir/dokan/dokan.def \
+               -l $dokanLibDir/libdokan.a
 
 # That's probably the easiest way to deal with the dokan imports.
 # dokan.h is defined in both ./dokan and ./sys while both are using

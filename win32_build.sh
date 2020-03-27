@@ -29,6 +29,9 @@ BUILD_ZIP=${BUILD_ZIP:-}
 # Unfortunately we cannot use pdb symbols when cross compiling. cv2pdb
 # well as llvm rely on mspdb*.dll in order to support this proprietary format.
 STRIP_ZIPPED=${STRIP_ZIPPED:-}
+# Allow for OS specific customizations through the OS flag.
+# Valid options are currently "ubuntu" and "suse".
+OS=${OS:-"ubuntu"}
 
 # We'll have to be explicit here since auto-detecting doesn't work
 # properly when cross compiling.
@@ -53,6 +56,46 @@ snappyDir="${depsToolsetDir}/snappy"
 winLibDir="${depsToolsetDir}/windows/lib"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
+
+# MINGW Settings:
+# Due to inconsistencies between distributions, mingw versions, binaries,
+# and directories must be determined (or defined) prior to building.
+# -Common mingw settings-
+MINGW_BASE="x86_64-w64-mingw32"
+MINGW_CPP="${MINGW_BASE}-c++"
+MINGW_DLLTOOL="${MINGW_BASE}-dlltool"
+MINGW_WINDRES="${MINGW_BASE}-windres"
+MINGW_STRIP="${MINGW_BASE}-strip"
+# -Distribution specific mingw settings-
+case "$OS" in
+    ubuntu)
+        mingwPosix="-posix"
+        mingwLibDir="/usr/lib/gcc"
+        mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
+        mingwTargetLibDir="${mingwLibDir}/${MINGW_BASE}/${mingwVersion}"
+        mingwLibpthreadDir="/usr/${MINGW_BASE}/lib"
+        PTW32Include=/usr/share/mingw-w64/include
+        PTW32Lib=/usr/x86_64-w64-mingw32/lib
+       ;;
+    suse)
+        mingwPosix=""
+        mingwLibDir="/usr/lib64/gcc"
+        mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
+        mingwTargetLibDir="/usr/${MINGW_BASE}/sys-root/mingw/bin"
+        mingwLibpthreadDir="$mingwTargetLibDir"
+        PTW32Include=/usr/x86_64-w64-mingw32/sys-root/mingw/include
+        PTW32Lib=/usr/x86_64-w64-mingw32/sys-root/mingw/lib
+        ;;
+    *)
+        echo "$ID is unknown, automatic mingw configuration is not possible."
+        exit 1
+        ;;
+esac
+# -Common mingw settings, dependent upon distribution specific settings-
+MINGW_FIND_ROOT_LIB_PATH="${mingwLibDir}/\${TOOLCHAIN_PREFIX}/${mingwVersion}"
+MINGW_CC="${MINGW_BASE}-gcc${mingwPosix}"
+MINGW_CXX="${MINGW_BASE}-g++${mingwPosix}"
+# End MINGW configuration
 
 if [[ -n $NINJA_BUILD ]]; then
     generatorUsed="Ninja"
@@ -103,11 +146,41 @@ else
   WITH_CEPH_DEBUG_MUTEX="OFF"
 fi
 
+# Due to the distribution specific mingw settings above,
+# the mingw.cmake file must be built prior to running cmake.
+MINGW_CMAKE_FILE="$CEPH_DIR/cmake/toolchains/mingw32.cmake"
+cat > $MINGW_CMAKE_FILE <<EOL
+set(CMAKE_SYSTEM_NAME Windows)
+set(TOOLCHAIN_PREFIX ${MINGW_BASE})
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+
+# We'll need to use posix threads in order to use
+# C++11 features, such as std::thread.
+set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}-gcc${mingwPosix})
+set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}-g++${mingwPosix})
+set(CMAKE_RC_COMPILER \${TOOLCHAIN_PREFIX}-windres)
+
+set(CMAKE_FIND_ROOT_PATH /usr/\${TOOLCHAIN_PREFIX} ${MINGW_FIND_ROOT_LIB_PATH})
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+# TODO: consider switching this to "ONLY". The issue with
+# that is that all our libs should then be under
+# CMAKE_FIND_ROOT_PATH and CMAKE_PREFIX_PATH would be ignored.
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+
+# Some functions (e.g. localtime_r) will not be available unless we set
+# the following flag.
+add_definitions(-D_POSIX=1)
+add_definitions(-D_POSIX_C_SOURCE=1)
+add_definitions(-D_POSIX_=1)
+add_definitions(-D_POSIX_THREADS=1)
+EOL
+
 # As opposed to Linux, Windows shared libraries can't have unresolved
 # symbols. Until we fix the dependencies (which are either unspecified
 # or circular), we'll have to stick to static linking.
 cmake -D CMAKE_PREFIX_PATH=$depsDirs \
-      -D CMAKE_TOOLCHAIN_FILE="$CEPH_DIR/cmake/toolchains/mingw32.cmake" \
+      -D CMAKE_TOOLCHAIN_FILE="$MINGW_CMAKE_FILE" \
       -D WITH_RDMA=OFF -D WITH_OPENLDAP=OFF \
       -D WITH_GSSAPI=OFF -D WITH_XFS=OFF \
       -D WITH_FUSE=OFF -D WITH_DOKAN=ON \
@@ -165,10 +238,7 @@ if [[ -z $SKIP_BUILD ]]; then
 fi
 
 if [[ -z $SKIP_DLL_COPY ]]; then
-    # Hopefully this path will be the same across distros.
-    # This depends on the thread library, we're currently using posix.
-    mingwVersion=`x86_64-w64-mingw32-c++-posix -dumpversion`
-    mingwTargetLibDir="/usr/lib/gcc/x86_64-w64-mingw32/$mingwVersion"
+    # To adjust mingw paths, see 'MINGW Settings' section above.
     required_dlls=(
         $zlibDir/zlib1.dll
         $lz4Dir/lib/dll/liblz4-1.dll
@@ -176,7 +246,7 @@ if [[ -z $SKIP_DLL_COPY ]]; then
         $sslDir/bin/libssl-1_1-x64.dll
         $mingwTargetLibDir/libstdc++-6.dll
         $mingwTargetLibDir/libgcc_s_seh-1.dll
-        /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll)
+        $mingwLibpthreadDir/libwinpthread-1.dll)
     echo "Copying required dlls to $binDir."
     cp ${required_dlls[@]} $binDir
 fi
@@ -186,8 +256,8 @@ if [[ -n $BUILD_ZIP ]]; then
         rm -rf $strippedBinDir
         cp -r $binDir $strippedBinDir
         echo "Stripping debug symbols from $strippedBinDir binaries."
-        x86_64-w64-mingw32-strip $strippedBinDir/*.exe \
-                                 $strippedBinDir/*.dll
+        $MINGW_STRIP $strippedBinDir/*.exe \
+                     $strippedBinDir/*.dll
     fi
     echo "Building zip archive $ZIP_DEST."
     zip -r $ZIP_DEST $strippedBinDir
