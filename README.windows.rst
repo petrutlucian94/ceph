@@ -16,9 +16,9 @@ components for Windows. Support for msvc and clang will be added soon.
 It may be called from a Linux environment, including Windows Subsystem for
 Linux. MSYS2 and CygWin may also work but those weren't tested.
 
-This script currently supports Ubuntu 18.04 but it may be easily adapted to
-run on other Linux distributions, taking into account different package
-managers, package names or paths (e.g. mingw paths).
+This script currently supports Ubuntu 18.04 and openSUSE Tumbleweed, but it
+may be easily adapted to run on other Linux distributions, taking into
+account different package managers, package names or paths (e.g. mingw paths).
 
 .. _win32_build.sh: win32_build.sh
 
@@ -27,6 +27,8 @@ The script accepts the following flags:
 ============  ===============================  ===============================
 Flag          Description                      Default value
 ============  ===============================  ===============================
+OS            Host OS distribution, for mingw  ubuntu (also valid: suse)
+              and other OS specific settings.
 CEPH_DIR      The Ceph source code directory.  The same as the script.
 BUILD_DIR     The directory where the          $CEPH_DIR/build
               generated artifacts will be
