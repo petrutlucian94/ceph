@@ -58,9 +58,20 @@ mkdir -p $depsSrcDir
 MINGW_CMAKE_FILE="$DEPS_DIR/mingw.cmake"
 source "$SCRIPT_DIR/mingw_conf.sh"
 
-sudo apt-get -y install mingw-w64 cmake pkg-config python3-dev python3-pip \
+case "$OS" in
+    ubuntu)
+        sudo apt-get -y install mingw-w64 cmake pkg-config python3-dev python3-pip \
                 autoconf libtool ninja-build zip
-sudo python3 -m pip install cython
+        sudo python3 -m pip install cython
+        ;;
+    suse)
+        for RPM in mingw-w64-cross-gcc cmake pkg-config python3-dev \
+                autoconf libtool ninja zip python3-Cython; do
+            rpm -q $PKG >/dev/null || zypper -n install $RPM
+        done
+        ;;
+esac
+
 
 cd $depsSrcDir
 if [[ ! -d $zlibSrcDir ]]; then
