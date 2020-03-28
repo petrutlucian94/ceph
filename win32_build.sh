@@ -186,13 +186,25 @@ if [[ -z $SKIP_DLL_COPY ]]; then
 fi
 
 if [[ -n $BUILD_ZIP ]]; then
+    # Use a temp directory, in order to create a clean zip file
+    ZIP_TMPDIR=$(mktemp -d win_binaries.XXXXX)
     if [[ -n $STRIP_ZIPPED ]]; then
         rm -rf $strippedBinDir
+        echo "Copying binaries to $strippedBinDir."
         cp -r $binDir $strippedBinDir
-        echo "Stripping debug symbols from $strippedBinDir binaries."
+        echo "Stripping debug symbols from binaries."
         $MINGW_STRIP $strippedBinDir/*.exe \
                      $strippedBinDir/*.dll
+        ln -s $strippedBinDir $ZIP_TMPDIR/ceph
+    else
+        ln -s $binDir $ZIP_TMPDIR/ceph
     fi
     echo "Building zip archive $ZIP_DEST."
-    zip -r $ZIP_DEST $strippedBinDir
+    # Include the README file in the archive
+    ln -s $CEPH_DIR/README.windows.rst $ZIP_TMPDIR/ceph/README.windows.rst
+    cd $ZIP_TMPDIR
+    zip -r $ZIP_DEST ceph
+    cd -
+    rm -rf $ZIP_TMPDIR/ceph/README.windows.rst $ZIP_TMPDIR
+    echo -e '\n  WIN32 files zipped to: '$ZIP_DEST'\n'
 fi
