@@ -65,9 +65,9 @@ case "$OS" in
         sudo python3 -m pip install cython
         ;;
     suse)
-        for RPM in mingw-w64-cross-gcc cmake pkg-config python3-dev \
+        for PKG in mingw64-cross-gcc-c++ cmake pkgconf python3-devel \
                 autoconf libtool ninja zip python3-Cython; do
-            rpm -q $PKG >/dev/null || zypper -n install $RPM
+            rpm -q $PKG >/dev/null || zypper -n install $PKG
         done
         ;;
 esac
