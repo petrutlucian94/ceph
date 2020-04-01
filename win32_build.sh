@@ -31,7 +31,22 @@ BUILD_ZIP=${BUILD_ZIP:-}
 STRIP_ZIPPED=${STRIP_ZIPPED:-}
 # Allow for OS specific customizations through the OS flag.
 # Valid options are currently "ubuntu" and "suse".
-OS=${OS:-"ubuntu"}
+
+OS=${OS}
+if [[ -z $OS ]]; then
+    if [[ -f /etc/os-release ]] && \
+            $(grep -q "^NAME=\".*SUSE.*\"" /etc/os-release);  then
+        OS="suse"
+    elif [[ -f /etc/lsb-release ]] && \
+            $(grep -q "^DISTRIB_ID=Ubuntu" /etc/lsb-release);  then
+        OS="ubuntu"
+    else
+        echo "Unsupported Linux distro, only SUSE and Ubuntu are currently \
+supported. Set the OS variable to override"
+        exit 1
+    fi
+fi
+export OS
 
 # We'll have to be explicit here since auto-detecting doesn't work
 # properly when cross compiling.
