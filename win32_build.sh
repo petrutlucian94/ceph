@@ -102,6 +102,12 @@ fi
 mkdir -p $BUILD_DIR
 cd $BUILD_DIR
 
+# Due to distribution specific mingw settings, the mingw.cmake file
+# must be built prior to running cmake.
+MINGW_CMAKE_FILE="$BUILD_DIR/mingw32.cmake"
+MINGW_POSIX_FLAGS=1
+source "$SCRIPT_DIR/mingw_conf.sh"
+
 if [[ -z $SKIP_CMAKE ]]; then
 # We'll need to cross compile Boost.Python before enabling
 # "WITH_MGR".
@@ -120,12 +126,6 @@ else
   ENABLE_GIT_VERSION="ON"
   WITH_CEPH_DEBUG_MUTEX="OFF"
 fi
-
-# Due to distribution specific mingw settings, the mingw.cmake file
-# must be built prior to running cmake.
-MINGW_CMAKE_FILE="$BUILD_DIR/mingw32.cmake"
-MINGW_POSIX_FLAGS=1
-source "$SCRIPT_DIR/mingw_conf.sh"
 
 # As opposed to Linux, Windows shared libraries can't have unresolved
 # symbols. Until we fix the dependencies (which are either unspecified
