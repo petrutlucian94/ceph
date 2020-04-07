@@ -27,7 +27,7 @@
 #include <aclapi.h>
 
 #define MAX_PATH_CEPH 8192
-#define CEPH_DOKAN_IO_TIMEOUT 1000 * 60 * 2
+#define CEPH_DOKAN_IO_DEFAULT_TIMEOUT 1000 * 60 * 5
 
 #define READ_ACCESS_REQUESTED(access_mode) \
     access_mode & GENERIC_READ || \
@@ -47,6 +47,7 @@ int g_UID = 0;
 int g_GID = 0;
 BOOL g_UseACL = TRUE;
 struct ceph_mount_info *cmount;
+long timeout_ms = CEPH_DOKAN_IO_DEFAULT_TIMEOUT;
 
 struct fd_context{
   int   fd;
@@ -77,8 +78,6 @@ WinCephCreateDirectory(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
   DbgPrintW(L"CreateDirectory : %ls\n", filePath);
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -127,8 +126,6 @@ WinCephOpenDirectory(
   wcscpy(filePath, FileName);
 
   DbgPrintW(L"OpenDirectory : %ls\n", filePath);
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, filePath, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -207,8 +204,6 @@ WinCephCreateFile(
 
   struct fd_context fdc;
   memset(&fdc, 0, sizeof(struct fd_context));
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   int fd = 0;
   struct stat st_buf;
@@ -474,8 +469,6 @@ WinCephCloseFile(
   WCHAR filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   if(!DokanFileInfo->Context) {
     DbgPrintW(L"Close: invalid handle %ls\n\n", filePath);
     return;
@@ -507,8 +500,6 @@ WinCephCleanup(
 {
   WCHAR filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -566,8 +557,6 @@ WinCephReadFile(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
   DbgPrintW(L"ReadFile : %ls\n", filePath);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -642,8 +631,6 @@ WinCephWriteFile(
     *NumberOfBytesWritten = 0;
     return 0;
   }
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   DbgPrintW(L"WriteFile : %ls, offset %I64d, length %d\n", filePath, Offset, NumberOfBytesToWrite);
 
   char file_name[MAX_PATH_CEPH];
@@ -708,8 +695,6 @@ WinCephFlushFileBuffers(
 
   DbgPrintW(L"FlushFileBuffers : %ls\n", filePath);
 
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -740,8 +725,6 @@ WinCephGetFileInformation(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
   DbgPrintW(L"GetFileInfo : %ls\n", filePath);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   memset(HandleFileInformation, 0, sizeof(BY_HANDLE_FILE_INFORMATION));
 
@@ -812,8 +795,6 @@ WinCephFindFiles(
   int count = 0;
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   wcscat(filePath, yenStar);
   DbgPrintW(L"FindFiles :%ls\n", filePath);
@@ -917,8 +898,6 @@ WinCephDeleteFile(
 
   DbgPrintW(L"DeleteFile %ls\n", filePath);
 
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -947,8 +926,6 @@ WinCephDeleteDirectory(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
   DbgPrintW(L"DeleteDirectory %ls\n", filePath);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -1010,8 +987,6 @@ WinCephMoveFile(
 
   DbgPrintW(L"MoveFile %ls -> %ls\n\n", filePath, newFilePath);
 
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -1048,8 +1023,6 @@ WinCephSetEndOfFile(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
   DbgPrintW(L"SetEndOfFile %ls, %I64d\n", filePath, ByteOffset);
 
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -1081,8 +1054,6 @@ WinCephSetAllocationSize(
 {
   WCHAR      filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   DbgPrintW(L"SetAllocationSize %ls, %I64d\n", filePath, AllocSize);
 
@@ -1132,8 +1103,6 @@ WinCephSetFileAttributes(
   WCHAR  filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
-
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
@@ -1159,8 +1128,6 @@ WinCephSetFileTime(
   // with some apps such as MS Office (different error code than expected
   // or ctime issues probably). We might allow disabling it.
   DbgPrintW(L"SetFileTime %ls\n", filePath);
-
-  DokanResetTimeout(CEPH_DOKAN_IO_TIMEOUT, DokanFileInfo);
 
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -1318,6 +1285,7 @@ static void print_usage() {
     "  -n (skip enforcing permissions on client side)\n"
     "  -x sub_mount_path (mount a Ceph filesystem subdirectory)\n"
     "  -h (show this help message)\n"
+    "  -i (operation timeout in seconds, defaults to 120)\n"
     );
 }
 
@@ -1426,6 +1394,10 @@ main(int argc, char* argv[])
     case L'w':
       dokanOptions->Options |= DOKAN_OPTION_WRITE_PROTECT;
       break;
+    case L'i':
+      command++;
+      timeout_ms = _wtol(wargv[command]) * 1000;
+      break;
     default:
       fwprintf(stderr, L"unknown command: %ls\n", wargv[command]);
       return ERROR_INVALID_PARAMETER;
@@ -1450,6 +1422,8 @@ main(int argc, char* argv[])
              L"The mount manager always mounts the drive for all user sessions.\n");
     return EXIT_FAILURE;
   }
+
+  dokanOptions->Timeout = timeout_ms;
 
   ZeroMemory(dokanOperations, sizeof(DOKAN_OPERATIONS));
   dokanOperations->ZwCreateFile = WinCephCreateFile;
