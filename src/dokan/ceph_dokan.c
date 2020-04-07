@@ -661,7 +661,8 @@ WinCephWriteFile(
     int ret = ceph_write(cmount, fd_new, Buffer, NumberOfBytesToWrite, Offset);
     if(ret<0)
     {
-      fwprintf(stderr, L"ceph_write IO error [fn:%ls][fd=%d][Offset=%lld][Length=%ld]\n", FileName, fd_new, Offset, NumberOfBytesToWrite);
+      fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
+               FileName, ret, fd_new, Offset, NumberOfBytesToWrite);
       ceph_close(cmount, fd_new);
       return errno_to_ntstatus(ret);
     }
@@ -674,7 +675,8 @@ WinCephWriteFile(
     int ret = ceph_write(cmount, fdc.fd, Buffer, NumberOfBytesToWrite, Offset);
     if(ret<0)
     {
-      fwprintf(stderr, L"ceph_write IO error [fn:%ls][fd=%d][Offset=%lld][Length=%ld]\n", FileName, fdc.fd, Offset, NumberOfBytesToWrite);
+      fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
+               FileName, ret, fdc.fd, Offset, NumberOfBytesToWrite);
       return errno_to_ntstatus(ret);
     }
     *NumberOfBytesWritten = ret;
@@ -708,7 +710,8 @@ WinCephFlushFileBuffers(
 
   int ret = ceph_fsync(cmount, fdc.fd, 0);
   if(ret){
-    fwprintf(stderr, L"ceph_sync error [%ls][%df]\n", FileName, fdc.fd);
+    fwprintf(stderr, L"ceph_sync error [%ls][%df][ret=%d]\n",
+             FileName, fdc.fd, ret);
     return errno_to_ntstatus(ret);
   }
 
@@ -744,7 +747,8 @@ WinCephGetFileInformation(
   }else{
     int ret = ceph_fstat(cmount, fdc.fd, &stbuf);
     if(ret){
-      fwprintf(stderr, L"GetFileInformation ceph_fstat error [%ls]\n", FileName);
+      fwprintf(stderr, L"GetFileInformation ceph_fstat error [%ls][ret=%d]\n",
+               FileName, ret);
       return errno_to_ntstatus(ret);
     }
   }
@@ -818,7 +822,7 @@ WinCephFindFiles(
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
   if(ret != 0){
-    fwprintf(stderr, L"ceph_opendir error : %ls [%d]\n", FileName, ret);
+    fwprintf(stderr, L"ceph_opendir error : %ls [ret=%d]\n", FileName, ret);
     return errno_to_ntstatus(ret);
   }
 
@@ -1161,7 +1165,8 @@ WinCephSetFileTime(
 
   int ret = ceph_setattrx(cmount, file_name, &stbuf, mask, 0);
   if(ret){
-   fwprintf(stderr, L"SetFileTime ceph_setattrx error [%ls]\n", FileName);
+   fwprintf(stderr, L"SetFileTime ceph_setattrx error [%ls][ret=%d]\n",
+            FileName, ret);
    return errno_to_ntstatus(ret);
   }
   return 0;
@@ -1323,7 +1328,7 @@ main(int argc, char* argv[])
   }
 
   if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE)) {
-    fwprintf(stderr, L"Unable to install handler!\n");
+    fwprintf(stderr, L"Unable to install console handler!\n");
     return EXIT_FAILURE;
   }
 
@@ -1463,7 +1468,7 @@ main(int argc, char* argv[])
 
   if(ret)
   {
-    fprintf(stderr, "ceph_conf_read_file error!\n");
+    fprintf(stderr, "ceph_conf_read_file error [%d]!\n", ret);
     return errno_to_ntstatus(ret);
   }
   fprintf(stderr, "ceph_conf_read_file OK\n");
@@ -1471,7 +1476,7 @@ main(int argc, char* argv[])
   ret = ceph_mount(cmount, sub_mount_path);
   if(ret)
   {
-    fprintf(stderr, "ceph_mount error!\n");
+    fprintf(stderr, "ceph_mount error [%d]!\n", ret);
     return errno_to_ntstatus(ret);
   }
 
