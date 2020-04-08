@@ -94,6 +94,8 @@ daemonize_complete(void)
     if (!error) {
         std::cerr << "Failed to communicate with the parent" << std::endl;
     }
+
+    global_init_postfork_finish(g_ceph_context);
 }
 
 /* If one of the command line option is "--detach", creates
