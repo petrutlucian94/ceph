@@ -75,6 +75,14 @@ static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 static HANDLE write_handle;  /* End of pipe to write to parent. */
 
+BOOL is_process_running(DWORD pid, int timeout)
+{
+    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    DWORD ret = WaitForSingleObject(process, timeout);
+    CloseHandle(process);
+    return ret == WAIT_TIMEOUT;
+}
+
 /* When a daemon is passed the --detach option, we create a new
  * process and pass an additional non-documented option called --pipe-handle.
  * Through this option, the parent passes one end of a pipe handle. */
@@ -111,6 +119,7 @@ detach_process(int argc, const char* argv[])
     char buffer[4096];
     int error, i;
     char ch;
+    DWORD exit_code = 0;
 
     /* We are only interested in the '--detach' and '--pipe-handle'. */
     for (i = 0; i < argc; i++) {
@@ -152,9 +161,13 @@ detach_process(int argc, const char* argv[])
     error = ReadFile(read_pipe, &ch, 1, NULL, NULL);
     if (!error) {
         std::cerr << "Failed to read from child. GLA = " << GetLastError() << std::endl;
+        if (!is_process_running(pi.dwProcessId, 5000)) {
+            GetExitCodeProcess(pi.hProcess, &exit_code);
+            std::cerr << "Child failed with exit code: " << exit_code << std::endl;
+        }
     }
-    /* The child has successfully started and is ready. */
-    exit(0);
+
+    exit(exit_code);
 }
 
 std::wstring to_wstring(const std::string& str)
