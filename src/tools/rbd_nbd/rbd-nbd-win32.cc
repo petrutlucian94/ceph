@@ -893,7 +893,7 @@ close_ret:
 
 static int do_unmap(Config *cfg)
 {
-  int r;
+  DWORD r;
   if (cfg->devpath.empty()) {
       cfg->devpath = cfg->poolname;
       cfg->devpath += cfg->nsname;
@@ -906,11 +906,14 @@ static int do_unmap(Config *cfg)
 
   r = WnbdUnmap((char *)cfg->devpath.c_str());
   if (r != 0) {
-      cerr << "rbd-nbd: failed to open device: " << cfg->devpath << std::endl;
-      return -r;
+      cerr << "rbd-nbd: failed to unmap device: " << cfg->devpath << " with last error: " << r << std::endl;
+      if (r == ERROR_FILE_NOT_FOUND)
+        return -ENODEV;
+      else
+        return -EINVAL;
   }
 
-  return r;
+  return 0;
 }
 
 static int parse_imgpath(const std::string &imgpath, Config *cfg,
@@ -1230,7 +1233,7 @@ static int rbd_nbd(int argc, const char *argv[])
     case Disconnect:
       r = do_unmap(&cfg);
       if (r < 0)
-        return -EINVAL;
+        return r;
       break;
     case List:
       r = do_list_mapped_devices(cfg.format, cfg.pretty_format);
@@ -1252,7 +1255,7 @@ int main(int argc, const char *argv[])
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
   int r = rbd_nbd(argc, argv);
   if (r < 0) {
-    return EXIT_FAILURE;
+    return r;
   }
   return 0;
 }
