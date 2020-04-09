@@ -15,6 +15,7 @@
 // This code assumes that IO IDs and timestamps are related monotonically.
 // In other words, (a.id < b.id) == (a.timestamp < b.timestamp) for all IOs a and b.
 
+#include "include/compat.h"
 #include "common/errno.h"
 #include "rbd_replay/ActionTypes.h"
 #include <babeltrace/babeltrace.h>

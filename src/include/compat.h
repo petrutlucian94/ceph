@@ -15,6 +15,7 @@
 #include "acconfig.h"
 #include <sys/types.h>
 #include <errno.h>
+#include <unistd.h>
 
 #if defined(__linux__)
 #define PROCPREFIX
@@ -354,8 +355,10 @@ extern _CRTIMP errno_t __cdecl _putenv_s(const char *_Name,const char *_Value);
 #define SOCKOPT_VAL_TYPE void*
 
 #define compat_mkdir(pathname, mode) mkdir(pathname, mode)
-#define compat_closesocket close
 #define aligned_free(ptr) free(ptr)
+static inline int compat_closesocket(int fildes) {
+  return close(fildes);
+}
 
 #endif /* WIN32 */
 
