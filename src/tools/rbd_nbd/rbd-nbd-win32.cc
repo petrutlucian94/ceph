@@ -711,12 +711,14 @@ static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
   char* hostname;
   hostname = inet_ntoa(a.inaddr.sin_addr);
   if (cfg->devpath.empty()) {
+      cfg->devpath = cfg->poolname;
+      cfg->devpath += cfg->nsname;
       if (!cfg->imgname.empty()) {
-          cfg->devpath = cfg->imgname;
+          cfg->devpath += cfg->imgname;
       } else if (!cfg->snapname.empty()) {
-          cfg->devpath = cfg->snapname;
+          cfg->devpath += cfg->snapname;
       } else {
-          cfg->devpath = "/dev/nbd" + stringify(port);
+          cfg->devpath += "/dev/nbd" + stringify(port);
       }
   }
 
@@ -892,6 +894,15 @@ close_ret:
 static int do_unmap(Config *cfg)
 {
   int r;
+  if (cfg->devpath.empty()) {
+      cfg->devpath = cfg->poolname;
+      cfg->devpath += cfg->nsname;
+      if (!cfg->imgname.empty()) {
+          cfg->devpath += cfg->imgname;
+      } else if (!cfg->snapname.empty()) {
+          cfg->devpath += cfg->snapname;
+      }
+  }
 
   r = WnbdUnmap((char *)cfg->devpath.c_str());
   if (r != 0) {
@@ -1162,8 +1173,13 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
         *err_msg << "rbd-nbd: must specify nbd device or image-or-snap-spec";
         return -EINVAL;
       }
-      cfg->devpath = *args.begin();
-
+      if (boost::starts_with(*args.begin(), "/dev/")) {
+        cfg->devpath = *args.begin();
+      } else {
+        if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
+          return -EINVAL;
+        }
+      }
       args.erase(args.begin());
       break;
     default:
