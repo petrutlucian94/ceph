@@ -474,15 +474,10 @@ WinCephCloseFile(
     return;
   }
 
-  DbgPrintW(L"CloseFile: %ls\n", filePath);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
-
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
 
+  DbgPrintW(L"CloseFile: %ls\n", filePath);
   DbgPrintW(L"ceph_close [%ls][fd=%d]\n", FileName, fdc.fd);
   int ret = ceph_close(cmount, fdc.fd);
   if(ret){
@@ -555,12 +550,7 @@ WinCephReadFile(
   }
 
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
   DbgPrintW(L"ReadFile : %ls\n", filePath);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
 
   if(BufferLength == 0)
   {
@@ -632,12 +622,6 @@ WinCephWriteFile(
     return 0;
   }
   DbgPrintW(L"WriteFile : %ls, offset %I64d, length %d\n", filePath, Offset, NumberOfBytesToWrite);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
-
-  DbgPrintW(L"ceph_write [Offset=%lld][NumberOfBytesToWrite=%ld]\n", Offset, NumberOfBytesToWrite);
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
 
@@ -696,10 +680,6 @@ WinCephFlushFileBuffers(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
   DbgPrintW(L"FlushFileBuffers : %ls\n", filePath);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
 
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
@@ -1027,10 +1007,6 @@ WinCephSetEndOfFile(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
   DbgPrintW(L"SetEndOfFile %ls, %I64d\n", filePath, ByteOffset);
 
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
-
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
   if (fdc.fd==0) {
@@ -1060,10 +1036,6 @@ WinCephSetAllocationSize(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
   DbgPrintW(L"SetAllocationSize %ls, %I64d\n", filePath, AllocSize);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
 
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
@@ -1106,10 +1078,6 @@ WinCephSetFileAttributes(
 {
   WCHAR  filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
 
   DbgPrintW(L"SetFileAttributes [%ls][%d]\n", FileName, FileAttributes);
 
