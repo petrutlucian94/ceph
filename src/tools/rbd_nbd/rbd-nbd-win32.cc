@@ -713,14 +713,18 @@ static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
   char* hostname;
   hostname = inet_ntoa(a.inaddr.sin_addr);
   if (cfg->devpath.empty()) {
-      cfg->devpath = cfg->poolname;
-      cfg->devpath += cfg->nsname;
+      if (!cfg->poolname.empty()) {
+        cfg->devpath += cfg->poolname;
+        cfg->devpath += '/';
+      }
+      if (!cfg->nsname.empty()) {
+        cfg->devpath += cfg->nsname;
+        cfg->devpath += '/';
+      }
       if (!cfg->imgname.empty()) {
-          cfg->devpath += cfg->imgname;
+        cfg->devpath += cfg->imgname;
       } else if (!cfg->snapname.empty()) {
-          cfg->devpath += cfg->snapname;
-      } else {
-          cfg->devpath += "/dev/nbd" + stringify(port);
+        cfg->devpath += cfg->snapname;
       }
   }
 
@@ -897,12 +901,18 @@ static int do_unmap(Config *cfg)
 {
   DWORD r;
   if (cfg->devpath.empty()) {
-      cfg->devpath = cfg->poolname;
-      cfg->devpath += cfg->nsname;
+      if (!cfg->poolname.empty()) {
+        cfg->devpath += cfg->poolname;
+	cfg->devpath += '/';
+      }
+      if (!cfg->nsname.empty()) {
+        cfg->devpath += cfg->nsname;
+	cfg->devpath += '/';
+      }
       if (!cfg->imgname.empty()) {
-          cfg->devpath += cfg->imgname;
+        cfg->devpath += cfg->imgname;
       } else if (!cfg->snapname.empty()) {
-          cfg->devpath += cfg->snapname;
+        cfg->devpath += cfg->snapname;
       }
   }
 
