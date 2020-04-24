@@ -976,6 +976,26 @@ static NBDServer *start_server(int fd, librbd::Image& image)
   return server;
 }
 
+static void construct_devpath_if_missing(Config* cfg) {
+  // Windows doesn't allow us to request specific disk paths when mapping an
+  // image. This will just be used by rbd-nbd and wnbd as an identifier.
+  if (cfg->devpath.empty()) {
+    if (!cfg->poolname.empty()) {
+      cfg->devpath += cfg->poolname;
+      cfg->devpath += '/';
+    }
+    if (!cfg->nsname.empty()) {
+      cfg->devpath += cfg->nsname;
+      cfg->devpath += '/';
+    }
+    if (!cfg->imgname.empty()) {
+      cfg->devpath += cfg->imgname;
+    } else if (!cfg->snapname.empty()) {
+      cfg->devpath += cfg->snapname;
+    }
+  }
+}
+
 static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
 {
   // On Windows, we can't pass socket descriptors to our driver. Instead,
@@ -1006,21 +1026,7 @@ static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
   snprintf(port, 100, "%d", ntohs(a.inaddr.sin_port));
   char* hostname;
   hostname = inet_ntoa(a.inaddr.sin_addr);
-  if (cfg->devpath.empty()) {
-      if (!cfg->poolname.empty()) {
-        cfg->devpath += cfg->poolname;
-        cfg->devpath += '/';
-      }
-      if (!cfg->nsname.empty()) {
-        cfg->devpath += cfg->nsname;
-        cfg->devpath += '/';
-      }
-      if (!cfg->imgname.empty()) {
-        cfg->devpath += cfg->imgname;
-      } else if (!cfg->snapname.empty()) {
-        cfg->devpath += cfg->snapname;
-      }
-  }
+  construct_devpath_if_missing(cfg);
 
   if (WnbdMap((char *)cfg->devpath.c_str(), hostname, port, (char *)"", size, FALSE)) {
       derr << "Failed to initialize NBD connection: "
@@ -1198,22 +1204,7 @@ close_ret:
 static int do_unmap(Config *cfg)
 {
   DWORD r;
-  if (cfg->devpath.empty()) {
-      if (!cfg->poolname.empty()) {
-        cfg->devpath += cfg->poolname;
-        cfg->devpath += '/';
-      }
-      if (!cfg->nsname.empty()) {
-        cfg->devpath += cfg->nsname;
-        cfg->devpath += '/';
-      }
-      if (!cfg->imgname.empty()) {
-        cfg->devpath += cfg->imgname;
-      } else if (!cfg->snapname.empty()) {
-        cfg->devpath += cfg->snapname;
-      }
-  }
-
+  construct_devpath_if_missing(cfg);
   r = WnbdUnmap((char *)cfg->devpath.c_str());
   if (r != 0) {
       cerr << "rbd-nbd: failed to unmap device: " << cfg->devpath << " with last error: " << r << std::endl;
@@ -1363,15 +1354,7 @@ static int do_show_device(Config* cfg)
   std::unique_ptr<ceph::Formatter> f;
   TextTable tbl;
 
-  if (cfg->devpath.empty()) {
-      cfg->devpath = cfg->poolname;
-      cfg->devpath += cfg->nsname;
-      if (!cfg->imgname.empty()) {
-          cfg->devpath += cfg->imgname;
-      } else if (!cfg->snapname.empty()) {
-          cfg->devpath += cfg->snapname;
-      }
-  }
+  construct_devpath_if_missing(cfg);
 
   if (format == "json") {
     f.reset(new JSONFormatter(pretty_format));
