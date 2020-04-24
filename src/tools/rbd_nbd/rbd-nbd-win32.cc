@@ -988,6 +988,7 @@ static void construct_devpath_if_missing(Config* cfg) {
       cfg->devpath += cfg->nsname;
       cfg->devpath += '/';
     }
+    // TODO: ensure that either the device path or the image name are set.
     if (!cfg->imgname.empty()) {
       cfg->devpath += cfg->imgname;
     } else if (!cfg->snapname.empty()) {
@@ -1242,7 +1243,10 @@ static int parse_imgpath(const std::string &imgpath, Config *cfg,
   return 0;
 }
 
-static int do_list_mapped_devices(const std::string &format, bool pretty_format)
+/* List mapped devices. If "search_devpath" is set, only this specific device
+   will be printed. */
+static int do_list_mapped_devices(const std::string &format, bool pretty_format,
+                                  std::string search_devpath)
 {
   bool should_print = false;
   std::unique_ptr<ceph::Formatter> f;
@@ -1277,6 +1281,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format)
     std::cerr << "rbd-nbd: invalid output status: " << Status << std::endl;
     return -EINVAL;
   }
+  bool found = false;
   if (NULL != Output && ERROR_SUCCESS == Status) {
       InitWMI();
       for (ULONG index = 0; index < Output->ActiveListCount; index++) {
@@ -1291,6 +1296,12 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format)
           QueryWMI(bstr_sql, d);
           USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
           SysFreeString(bstr_sql);
+          if (search_devpath) {
+            if(iterator.InstanceName != search_devpath)
+              continue;
+            found = true;
+          }
+          
           if (d.size() != 1) {
               std::cerr << "could not get disk number for current device: " << iterator.InstanceName << std::endl;
           } else {
@@ -1342,120 +1353,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format)
   if (should_print) {
     std::cout << tbl;
   }
-
-  return 0;
-}
-
-static int do_show_device(Config* cfg)
-{
-  std::string format = cfg->format;
-  bool pretty_format = cfg->pretty_format;
-  bool should_print = false;
-  std::unique_ptr<ceph::Formatter> f;
-  TextTable tbl;
-
-  construct_devpath_if_missing(cfg);
-
-  if (format == "json") {
-    f.reset(new JSONFormatter(pretty_format));
-  } else if (format == "xml") {
-    f.reset(new XMLFormatter(pretty_format));
-  } else if (!format.empty() && format != "plain") {
-    std::cerr << "rbd-nbd: invalid output format: " << format << std::endl;
-    return -EINVAL;
-  }
-
-  if (f) {
-    f->open_array_section("devices");
-  } else {
-    tbl.define_column("id", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("pool", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("namespace", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("image", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("snap", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("device", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("disk_number", TextTable::LEFT, TextTable::LEFT);
-    tbl.define_column("status", TextTable::LEFT, TextTable::LEFT);
-  }
-
-  Config cfg1;
-  PGET_LIST_OUT Output = NULL;
-  DWORD Status = WnbdList(&Output);
-  if (!Output) {
-    std::cerr << "rbd-nbd: invalid output status: " << Status << std::endl;
-    return -EINVAL;
-  }
-  bool found = false;
-  if (NULL != Output && ERROR_SUCCESS == Status) {
-      InitWMI();
-      for (ULONG index = 0; index < Output->ActiveListCount; index++) {
-          std::wstring WideString = to_wstring(Output->ActiveEntry[index].ConnectionInformation.SerialNumber);
-          std::wstring WQL = L"SELECT * FROM Win32_DiskDrive WHERE SerialNumber = '";
-          WQL.append(WideString);
-          WQL.append(L"'");
-          std::vector<DiskInfo> d;
-          bool verified = false;
-          DiskInfo temp;
-          BSTR bstr_sql = SysAllocString(WQL.c_str());
-          QueryWMI(bstr_sql, d);
-          USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
-          SysFreeString(bstr_sql);
-          if (iterator.InstanceName != cfg->devpath) {
-              continue;
-          }
-          if (d.size() != 1) {
-              std::cerr << "could not get disk number for current device: " << iterator.InstanceName << std::endl;
-          } else {
-              found = true;
-              temp = d[0];
-              list_registry_config(iterator.InstanceName, cfg);
-              if (is_process_running(iterator.Pid, 500)) {
-                  verified = true;
-              }
-          }
-
-          if (f) {
-              f->open_object_section("device");
-              if (verified) {
-                f->dump_int("id", iterator.Pid);
-              } else {
-                f->dump_int("id", -1);
-              }
-              f->dump_string("device", cfg->devpath);
-              f->dump_string("pool", cfg->poolname);
-              f->dump_string("namespace", cfg->nsname);
-              f->dump_string("image", cfg->imgname);
-              f->dump_string("snap", cfg->snapname);
-              if (d.size() == 1) {
-                f->dump_int("disk_number", temp.Index);
-              } else {
-                f->dump_int("disk_number", -1);
-              }
-              f->close_section();
-          } else {
-              should_print = true;
-              if (cfg->snapname.empty()) {
-                  cfg->snapname = "-";
-              }
-              if (verified) {
-                  tbl << static_cast<int>(iterator.Pid) << cfg->poolname << cfg->nsname << cfg->imgname << cfg->snapname
-                      << iterator.InstanceName << static_cast<int>(temp.Index)  << TextTable::endrow;
-              } else {
-                  tbl << -1 << " " << " " << " " << " "
-                      << iterator.InstanceName << -1 << TextTable::endrow;
-              }
-          }
-      }
-      ReleaseWMI();
-  }
-  if (f) {
-    f->close_section(); // devices
-    f->flush(std::cout);
-  }
-  if (should_print) {
-    std::cout << tbl;
-  }
-  if (!found) {
+  if (search_devpath && !found) {
       return -ENOENT;
   }
 
@@ -1628,12 +1526,13 @@ static int rbd_nbd(int argc, const char *argv[])
         return r;
       break;
     case List:
-      r = do_list_mapped_devices(cfg.format, cfg.pretty_format);
+      r = do_list_mapped_devices(cfg.format, cfg.pretty_format, "");
       if (r < 0)
         return -EINVAL;
       break;
     case Show:
-      r = do_show_device(&cfg);
+      construct_devpath_if_missing(&cfg);
+      r = do_list_mapped_devices(cfg.format, cfg.pretty_format, cfg.devpath);
       if (r < 0)
         return -EINVAL;
       break;
