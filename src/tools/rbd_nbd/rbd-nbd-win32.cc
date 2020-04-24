@@ -53,6 +53,7 @@
 #include "common/module.h"
 #include "common/safe_io.h"
 #include "common/version.h"
+#include "common/win32_registry.h"
 
 #include "global/global_init.h"
 
@@ -74,8 +75,6 @@
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 static HANDLE write_handle;  /* End of pipe to write to parent. */
-#define TMP_BUFSIZE 4096
-static char output_last_error[TMP_BUFSIZE];
 
 bool detach;                 /* Was --detach specified? */
 
@@ -96,12 +95,6 @@ static bool detach_process(int argc, const char* argv[]);
 static void service_complete(void);
 void service_stop();
 
-HKEY OpenKey(HKEY hRootKey, LPCTSTR strKey, bool create_value);
-int DeleteKey(HKEY hRootKey, LPCTSTR strKey);
-int SetVal(HKEY hKey, LPCTSTR lpValue, DWORD data);
-int SetValString(HKEY hKey, LPCTSTR lpValue, std::string data);
-int GetVal(HKEY hKey, LPCTSTR lpValue, DWORD* value);
-int GetValString(HKEY hKey, LPCTSTR lpValue, std::string& value);
 int list_all_registry_config();
 
 BOOL is_process_running(DWORD pid, int timeout)
@@ -277,35 +270,6 @@ struct Config {
   bool pretty_format = false;
 };
 
-char* ovs_lasterror_to_string(void)
-{
-    char* buffer = output_last_error;
-    DWORD error = GetLastError();
-
-    if (error == 0) {
-        return (char*)"Success";
-    }
-
-    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL, error, 0, buffer, TMP_BUFSIZE, NULL);
-    return buffer;
-}
-
-char* ovs_error_to_string(DWORD error)
-{
-    char* buffer = output_last_error;
-    std::cout << "was in ovs_error_to_string" << std::endl;
-
-    if (error == 0) {
-        return (char*)"Success";
-    }
-
-    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL, error, 0, buffer, TMP_BUFSIZE, NULL);
-    return buffer;
-}
-
-
 void
 control_handler(DWORD request);
 void run_service(void)
@@ -349,7 +313,7 @@ service_start(int *argcp, const char **argvp[], const char* program_name)
     /* StartServiceCtrlDispatcher blocks and returns after the service is
      * stopped. */
     if (!StartServiceCtrlDispatcher(service_table)) {
-        std::cerr << "Failed at StartServiceCtrlDispatcher: " << ovs_lasterror_to_string() << std::endl;
+        std::cerr << "Failed at StartServiceCtrlDispatcher: " << win32_lasterror_str() << std::endl;
         return -EINVAL;
     }
     exit(0);
@@ -364,7 +328,7 @@ int map_registry_config(Config* cfg)
         return -EINVAL;
     }
     cfg->hkey = hKey;
-    if (SetVal(hKey, "pid", getpid()) ||
+    if (SetValDword(hKey, "pid", getpid()) ||
         SetValString(hKey, "devpath", cfg->devpath) ||
         SetValString(hKey, "poolname", cfg->poolname) ||
         SetValString(hKey, "nsname", cfg->nsname) ||
@@ -472,7 +436,7 @@ void QueryKeyEx(HKEY hKey)
                         error = CreateProcess(NULL, (char *)command.c_str(), NULL, NULL, TRUE, DETACHED_PROCESS,
                             NULL, NULL, &si, &pi);
                         if (!error) {
-                            myfile << "CreateProcess failed: " << ovs_lasterror_to_string() << std::endl;
+                            myfile << "CreateProcess failed: " << win32_lasterror_str() << std::endl;
                         }
                     }
                 }
@@ -503,99 +467,6 @@ int list_all_registry_config()
         return -EINVAL;
     }
     QueryKeyEx(hKey);
-
-    return 0;
-}
-
-HKEY OpenKey(HKEY hRootKey, LPCTSTR strKey, bool create_value)
-{
-    HKEY hKey = NULL;
-    DWORD status = RegOpenKeyEx(hRootKey, strKey, 0, KEY_ALL_ACCESS, &hKey);
-
-    if (status == ERROR_FILE_NOT_FOUND && create_value)
-    {
-        std::cout << "Creating registry key: " << strKey << std::endl;
-        status = RegCreateKeyEx(hRootKey, strKey, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL);
-    }
-
-    if (ERROR_SUCCESS != status) {
-        std::cout << "Error: " << ovs_error_to_string(status) << ". Could not open registry key: " << strKey << std::endl;
-    }
-
-    return hKey;
-}
-
-int DeleteKey(HKEY hRootKey, LPCTSTR strKey)
-{
-    DWORD status = RegDeleteKeyEx(hRootKey, strKey, KEY_WOW64_64KEY, 0);
-
-    if (status == ERROR_FILE_NOT_FOUND)
-    {
-        std::cout << "Registry key : " << strKey << " does not exist."<< std::endl;
-        return 0;
-    }
-
-    if (ERROR_SUCCESS != status) {
-        std::cout << "Error: " << ovs_error_to_string(status) << ". Could not delete registry key: " << strKey << std::endl;
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-int SetVal(HKEY hKey, LPCTSTR lpValue, DWORD data)
-{
-    DWORD status = RegSetValueEx(hKey, lpValue, 0, REG_DWORD, (LPBYTE)&data, sizeof(DWORD));
-    if (ERROR_SUCCESS != status) {
-        std::cout << "Error: " << ovs_error_to_string(status) << ". Could not set registry value: " << (char*)lpValue << std::endl;
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-int SetValString(HKEY hKey, LPCTSTR lpValue, std::string data)
-{
-    DWORD status = RegSetValueEx(hKey, lpValue, 0, REG_SZ, (LPBYTE)data.c_str(), data.length());
-    if (ERROR_SUCCESS != status) {
-        std::cout << "Error: " << ovs_error_to_string(status) << ". Could not set registry value: " << (char*)lpValue << std::endl;
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-int GetVal(HKEY hKey, LPCTSTR lpValue, DWORD* value)
-{
-    DWORD data;
-    DWORD size = sizeof(data);
-    DWORD type = REG_DWORD;
-    DWORD status = RegQueryValueEx(hKey, lpValue, NULL, &type, (LPBYTE)&data, &size);
-    if (ERROR_SUCCESS != status) {
-        std::cout << "Error: " << ovs_error_to_string(status) << ". Could not set registry value: " << (char*)lpValue << std::endl;
-        return -EINVAL;
-    }
-    *value = data;
-
-    return 0;
-}
-
-int GetValString(HKEY hKey, LPCTSTR lpValue, std::string& value)
-{
-    std::string data{""};
-    DWORD size = 0;
-    DWORD type = REG_SZ;
-    DWORD status = RegQueryValueEx(hKey, lpValue, NULL, &type, (LPBYTE)data.c_str(), &size);
-    if (ERROR_MORE_DATA == status) {
-        data.resize(size);
-        status = RegQueryValueEx(hKey, lpValue, NULL, &type, (LPBYTE)data.c_str(), &size);
-    }
-    
-    if (ERROR_SUCCESS != status) {
-        std::cout << "Error: " << ovs_error_to_string(status) << ". Could not set registry value: " << (char*)lpValue << std::endl;
-        return -EINVAL;
-    }
-    value.assign(data.c_str());
 
     return 0;
 }
@@ -664,12 +535,12 @@ check_service(const char* program_name)
     /* Establish a connection to the local service control manager. */
     manager = OpenSCManager(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
     if (!manager) {
-        std::cerr << "Failed to open the service control manager: " << ovs_lasterror_to_string() << std::endl;
+        std::cerr << "Failed to open the service control manager: " << win32_lasterror_str() << std::endl;
     }
 
     service = OpenService(manager, program_name, SERVICE_ALL_ACCESS);
     if (!service) {
-    std::cerr << "Failed to open service: " << ovs_lasterror_to_string() << std::endl;
+    std::cerr << "Failed to open service: " << win32_lasterror_str() << std::endl;
     }
 }
 

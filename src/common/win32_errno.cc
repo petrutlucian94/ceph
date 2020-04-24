@@ -12,6 +12,7 @@
  *
  */
 
+
 #include <errno.h>
 #include <stdlib.h>
 
@@ -476,4 +477,34 @@ __u32 errno_to_ntstatus(__u32 r) {
     default:
       return STATUS_INTERNAL_ERROR;
  }
+}
+
+std::string win32_strerror(int err)
+{
+  // As opposed to dlerror messages, this has to be freed.
+  LPSTR msg = NULL;
+  DWORD msg_len = ::FormatMessageA(
+    FORMAT_MESSAGE_ALLOCATE_BUFFER |
+    FORMAT_MESSAGE_FROM_SYSTEM |
+    FORMAT_MESSAGE_IGNORE_INSERTS,
+    NULL,
+    err,
+    0,
+    (LPSTR) &msg,
+    0,
+    NULL);
+  if (!msg_len) {
+    std::ostringstream msg_stream;
+    msg_stream << "Unknown error (" << err << ").";
+    return msg_stream.str();
+  }
+  std::string msg_s(msg);
+  ::LocalFree(msg);
+  return msg_s;
+}
+
+std::string win32_lasterror_str()
+{
+  DWORD err = ::GetLastError();
+  return win32_strerror(err);
 }
