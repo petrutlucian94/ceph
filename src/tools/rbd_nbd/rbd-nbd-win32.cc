@@ -78,9 +78,6 @@ static HANDLE write_handle;  /* End of pipe to write to parent. */
 
 bool detach;                 /* Was --detach specified? */
 
-/* Handle to the Services Manager and the created service. */
-static SC_HANDLE manager, service;
-
 /* Handle to the status information structure for the current service. */
 static SERVICE_STATUS_HANDLE hstatus;
 
@@ -89,7 +86,6 @@ static SERVICE_STATUS service_status;
 
 static bool service_started;         /* Have we dispatched service to start? */
 
-static void check_service(const char* program_name);
 static void init_service_status(void);
 static bool detach_process(int argc, const char* argv[]);
 static void service_complete(void);
@@ -276,7 +272,8 @@ void run_service(void)
 {
     init_service_status();
     /* Register the control handler. This function is called by the service
-     * manager to stop the service. */
+     * manager to stop the service. The service name that we're passing here
+     * doesn't have to be valid as we're using SERVICE_WIN32_OWN_PROCESS. */
     hstatus = RegisterServiceCtrlHandler("rbd-nbd",
         (LPHANDLER_FUNCTION)control_handler);
     if (!hstatus) {
@@ -293,6 +290,7 @@ void run_service(void)
 
     service_complete();
 }
+
 /* Registers the call-back and configures the actions in case of a failure
  * with the Windows services manager. */
 int
@@ -307,7 +305,6 @@ service_start(int *argcp, const char **argvp[], const char* program_name)
     myfile << "I was in service_start.\n";
     myfile.close();
 
-    check_service("rbd-nbd");
     service_started = true;
 
     /* StartServiceCtrlDispatcher blocks and returns after the service is
@@ -525,22 +522,6 @@ service_complete(void)
 {
     if (hstatus) {
         SetServiceStatus(hstatus, &service_status);
-    }
-}
-
-/* Check whether 'program_name' has been created as a service. */
-static void
-check_service(const char* program_name)
-{
-    /* Establish a connection to the local service control manager. */
-    manager = OpenSCManager(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
-    if (!manager) {
-        std::cerr << "Failed to open the service control manager: " << win32_lasterror_str() << std::endl;
-    }
-
-    service = OpenService(manager, program_name, SERVICE_ALL_ACCESS);
-    if (!service) {
-    std::cerr << "Failed to open service: " << win32_lasterror_str() << std::endl;
     }
 }
 
