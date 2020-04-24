@@ -114,44 +114,7 @@ UINT32 GetPropertyInt(IWbemClassObject* pclsObj, const std::wstring& property)
     return retVal;
 }
 
-bool QueryWMI(BSTR Query, std::vector<Win32_Proc>& proc)
-{
-    bool bRet = false;
-
-    HRESULT hres;
-    IEnumWbemClassObject* pEnumerator = NULL;
-    IWbemClassObject* pclsObj = NULL;
-
-    if (pWbemSvc)
-    {
-        BSTR bstr_wql = SysAllocString(L"WQL" );
-        hres = pWbemSvc->ExecQuery(bstr_wql, Query, WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, NULL, &pEnumerator);
-        SysFreeString(bstr_wql);
-        if (!FAILED(hres))
-        {
-            ULONG uReturn = 0;
-            while (pEnumerator)
-            {
-                pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-                if (uReturn == 0)
-                    break;
-                Win32_Proc d;
-                d.process = GetPropertyInt(pclsObj, L"ProcessId");
-                d.CommandLine = GetProperty(pclsObj, L"CommandLine");
-                proc.push_back(d);
-                bRet = true;
-            }
-            if (pclsObj != NULL)
-                pclsObj->Release();
-            if (pEnumerator != NULL)
-                pEnumerator->Release();
-        }
-    }
-
-    return bRet;
-}
-
-bool QueryWMI(BSTR Query, std::vector<DiskInfo>& disks)
+bool GetDiskDrive(BSTR Query, std::vector<DiskInfo>& disks)
 {
     bool bRet = false;
 
@@ -186,5 +149,18 @@ bool QueryWMI(BSTR Query, std::vector<DiskInfo>& disks)
         }
     }
 
+    return bRet;
+}
+
+bool GetDiskDriveBySerialNumber(std::wstring serialNumber,
+                                std::vector<DiskInfo>& disks) {
+    std::wstring query = L"SELECT * FROM Win32_DiskDrive WHERE SerialNumber = '";
+    query.append(serialNumber);
+    query.append(L"'");
+    BSTR bstrQuery = SysAllocString(query.c_str())
+
+    bool bRet = GetDiskDrive(bstrQuery, disks);
+
+    SysFreeString(bstrQuery);
     return bRet;
 }
