@@ -113,12 +113,13 @@ set_pipe_handle(intptr_t pipe_handle)
 void
 daemonize_complete(void)
 {
-    /* If running as a child because '--detach' option was specified,
-     * communicate with the parent to inform that the child is ready. */
-    int error;
-    error = WriteFile(write_handle, "a", 1, NULL, NULL);
-    if (!error) {
-        std::cerr << "Failed to communicate with the parent" << std::endl;
+    // If running as a child because '--detach' option was specified,
+    // communicate with the parent to inform that the child is ready.
+    // TODO: consider exiting in this case. The parent didn't wait for us,
+    // maybe it was killed after a timeout.
+    if (!WriteFile(write_handle, "a", 1, NULL, NULL)) {
+        derr << "Failed to communicate with the parent: "
+             << win32_lasterror_str() << dendl;
     }
 
     global_init_postfork_finish(g_ceph_context);
@@ -154,9 +155,8 @@ detach_process(int argc, const char* argv[])
     sa.bInheritHandle = TRUE;
 
     /* Create an anonymous pipe to communicate with the child. */
-    error = CreatePipe(&read_pipe, &write_pipe, &sa, 0);
-    if (!error) {
-        std::cerr << "CreatePipe failed" << std::endl;
+    if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0);) {
+        derr << "CreatePipe failed: " << win32_lasterror_str() << dendl;
     }
 
     GetStartupInfo(&si);
@@ -166,22 +166,20 @@ detach_process(int argc, const char* argv[])
         (intptr_t)write_pipe);
 
     /* Create a detached child */
-    error = CreateProcess(NULL, buffer, NULL, NULL, TRUE, DETACHED_PROCESS,
-        NULL, NULL, &si, &pi);
-    if (!error) {
-        std::cerr << "CreateProcess failed" << std::endl;
+    if (!CreateProcess(NULL, buffer, NULL, NULL, TRUE, DETACHED_PROCESS,
+                      NULL, NULL, &si, &pi)) {
+        derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
     }
 
     /* Close one end of the pipe in the parent. */
     CloseHandle(write_pipe);
 
     /* Block and wait for child to say it is ready. */
-    error = ReadFile(read_pipe, &ch, 1, NULL, NULL);
-    if (!error) {
-        std::cerr << "Failed to read from child. GLA = " << GetLastError() << std::endl;
+    if (!ReadFile(read_pipe, &ch, 1, NULL, NULL)) {
+        derr << "Failed to read from child: " << win32_lasterror_str() << dendl;
         if (!is_process_running(pi.dwProcessId, 5000)) {
             GetExitCodeProcess(pi.hProcess, &exit_code);
-            std::cerr << "Child failed with exit code: " << exit_code << std::endl;
+            derr << "Child failed with exit code: " << exit_code << dendl;
         }
     }
 
@@ -302,10 +300,10 @@ service_start(int *argcp, const char **argvp[], const char* program_name)
     };
     service_started = true;
 
-    /* StartServiceCtrlDispatcher blocks and returns after the service is
-     * stopped. */
+    /* StartServiceCtrlDispatcher blocks until the service is stopped. */
     if (!StartServiceCtrlDispatcher(service_table)) {
-        std::cerr << "Failed at StartServiceCtrlDispatcher: " << win32_lasterror_str() << std::endl;
+        derr << "StartServiceCtrlDispatcher error: "
+             << win32_lasterror_str() << dendl;
         return -EINVAL;
     }
     exit(0);
@@ -1025,7 +1023,8 @@ static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
   }
 
   if (WnbdMap((char *)cfg->devpath.c_str(), hostname, port, (char *)"", size, FALSE)) {
-      std::cout << "Failed to initialize NBD connection. Error: " << GetLastError();
+      derr << "Failed to initialize NBD connection: "
+           << win32_lasterror_str() << dendl;
       goto error;
   }
 
