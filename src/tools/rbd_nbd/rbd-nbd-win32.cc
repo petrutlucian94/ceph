@@ -300,11 +300,6 @@ service_start(int *argcp, const char **argvp[], const char* program_name)
         {(LPTSTR)program_name, (LPSERVICE_MAIN_FUNCTION)run_service},
         {NULL, NULL}
     };
-    std::ofstream myfile;
-    myfile.open("c:\\example.txt");
-    myfile << "I was in service_start.\n";
-    myfile.close();
-
     service_started = true;
 
     /* StartServiceCtrlDispatcher blocks and returns after the service is
@@ -397,9 +392,6 @@ void QueryKeyEx(HKEY hKey)
     
     if (cSubKeys)
     {
-        myfile.open("c:\\run_service.txt");
-        myfile << "\nNumber of subkeys:" << cSubKeys << "\n";
-
         for (i=0; i<cSubKeys; i++) 
         { 
             cbName = MAX_KEY_LENGTH;
@@ -414,13 +406,10 @@ void QueryKeyEx(HKEY hKey)
             {           
                 std::string temp{"SYSTEM\\CurrentControlSet\\Services\\rbd-nbd\\"};
                 temp.append(achKey);
-                myfile << "\n" << temp.c_str() << "\n";
                 HKEY sub_key = OpenKey(HKEY_LOCAL_MACHINE, temp.c_str(), true);
                 if (sub_key) {
                     std::string command;
-                    myfile << "\n" << "GetValString" << "\n";
                     if (!GetValString(sub_key, "command_line", command)) {
-                        myfile << "\n" << command.c_str() << "\n";
                         STARTUPINFO si;
                         PROCESS_INFORMATION pi;
                         int error;
@@ -433,13 +422,12 @@ void QueryKeyEx(HKEY hKey)
                         error = CreateProcess(NULL, (char *)command.c_str(), NULL, NULL, TRUE, DETACHED_PROCESS,
                             NULL, NULL, &si, &pi);
                         if (!error) {
-                            myfile << "CreateProcess failed: " << win32_lasterror_str() << std::endl;
+                            derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
                         }
                     }
                 }
             }
         }
-        myfile.close();
     } 
 }
 
