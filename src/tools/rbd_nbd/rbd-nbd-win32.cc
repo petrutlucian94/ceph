@@ -1285,7 +1285,14 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   if (NULL != Output && ERROR_SUCCESS == Status) {
       InitWMI();
       for (ULONG index = 0; index < Output->ActiveListCount; index++) {
-          std::wstring WideString = to_wstring(Output->ActiveEntry[index].ConnectionInformation.SerialNumber);
+          USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
+          if (search_devpath) {
+            if(iterator.InstanceName != search_devpath)
+              continue;
+            found = true;
+          }
+
+          std::wstring WideString = to_wstring(iterator.SerialNumber);
           std::wstring WQL = L"SELECT * FROM Win32_DiskDrive WHERE SerialNumber = '";
           WQL.append(WideString);
           WQL.append(L"'");
@@ -1294,14 +1301,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
           DiskInfo temp;
           BSTR bstr_sql = SysAllocString(WQL.c_str());
           QueryWMI(bstr_sql, d);
-          USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
           SysFreeString(bstr_sql);
-          if (search_devpath) {
-            if(iterator.InstanceName != search_devpath)
-              continue;
-            found = true;
-          }
-          
           if (d.size() != 1) {
               std::cerr << "could not get disk number for current device: " << iterator.InstanceName << std::endl;
           } else {
