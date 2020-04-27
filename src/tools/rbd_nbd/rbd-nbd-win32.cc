@@ -114,7 +114,6 @@ detach_process()
     PROCESS_INFORMATION pi;
     HANDLE read_pipe, write_pipe;
     char buffer[4096];
-    int error, i;
     char ch;
     DWORD exit_code = 0;
 
@@ -125,7 +124,7 @@ detach_process()
     sa.bInheritHandle = TRUE;
 
     /* Create an anonymous pipe to communicate with the child. */
-    if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0);) {
+    if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
         derr << "CreatePipe failed: " << win32_lasterror_str() << dendl;
     }
 
@@ -270,21 +269,22 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
     if (!hKey) {
         return -EINVAL;
     }
+    std::string reg_value;
 
-    if (!GetValString(hKey, "devpath", temp)) {
-        cfg->devpath = temp;
+    if (!GetValString(hKey, "devpath", reg_value)) {
+        cfg->devpath = reg_value;
     }
-    if (!GetValString(hKey, "poolname", temp)) {
-        cfg->poolname = temp;
+    if (!GetValString(hKey, "poolname", reg_value)) {
+        cfg->poolname = reg_value;
     }
-    if (!GetValString(hKey, "nsname", temp)) {
-        cfg->nsname = temp;
+    if (!GetValString(hKey, "nsname", reg_value)) {
+        cfg->nsname = reg_value;
     }
-    if (!GetValString(hKey, "imgname", temp)) {
-        cfg->imgname = temp;
+    if (!GetValString(hKey, "imgname", reg_value)) {
+        cfg->imgname = reg_value;
     }
-    if (!GetValString(hKey, "snapname", temp)) {
-        cfg->snapname = temp;
+    if (!GetValString(hKey, "snapname", reg_value)) {
+        cfg->snapname = reg_value;
     }
 
     CloseKey(hKey);
@@ -356,20 +356,20 @@ int restart_registered_mappings()
         return 0;
 }
 
-class NBDServer : public Win32Service {
-    virtual int run_hook() {
+class RBDService : public Win32Service {
+    int run_hook() override {
         return restart_registered_mappings();
     }
     /* Invoked when the service is requested to stop. */
-    virtual int stop_hook() {
+    int stop_hook() override {
         // TODO: disconnect all mappings.
         return 0;
     }
     /* Invoked when the system is shutting down. */
-    virtual int shutdown_hook() {
-        return stop_hook()
+    int shutdown_hook() override {
+        return stop_hook();
     }
-}
+};
 
 static void usage()
 {
@@ -1108,7 +1108,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
       InitWMI();
       for(ULONG index = 0; index < Output->ActiveListCount; index++) {
           USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
-          if(search_devpath) {
+          if(!search_devpath.empty()) {
             if(iterator.InstanceName != search_devpath)
               continue;
             found = true;
@@ -1170,7 +1170,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   if (should_print) {
     std::cout << tbl;
   }
-  if (search_devpath && !found) {
+  if (!search_devpath.empty() && !found) {
       return -ENOENT;
   }
 

@@ -15,6 +15,9 @@
 class Win32Service {
 
 public:
+  Win32Service(CephContext *cct_);
+  virtual ~Win32Service();
+
   int initialize();
 protected:
   void run();
@@ -32,8 +35,10 @@ protected:
   virtual int shutdown_hook();
 
 private:
+  CephContext *cct;
+
   /* A handle used when reporting the current status. */
   SERVICE_STATUS_HANDLE hstatus;
   /* The current service status. */
   SERVICE_STATUS status;
-}
+};

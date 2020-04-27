@@ -10,14 +10,15 @@
  *
  */
 
+#define dout_context cct
+#define dout_subsys ceph_subsys_
+
 #include "common/debug.h"
 #include "common/errno.h"
 #include "common/win32_service.h"
 
-#define dout_subsys ceph_subsys_
 
-
-Win32Service::Win32Service()
+Win32Service::Win32Service(CephContext *cct_): cct(cct_)
 {
     status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
     status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
@@ -32,7 +33,7 @@ Win32Service::Win32Service()
 int Win32Service::initialize()
 {
     SERVICE_TABLE_ENTRY service_table[] = {
-        {(LPTSTR)"", (LPSERVICE_MAIN_FUNCTION)run},
+        {"", (LPSERVICE_MAIN_FUNCTION)run},
         {NULL, NULL}
     };
 
@@ -61,7 +62,7 @@ void Win32Service::run()
     // TODO: should we expect exceptions?
     int err = run_hook();
     if (err) {
-        derr << "Failed to start service. Error code: " << err << dendl; 
+        derr << "Failed to start service. Error code: " << err << dendl;
         set_status(SERVICE_STOPPED);
     }
     else {
@@ -71,22 +72,22 @@ void Win32Service::run()
 
 void Win32Service::shutdown()
 {
-    DWORD original_state = m_status.dwCurrentState;
+    DWORD original_state = status.dwCurrentState;
     SetServiceStatus(SERVICE_STOP_PENDING);
 
     int err = shutdown_hook();
     if (err) {
-        derr << "Shutdown service hook failed. Error code: " << err << dendl; 
+        derr << "Shutdown service hook failed. Error code: " << err << dendl;
         set_status(original_state);
     }
     else {
-       set_status(SERVICE_STOPPED); 
+       set_status(SERVICE_STOPPED);
     }
 }
 
 void Win32Service::stop()
 {
-    DWORD original_state = m_status.dwCurrentState;
+    DWORD original_state = status.dwCurrentState;
     SetServiceStatus(SERVICE_STOP_PENDING);
 
     int err = stop_hook();

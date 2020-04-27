@@ -157,7 +157,7 @@ bool GetDiskDriveBySerialNumber(std::wstring serialNumber,
     std::wstring query = L"SELECT * FROM Win32_DiskDrive WHERE SerialNumber = '";
     query.append(serialNumber);
     query.append(L"'");
-    BSTR bstrQuery = SysAllocString(query.c_str())
+    BSTR bstrQuery = SysAllocString(query.c_str());
 
     bool bRet = GetDiskDrive(bstrQuery, disks);
 
