@@ -1,3 +1,15 @@
+/*
+ * Ceph - scalable distributed file system
+ *
+ * Copyright (C) 2019 SUSE LINUX GmbH
+ *
+ * This is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License version 2.1, as published by the Free Software
+ * Foundation.  See file COPYING.
+ *
+ */
+
 #include "common/debug.h"
 #include "common/errno.h"
 #include "common/win32_registry.h"

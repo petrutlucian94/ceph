@@ -54,6 +54,7 @@
 #include "common/safe_io.h"
 #include "common/version.h"
 #include "common/win32_registry.h"
+#include "common/win32_service.h"
 
 #include "global/global_init.h"
 
@@ -77,18 +78,7 @@
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 
-/* Handle to the status information structure for the current service. */
-static SERVICE_STATUS_HANDLE hstatus;
-
-/* Hold the service's current status. */
-static SERVICE_STATUS service_status;
-
-static bool service_started;         /* Have we dispatched service to start? */
-
-static void init_service_status(void);
 static bool detach_process(int argc, const char* argv[]);
-static void service_complete(void);
-void service_stop();
 
 int list_all_registry_config();
 
@@ -235,51 +225,6 @@ struct Config {
   std::string format;
   bool pretty_format = false;
 };
-
-void
-control_handler(DWORD request);
-void run_service(void)
-{
-    init_service_status();
-    /* Register the control handler. This function is called by the service
-     * manager to stop the service. The service name that we're passing here
-     * doesn't have to be valid as we're using SERVICE_WIN32_OWN_PROCESS. */
-    hstatus = RegisterServiceCtrlHandler("rbd-nbd",
-        (LPHANDLER_FUNCTION)control_handler);
-    if (!hstatus) {
-        return -EINVAL;
-    }
-
-    /* Enable default error mode so we can take advantage of WER
-     * (Windows Error Reporting) crash dumps.
-     * Being a service it does not allow for WER window pop-up.
-     * XXX implement our on crash dump collection mechanism. */
-    SetErrorMode(0);
-
-    list_all_registry_config();
-
-    service_complete();
-}
-
-/* Registers the call-back and configures the actions in case of a failure
- * with the Windows services manager. */
-int
-service_start(const char* program_name)
-{
-    SERVICE_TABLE_ENTRY service_table[] = {
-        {(LPTSTR)program_name, (LPSERVICE_MAIN_FUNCTION)run_service},
-        {NULL, NULL}
-    };
-    service_started = true;
-
-    /* StartServiceCtrlDispatcher blocks until the service is stopped. */
-    if (!StartServiceCtrlDispatcher(service_table)) {
-        derr << "StartServiceCtrlDispatcher error: "
-             << win32_lasterror_str() << dendl;
-        return -EINVAL;
-    }
-    exit(0);
-}
 
 int map_registry_config(Config* cfg)
 {
@@ -429,88 +374,19 @@ int list_all_registry_config()
     return 0;
 }
 
-/* This function is registered with the Windows services manager through
- * a call to RegisterServiceCtrlHandler() and will be called by the Windows
- * services manager asynchronously to stop the service. */
-void
-control_handler(DWORD request)
-{
-    switch (request) {
-    case SERVICE_CONTROL_STOP:
-    case SERVICE_CONTROL_SHUTDOWN:
-        service_status.dwCurrentState = SERVICE_STOPPED;
-        service_status.dwWin32ExitCode = NO_ERROR;
-        SetServiceStatus(hstatus, &service_status);
-        break;
-
-    default:
-        break;
+class NBDServer : public Win32Service {
+    virtual int run_hook() {
+        return list_all_registry_config();
     }
-}
-
-/* Return 'true' if the Windows services manager has called the
- * control_handler() and asked the program to terminate. */
-bool
-should_service_stop(void)
-{
-    if (service_started) {
-        if (service_status.dwCurrentState != SERVICE_RUNNING) {
-            return true;
-        }
+    /* Invoked when the service is requested to stop. */
+    virtual int stop_hook() {
+        // TODO: disconnect all mappings.
+        return 0;
     }
-    return false;
-}
-/* Set the service as stopped. The control manager will terminate the
- * service soon after this call. Hence, this should ideally be the last
- * call before termination. */
-void
-service_stop()
-{
-    if (!service_started) {
-        return;
+    /* Invoked when the system is shutting down. */
+    virtual int shutdown_hook() {
+        return stop_hook()
     }
-
-    service_status.dwCurrentState = SERVICE_STOPPED;
-    service_status.dwWin32ExitCode = NO_ERROR;
-    SetServiceStatus(hstatus, &service_status);
-}
-
-/* Call this function to signal that the daemon is ready. init_service()
- * or control_handler() has already initalized/set the
- * service_status.dwCurrentState .*/
-static void
-service_complete(void)
-{
-    if (hstatus) {
-        SetServiceStatus(hstatus, &service_status);
-    }
-}
-
-/* Service status of a service can be checked asynchronously through
- * tools like 'sc' or through Windows services manager and is set
- * through a call to SetServiceStatus(). */
-static void
-init_service_status()
-{
-    /* The service runs in its own process. */
-    service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-
-    /* The control codes the service accepts. */
-    service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP |
-        SERVICE_ACCEPT_SHUTDOWN;
-
-    /* Initialize the current state as SERVICE_RUNNING. */
-    service_status.dwCurrentState = SERVICE_RUNNING;
-
-    /* The exit code to indicate if there was an error. */
-    service_status.dwWin32ExitCode = NO_ERROR;
-
-    /* The checkpoint value the service increments periodically. Set as 0
-     * as we do not plan to periodically increment the value. */
-    service_status.dwCheckPoint = 0;
-
-    /* The estimated time required for the stop operation in ms. */
-    service_status.dwWaitHint = 1000;
 }
 
 static void usage()
@@ -1495,7 +1371,9 @@ static int rbd_nbd(int argc, const char *argv[])
         return -EINVAL;
       break;
     case Service:
-      r = service_start("rbd-nbd");
+      RBDService service;
+      // This call will block until the service stops.
+      r = service.initialize();
       if (r < 0)
           return -EINVAL;
       break;
