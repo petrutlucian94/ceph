@@ -74,7 +74,6 @@
 
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
-static HANDLE write_handle;  /* End of pipe to write to parent. */
 
 bool detach;                 /* Was --detach specified? */
 
@@ -101,23 +100,14 @@ BOOL is_process_running(DWORD pid)
     return ret == WAIT_TIMEOUT;
 }
 
-/* When a daemon is passed the --detach option, we create a new
- * process and pass an additional non-documented option called --pipe-handle.
- * Through this option, the parent passes one end of a pipe handle. */
 void
-set_pipe_handle(intptr_t pipe_handle)
-{
-    write_handle = (HANDLE)(pipe_handle);
-}
-
-void
-daemonize_complete(void)
+daemonize_complete(HANDLE parent_pipe)
 {
     // If running as a child because '--detach' option was specified,
     // communicate with the parent to inform that the child is ready.
     // TODO: consider exiting in this case. The parent didn't wait for us,
     // maybe it was killed after a timeout.
-    if (!WriteFile(write_handle, "a", 1, NULL, NULL)) {
+    if (!WriteFile(parent_pipe, "a", 1, NULL, NULL)) {
         derr << "Failed to communicate with the parent: "
              << win32_lasterror_str() << dendl;
     }
@@ -239,7 +229,7 @@ struct Config {
   bool readonly = false;
   bool set_max_part = false;
 
-  intptr_t detached = 0;
+  intptr_t parent_pipe = 0;
   int service = 0;
 
   HKEY hkey;
@@ -1038,10 +1028,10 @@ static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
     return -1;
 }
 
-static void run_server(NBDServer *server)
+static void run_server(NBDServer *server, HANDLE parent_pipe)
 {
   if (g_conf()->daemonize) {
-    daemonize_complete();
+    daemonize_complete(parent_pipe);
   }
   server->wait_for_disconnect();
 }
@@ -1170,7 +1160,7 @@ static int do_map(int argc, const char *argv[], Config *cfg)
 
     cout << cfg->devpath << std::endl;
 
-    run_server(server);
+    run_server(server, (HANDLE)cfg->parent_pipe);
 
     r = image.update_unwatch(handle);
     ceph_assert(r == 0);
@@ -1378,16 +1368,15 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
                                      (char *)NULL)) {
     } else if (ceph_argparse_flag(args, i, "--pretty-format", (char *)NULL)) {
       cfg->pretty_format = true;
-    } else if (ceph_argparse_witharg(args, i, &cfg->detached, err, "--pipe-handle", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &cfg->parent_pipe, err, "--pipe-handle", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "rbd-nbd: " << err.str();
         return -EINVAL;
       }
-      if (cfg->detached < 0) {
+      if (cfg->parent_pipe < 0) {
         *err_msg << "rbd-nbd: Invalid argument for pipe-handle!";
         return -EINVAL;
       }
-      set_pipe_handle(cfg->detached);
     } else {
       ++i;
     }
