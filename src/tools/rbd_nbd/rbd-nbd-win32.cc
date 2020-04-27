@@ -77,8 +77,6 @@
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 
-bool detach;                 /* Was --detach specified? */
-
 /* Handle to the status information structure for the current service. */
 static SERVICE_STATUS_HANDLE hstatus;
 
@@ -315,7 +313,6 @@ int unmap_registry_config(Config* cfg)
 }
 
 #define MAX_KEY_LENGTH 255
-#define MAX_VALUE_NAME 16383
 
 void QueryKey(HKEY hKey, Config* cfg)
 {
@@ -939,11 +936,6 @@ public:
   }
 };
 
-static int load_module(Config *cfg) {
-  // The driver should be already loaded.
-  return 0;
-}
-
 static NBDServer *start_server(int fd, librbd::Image& image)
 {
   NBDServer *server;
@@ -1127,12 +1119,6 @@ static int do_map(int argc, const char *argv[], Config *cfg)
          << ", max is " << byte_u_t(_UI64_MAX) << ")" << std::endl;
     goto close_fd;
   }
-
-  size = info.size;
-
-  r = load_module(cfg);
-  if (r < 0)
-    goto close_fd;
 
   size = info.size;
 
