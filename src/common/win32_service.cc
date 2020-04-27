@@ -17,6 +17,8 @@
 #include "common/errno.h"
 #include "common/win32_service.h"
 
+// Initialize the singleton service instance.
+Win32Service *Win32Service::s_service = NULL;
 
 Win32Service::Win32Service(CephContext *cct_): cct(cct_)
 {
@@ -30,8 +32,10 @@ Win32Service::Win32Service(CephContext *cct_): cct(cct_)
 }
 
 /* Register service action callbacks */
-int Win32Service::initialize()
+int Win32Service::initialize(Win32Service *service)
 {
+    s_service = service;
+
     SERVICE_TABLE_ENTRY service_table[] = {
         {"", (LPSERVICE_MAIN_FUNCTION)run},
         {NULL, NULL}
@@ -39,41 +43,44 @@ int Win32Service::initialize()
 
     /* StartServiceCtrlDispatcher blocks until the service is stopped. */
     if (!StartServiceCtrlDispatcher(service_table)) {
-        derr << "StartServiceCtrlDispatcher error: "
-             << win32_lasterror_str() << dendl;
+        lderr(service->cct) << "StartServiceCtrlDispatcher error: "
+                            << win32_lasterror_str() << dendl;
         return -EINVAL;
     }
     return 0;
 }
 
-void Win32Service::run()
+void WINAPI Win32Service::run()
 {
+    assert(s_service != NULL);
+
     /* Register the control handler. This function is called by the service
      * manager to stop the service. The service name that we're passing here
      * doesn't have to be valid as we're using SERVICE_WIN32_OWN_PROCESS. */
-    hstatus = RegisterServiceCtrlHandler("",
+    s_service->hstatus = RegisterServiceCtrlHandler("",
         (LPHANDLER_FUNCTION)control_handler);
-    if (!hstatus) {
+    if (!s_service->hstatus) {
         return;
     }
 
-    set_status(SERVICE_START_PENDING);
+    s_service->set_status(SERVICE_START_PENDING);
 
     // TODO: should we expect exceptions?
-    int err = run_hook();
+    int err = s_service->run_hook();
     if (err) {
-        derr << "Failed to start service. Error code: " << err << dendl;
-        set_status(SERVICE_STOPPED);
+        lderr(s_service->cct) << "Failed to start service. Error code: "
+                              << err << dendl;
+        s_service->set_status(SERVICE_STOPPED);
     }
     else {
-        set_status(SERVICE_RUNNING);
+        s_service->set_status(SERVICE_RUNNING);
     }
 }
 
 void Win32Service::shutdown()
 {
     DWORD original_state = status.dwCurrentState;
-    SetServiceStatus(SERVICE_STOP_PENDING);
+    set_status(SERVICE_STOP_PENDING);
 
     int err = shutdown_hook();
     if (err) {
@@ -88,7 +95,7 @@ void Win32Service::shutdown()
 void Win32Service::stop()
 {
     DWORD original_state = status.dwCurrentState;
-    SetServiceStatus(SERVICE_STOP_PENDING);
+    set_status(SERVICE_STOP_PENDING);
 
     int err = stop_hook();
     if (err) {
@@ -107,17 +114,17 @@ void Win32Service::control_handler(DWORD request)
 {
     switch (request) {
     case SERVICE_CONTROL_STOP:
-        stop();
+        s_service->stop();
         break;
     case SERVICE_CONTROL_SHUTDOWN:
-        shutdown();
+        s_service->shutdown();
         break;
     default:
         break;
     }
 }
 
-void Win32Service::set_status(DWORD current_state, DWORD exit_code = NO_ERROR) {
+void Win32Service::set_status(DWORD current_state, DWORD exit_code) {
     static DWORD dwCheckPoint = 1;
     if (current_state == SERVICE_RUNNING || current_state == SERVICE_STOPPED) {
         status.dwCheckPoint = dwCheckPoint++;

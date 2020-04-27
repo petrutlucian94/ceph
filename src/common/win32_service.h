@@ -16,23 +16,24 @@ class Win32Service {
 
 public:
   Win32Service(CephContext *cct_);
-  virtual ~Win32Service();
+  virtual ~Win32Service() {};
 
-  int initialize();
+  static int initialize(Win32Service *service);
 protected:
-  void run();
+  static void run();
+  static void control_handler(DWORD request);
+
   void shutdown();
   void stop();
 
-  void control_handler(DWORD request);
   void set_status(DWORD current_state, DWORD exit_code = NO_ERROR);
 
   /* Subclasses should implement the following service hooks. */
-  virtual int run_hook();
+  virtual int run_hook() = 0;
   /* Invoked when the service is requested to stop. */
-  virtual int stop_hook();
+  virtual int stop_hook() = 0;
   /* Invoked when the system is shutting down. */
-  virtual int shutdown_hook();
+  virtual int shutdown_hook() = 0;
 
   CephContext *cct;
 
@@ -41,4 +42,7 @@ private:
   SERVICE_STATUS_HANDLE hstatus;
   /* The current service status. */
   SERVICE_STATUS status;
+
+  /* singleton service instance */
+  static Win32Service *s_service;
 };

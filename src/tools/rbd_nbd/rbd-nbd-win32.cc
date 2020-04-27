@@ -234,7 +234,7 @@ int map_registry_config(Config* cfg)
     int ret_val = 0;
     if (SetValDword(g_ceph_context, hKey, "pid", getpid()) ||
         SetValString(g_ceph_context, hKey, "devpath", cfg->devpath) ||
-        SetValString(g_ceph_context, "poolname", cfg->poolname) ||
+        SetValString(g_ceph_context, hKey, "poolname", cfg->poolname) ||
         SetValString(g_ceph_context, hKey, "nsname", cfg->nsname) ||
         SetValString(g_ceph_context, hKey, "imgname", cfg->imgname) ||
         SetValString(g_ceph_context, hKey, "snapname", cfg->snapname) ||
@@ -255,7 +255,7 @@ int unmap_registry_config(Config* cfg)
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
     strKey.append(cfg->devpath);
-    return DeleteKey(HKEY_LOCAL_MACHINE, strKey.c_str());
+    return DeleteKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str());
 }
 
 #define MAX_KEY_LENGTH 255
@@ -271,19 +271,19 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
     }
     std::string reg_value;
 
-    if (!GetValString(hKey, "devpath", reg_value)) {
+    if (!GetValString(g_ceph_context, hKey, "devpath", reg_value)) {
         cfg->devpath = reg_value;
     }
-    if (!GetValString(hKey, "poolname", reg_value)) {
+    if (!GetValString(g_ceph_context, hKey, "poolname", reg_value)) {
         cfg->poolname = reg_value;
     }
-    if (!GetValString(hKey, "nsname", reg_value)) {
+    if (!GetValString(g_ceph_context, hKey, "nsname", reg_value)) {
         cfg->nsname = reg_value;
     }
-    if (!GetValString(hKey, "imgname", reg_value)) {
+    if (!GetValString(g_ceph_context, hKey, "imgname", reg_value)) {
         cfg->imgname = reg_value;
     }
-    if (!GetValString(hKey, "snapname", reg_value)) {
+    if (!GetValString(g_ceph_context, hKey, "snapname", reg_value)) {
         cfg->snapname = reg_value;
     }
 
@@ -328,7 +328,7 @@ int restart_registered_mappings()
         HKEY sub_key = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
         if (sub_key) {
             std::string command;
-            if (!GetValString(sub_key, "command_line", command)) {
+            if (!GetValString(g_ceph_context, sub_key, "command_line", command)) {
                 STARTUPINFO si = {0};
                 PROCESS_INFORMATION pi = {0};
                 int error;
@@ -357,6 +357,11 @@ int restart_registered_mappings()
 }
 
 class RBDService : public Win32Service {
+    // TODO: ensure that the ceph context is available when running the
+    // service.
+  public:
+    RBDService(): Win32Service(g_ceph_context) {}
+
     int run_hook() override {
         return restart_registered_mappings();
     }
@@ -1355,7 +1360,7 @@ static int rbd_nbd(int argc, const char *argv[])
     case Service:
       RBDService service;
       // This call will block until the service stops.
-      r = service.initialize();
+      r = RBDService::initialize(&service);
       if (r < 0)
           return -EINVAL;
       break;
