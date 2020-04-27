@@ -15,6 +15,8 @@
 
 HKEY OpenKey(HKEY hRootKey, LPCTSTR strKey, bool create_value);
 int DeleteKey(HKEY hRootKey, LPCTSTR strKey);
+int FlushKey(HKEY hKey);
+int CloseKey(HKEY hKey);
 int SetValDword(HKEY hKey, LPCTSTR lpValue, DWORD data);
 int SetValString(HKEY hKey, LPCTSTR lpValue, std::string data);
 int GetValDword(HKEY hKey, LPCTSTR lpValue, DWORD* value);

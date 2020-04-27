@@ -214,8 +214,6 @@ struct Config {
   intptr_t parent_pipe = 0;
   int service = 0;
 
-  HKEY hkey;
-
   std::string poolname;
   std::string nsname;
   std::string imgname;
@@ -235,7 +233,8 @@ int map_registry_config(Config* cfg)
     if (!hKey) {
         return -EINVAL;
     }
-    cfg->hkey = hKey;
+
+    int ret_val = 0;
     if (SetValDword(hKey, "pid", getpid()) ||
         SetValString(hKey, "devpath", cfg->devpath) ||
         SetValString(hKey, "poolname", cfg->poolname) ||
@@ -243,10 +242,15 @@ int map_registry_config(Config* cfg)
         SetValString(hKey, "imgname", cfg->imgname) ||
         SetValString(hKey, "snapname", cfg->snapname) ||
         SetValString(hKey, "command_line", GetCommandLine())) {
-        return -EINVAL;
+        ret_val = -EINVAL;
     }
 
-    return 0;
+    // Registry writes are immediately available to other processes.
+    // Still, we'll do a flush to ensure that the mapping can be
+    // recreated after a system crash.
+    FlushKey(hKey);
+    CloseKey(hKey);
+    return ret_val;
 }
 
 int unmap_registry_config(Config* cfg)
@@ -342,6 +346,7 @@ void QueryKeyEx(HKEY hKey)
                             derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
                         }
                     }
+                    CloseKey(sub_key);
                 }
             }
         }
@@ -359,6 +364,7 @@ int list_registry_config(char* devpath, Config* cfg)
     }
     QueryKey(hKey, cfg);
 
+    CloseKey(hKey);
     return 0;
 }
 
@@ -371,6 +377,7 @@ int list_all_registry_config()
     }
     QueryKeyEx(hKey);
 
+    CloseKey(hKey);
     return 0;
 }
 

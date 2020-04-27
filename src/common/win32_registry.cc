@@ -57,6 +57,28 @@ int DeleteKey(HKEY hRootKey, LPCTSTR strKey)
     return 0;
 }
 
+int FlushKey(HKEY hKey) {
+    DWORD status = RegFlushKey(hKey);
+    if (ERROR_SUCCESS != status) {
+        derr << "Error: " << win32_strerror(status)
+             << ". Could not flush registry key." << dendl;
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+int CloseKey(HKEY hKey) {
+    DWORD status = RegCloseKey(hKey);
+    if (ERROR_SUCCESS != status) {
+        derr << "Error: " << win32_strerror(status)
+             << ". Could not close registry key." << dendl;
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 int SetValDword(HKEY hKey, LPCTSTR lpValue, DWORD data)
 {
     DWORD status = RegSetValueEx(hKey, lpValue, 0, REG_DWORD,
