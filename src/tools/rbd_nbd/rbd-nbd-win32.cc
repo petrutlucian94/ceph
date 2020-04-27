@@ -282,7 +282,7 @@ void run_service(void)
 /* Registers the call-back and configures the actions in case of a failure
  * with the Windows services manager. */
 int
-service_start(int *argcp, const char **argvp[], const char* program_name)
+service_start(const char* program_name)
 {
     SERVICE_TABLE_ENTRY service_table[] = {
         {(LPTSTR)program_name, (LPSERVICE_MAIN_FUNCTION)run_service},
@@ -1522,7 +1522,7 @@ static int rbd_nbd(int argc, const char *argv[])
         return -EINVAL;
       break;
     case Service:
-      r = service_start(&argc, &argv, "rbd-nbd");
+      r = service_start("rbd-nbd");
       if (r < 0)
           return -EINVAL;
       break;
