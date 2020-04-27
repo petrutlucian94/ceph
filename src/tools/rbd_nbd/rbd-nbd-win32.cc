@@ -80,8 +80,6 @@ using boost::locale::conv::utf_to_utf;
 
 static bool detach_process(int argc, const char* argv[]);
 
-int list_all_registry_config();
-
 BOOL is_process_running(DWORD pid)
 {
     HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
@@ -263,9 +261,16 @@ int unmap_registry_config(Config* cfg)
 
 #define MAX_KEY_LENGTH 255
 
-void QueryKey(HKEY hKey, Config* cfg)
+int load_mapping_config_from_registry(char* devpath, Config* cfg)
 {
-    std::string temp;
+    std::string strKey{ SERVICE_REG_KEY };
+    strKey.append("\\");
+    strKey.append(devpath);
+    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+    if (!hKey) {
+        return -EINVAL;
+    }
+
     if (!GetValString(hKey, "devpath", temp)) {
         cfg->devpath = temp;
     }
@@ -281,10 +286,19 @@ void QueryKey(HKEY hKey, Config* cfg)
     if (!GetValString(hKey, "snapname", temp)) {
         cfg->snapname = temp;
     }
+
+    CloseKey(hKey);
+    return 0;
 }
 
-void QueryKeyEx(HKEY hKey) 
-{ 
+int restart_registered_mappings()
+{
+    std::string strKey{ SERVICE_REG_KEY };
+    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+    if (!hKey) {
+        return -EINVAL;
+    }
+
     CHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
     DWORD    cbName;                   // size of name string 
     DWORD    cSubKeys=0;               // number of subkeys 
@@ -350,32 +364,7 @@ void QueryKeyEx(HKEY hKey)
                 }
             }
         }
-    } 
-}
-
-int list_registry_config(char* devpath, Config* cfg)
-{
-    std::string strKey{ SERVICE_REG_KEY };
-    strKey.append("\\");
-    strKey.append(devpath);
-    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-    if (!hKey) {
-        return -EINVAL;
     }
-    QueryKey(hKey, cfg);
-
-    CloseKey(hKey);
-    return 0;
-}
-
-int list_all_registry_config()
-{
-    std::string strKey{ SERVICE_REG_KEY };
-    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-    if (!hKey) {
-        return -EINVAL;
-    }
-    QueryKeyEx(hKey);
 
     CloseKey(hKey);
     return 0;
@@ -383,7 +372,7 @@ int list_all_registry_config()
 
 class NBDServer : public Win32Service {
     virtual int run_hook() {
-        return list_all_registry_config();
+        return restart_registered_mappings();
     }
     /* Invoked when the service is requested to stop. */
     virtual int stop_hook() {
@@ -1148,7 +1137,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
               std::cerr << "could not get disk number for current device: " << iterator.InstanceName << std::endl;
           } else {
               temp = d[0];
-              list_registry_config(iterator.InstanceName, &cfg);
+              load_mapping_config_from_registry(iterator.InstanceName, &cfg);
               if (is_process_running(iterator.Pid)) {
                   verified = true;
               }
