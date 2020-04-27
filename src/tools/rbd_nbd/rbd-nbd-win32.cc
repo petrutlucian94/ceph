@@ -119,7 +119,7 @@ daemonize_complete(HANDLE parent_pipe)
  * a new process in case of parent, waits for child to start and exits.
  * In case of the child, returns. */
 static bool
-detach_process(int argc, const char* argv[])
+detach_process()
 {
     SECURITY_ATTRIBUTES sa;
     STARTUPINFO si;
@@ -129,14 +129,6 @@ detach_process(int argc, const char* argv[])
     int error, i;
     char ch;
     DWORD exit_code = 0;
-
-    /* We are only interested in the '--detach' and '--pipe-handle'. */
-    for (i = 0; i < argc; i++) {
-        if (!strncmp(argv[i], "--pipe-handle", 13)) {
-            /* If running as a child, return. */
-            return true;
-        }
-    }
 
     /* Set the security attribute such that a process created will
      * inherit the pipe handles. */
@@ -1077,8 +1069,8 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   common_init_finish(g_ceph_context);
   global_init_chdir(g_ceph_context);
 
-  if (g_conf()->daemonize) {
-      detach_process(argc, argv);
+  if (g_conf()->daemonize && !cfg->parent_pipe) {
+      detach_process();
   }
 
   r = rados.init_with_context(g_ceph_context);
