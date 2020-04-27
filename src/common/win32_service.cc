@@ -56,14 +56,6 @@ void Win32Service::run()
         return;
     }
 
-    /* Enable default error mode so we can take advantage of WER
-     * (Windows Error Reporting) crash dumps.
-     * Being a service it does not allow for WER window pop-up. */
-    // TODO: why do we set the default?
-    // the default does not match the above description:
-    // 0 Use the system default, which is to display all error dialog boxes.
-    SetErrorMode(0);
-
     set_status(SERVICE_START_PENDING);
 
     // TODO: should we expect exceptions?
