@@ -72,6 +72,8 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "rbd-nbd: "
 
+#define SERVICE_REG_KEY "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd"
+
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 
@@ -283,7 +285,8 @@ service_start(const char* program_name)
 
 int map_registry_config(Config* cfg)
 {
-    std::string strKey{ "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd\\" };
+    std::string strKey{ SERVICE_REG_KEY };
+    strKey.append("\\");
     strKey.append(cfg->devpath);
     HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), true);
     if (!hKey) {
@@ -305,7 +308,8 @@ int map_registry_config(Config* cfg)
 
 int unmap_registry_config(Config* cfg)
 {
-    std::string strKey{ "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd\\" };
+    std::string strKey{ SERVICE_REG_KEY };
+    strKey.append("\\");
     strKey.append(cfg->devpath);
     return DeleteKey(HKEY_LOCAL_MACHINE, strKey.c_str());
 }
@@ -374,7 +378,8 @@ void QueryKeyEx(HKEY hKey)
                      &ftLastWriteTime); 
             if (retCode == ERROR_SUCCESS) 
             {           
-                std::string temp{"SYSTEM\\CurrentControlSet\\Services\\rbd-nbd\\"};
+                std::string temp{SERVICE_REG_KEY};
+                temp.append("\\");
                 temp.append(achKey);
                 HKEY sub_key = OpenKey(HKEY_LOCAL_MACHINE, temp.c_str(), true);
                 if (sub_key) {
@@ -403,7 +408,8 @@ void QueryKeyEx(HKEY hKey)
 
 int list_registry_config(char* devpath, Config* cfg)
 {
-    std::string strKey{ "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd\\" };
+    std::string strKey{ SERVICE_REG_KEY };
+    strKey.append("\\");
     strKey.append(devpath);
     HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
     if (!hKey) {
@@ -416,7 +422,7 @@ int list_registry_config(char* devpath, Config* cfg)
 
 int list_all_registry_config()
 {
-    std::string strKey{ "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd\\" };
+    std::string strKey{ SERVICE_REG_KEY };
     HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
     if (!hKey) {
         return -EINVAL;
