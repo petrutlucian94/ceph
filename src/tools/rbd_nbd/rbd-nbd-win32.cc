@@ -78,7 +78,7 @@
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 
-static bool detach_process(int argc, const char* argv[]);
+static bool detach_process();
 
 BOOL is_process_running(DWORD pid)
 {
