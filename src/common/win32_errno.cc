@@ -16,10 +16,12 @@
 #include <errno.h>
 #include <stdlib.h>
 
+#include <ntdef.h>
 #include <ntstatus.h>
 
-#include "include/int_types.h"
 #include "include/compat.h"
+#include "include/int_types.h"
+#include "include/types.h"
 
 // We're only converting errors defined in errno.h, not standard Windows
 // system error codes that are usually retrievied using GetLastErrorCode().
@@ -334,8 +336,6 @@ __u32 errno_to_ntstatus(__u32 r) {
   // value or there might be none. Certain values can be overridden
   // when the caller (or whoever is supposed to handle the error) is
   // expecting a different NTSTATUS value.
-  r = abs(r);
-
   switch(r) {
     case 0: return 0;
     case EPERM: return STATUS_ACCESS_DENIED;
