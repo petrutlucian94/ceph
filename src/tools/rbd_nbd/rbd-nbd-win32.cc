@@ -93,10 +93,10 @@ void service_stop();
 
 int list_all_registry_config();
 
-BOOL is_process_running(DWORD pid, int timeout)
+BOOL is_process_running(DWORD pid)
 {
     HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    DWORD ret = WaitForSingleObject(process, timeout);
+    DWORD ret = WaitForSingleObject(process, 0);
     CloseHandle(process);
     return ret == WAIT_TIMEOUT;
 }
@@ -177,7 +177,7 @@ detach_process(int argc, const char* argv[])
     /* Block and wait for child to say it is ready. */
     if (!ReadFile(read_pipe, &ch, 1, NULL, NULL)) {
         derr << "Failed to read from child: " << win32_lasterror_str() << dendl;
-        if (!is_process_running(pi.dwProcessId, 5000)) {
+        if (!is_process_running(pi.dwProcessId)) {
             GetExitCodeProcess(pi.hProcess, &exit_code);
             derr << "Child failed with exit code: " << exit_code << dendl;
         }
@@ -1292,7 +1292,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
           } else {
               temp = d[0];
               list_registry_config(iterator.InstanceName, &cfg);
-              if (is_process_running(iterator.Pid, 500)) {
+              if (is_process_running(iterator.Pid)) {
                   verified = true;
               }
           }
