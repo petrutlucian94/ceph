@@ -13,11 +13,12 @@
 #include "include/compat.h"
 
 
-HKEY OpenKey(HKEY hRootKey, LPCTSTR strKey, bool create_value);
-int DeleteKey(HKEY hRootKey, LPCTSTR strKey);
-int FlushKey(HKEY hKey);
-int CloseKey(HKEY hKey);
-int SetValDword(HKEY hKey, LPCTSTR lpValue, DWORD data);
-int SetValString(HKEY hKey, LPCTSTR lpValue, std::string data);
-int GetValDword(HKEY hKey, LPCTSTR lpValue, DWORD* value);
-int GetValString(HKEY hKey, LPCTSTR lpValue, std::string& value);
+// TODO: consider adding a class.
+HKEY OpenKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value);
+int DeleteKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey);
+int FlushKey(CephContext *cct, HKEY hKey);
+int CloseKey(CephContext *cct, HKEY hKey);
+int SetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD data);
+int SetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string data);
+int GetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD* value);
+int GetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string& value);

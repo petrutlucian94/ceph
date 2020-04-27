@@ -34,9 +34,9 @@ protected:
   /* Invoked when the system is shutting down. */
   virtual int shutdown_hook();
 
-private:
   CephContext *cct;
 
+private:
   /* A handle used when reporting the current status. */
   SERVICE_STATUS_HANDLE hstatus;
   /* The current service status. */

@@ -226,27 +226,27 @@ int map_registry_config(Config* cfg)
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
     strKey.append(cfg->devpath);
-    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), true);
+    HKEY hKey = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), true);
     if (!hKey) {
         return -EINVAL;
     }
 
     int ret_val = 0;
-    if (SetValDword(hKey, "pid", getpid()) ||
-        SetValString(hKey, "devpath", cfg->devpath) ||
-        SetValString(hKey, "poolname", cfg->poolname) ||
-        SetValString(hKey, "nsname", cfg->nsname) ||
-        SetValString(hKey, "imgname", cfg->imgname) ||
-        SetValString(hKey, "snapname", cfg->snapname) ||
-        SetValString(hKey, "command_line", GetCommandLine())) {
+    if (SetValDword(g_ceph_context, hKey, "pid", getpid()) ||
+        SetValString(g_ceph_context, hKey, "devpath", cfg->devpath) ||
+        SetValString(g_ceph_context, "poolname", cfg->poolname) ||
+        SetValString(g_ceph_context, hKey, "nsname", cfg->nsname) ||
+        SetValString(g_ceph_context, hKey, "imgname", cfg->imgname) ||
+        SetValString(g_ceph_context, hKey, "snapname", cfg->snapname) ||
+        SetValString(g_ceph_context, hKey, "command_line", GetCommandLine())) {
         ret_val = -EINVAL;
     }
 
     // Registry writes are immediately available to other processes.
     // Still, we'll do a flush to ensure that the mapping can be
     // recreated after a system crash.
-    FlushKey(hKey);
-    CloseKey(hKey);
+    FlushKey(g_ceph_context, hKey);
+    CloseKey(g_ceph_context, hKey);
     return ret_val;
 }
 
@@ -265,7 +265,7 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
     strKey.append(devpath);
-    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+    HKEY hKey = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
     if (!hKey) {
         return -EINVAL;
     }
@@ -287,14 +287,14 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
         cfg->snapname = reg_value;
     }
 
-    CloseKey(hKey);
+    CloseKey(g_ceph_context, hKey);
     return 0;
 }
 
 int restart_registered_mappings()
 {
     std::string strKey{ SERVICE_REG_KEY };
-    HKEY hKey = OpenKey(HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+    HKEY hKey = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
     if (!hKey) {
         return -EINVAL;
     }
@@ -325,7 +325,7 @@ int restart_registered_mappings()
         std::string subkey_path{SERVICE_REG_KEY};
         subkey_path.append("\\");
         subkey_path.append(subkey_name);
-        HKEY sub_key = OpenKey(HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
+        HKEY sub_key = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
         if (sub_key) {
             std::string command;
             if (!GetValString(sub_key, "command_line", command)) {
@@ -347,12 +347,12 @@ int restart_registered_mappings()
                          << win32_lasterror_str() << dendl;
                 }
             }
-            CloseKey(sub_key);
+            CloseKey(g_ceph_context, sub_key);
         }
     }
 
     cleanup:
-        CloseKey(hKey);
+        CloseKey(g_ceph_context, hKey);
         return 0;
 }
 
