@@ -299,75 +299,61 @@ int restart_registered_mappings()
         return -EINVAL;
     }
 
-    CHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
-    DWORD    cbName;                   // size of name string 
-    DWORD    cSubKeys=0;               // number of subkeys 
-    FILETIME ftLastWriteTime;      // last write time 
- 
-    DWORD i, retCode; 
-    std::ofstream myfile;
- 
-    // Get the class name and the value count. 
-    retCode = RegQueryInfoKey(
-        hKey,                    // key handle 
-        NULL,                // buffer for class name 
-        NULL,           // size of class string 
-        NULL,                    // reserved 
-        &cSubKeys,               // number of subkeys 
-        NULL,            // longest subkey size 
-        NULL,            // longest class string 
-        NULL,                // number of values for this key 
-        NULL,            // longest value name 
-        NULL,         // longest value data 
-        NULL,   // security descriptor 
-        NULL);       // last write time 
- 
-    // Enumerate the subkeys, until RegEnumKeyEx fails.
-    
-    if (cSubKeys)
-    {
-        for (i=0; i<cSubKeys; i++) 
-        { 
-            cbName = MAX_KEY_LENGTH;
-            retCode = RegEnumKeyEx(hKey, i,
-                     achKey, 
-                     &cbName, 
-                     NULL, 
-                     NULL, 
-                     NULL, 
-                     &ftLastWriteTime); 
-            if (retCode == ERROR_SUCCESS) 
-            {           
-                std::string temp{SERVICE_REG_KEY};
-                temp.append("\\");
-                temp.append(achKey);
-                HKEY sub_key = OpenKey(HKEY_LOCAL_MACHINE, temp.c_str(), true);
-                if (sub_key) {
-                    std::string command;
-                    if (!GetValString(sub_key, "command_line", command)) {
-                        STARTUPINFO si;
-                        PROCESS_INFORMATION pi;
-                        int error;
+    CHAR subkey_name[MAX_KEY_LENGTH];
+    DWORD subkey_name_sz;
+    DWORD subkey_count=0;
 
-                        ZeroMemory(&si, sizeof(si));
-                        GetStartupInfo(&si);
-                        ZeroMemory(&pi, sizeof(pi));
-                        si.dwFlags |= STARTF_USESTDHANDLES;
-                        /* Create a detached child */
-                        error = CreateProcess(NULL, (char *)command.c_str(), NULL, NULL, TRUE, DETACHED_PROCESS,
-                            NULL, NULL, &si, &pi);
-                        if (!error) {
-                            derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
-                        }
-                    }
-                    CloseKey(sub_key);
+    // Get the number of subkeys.
+    DWORD retCode = RegQueryInfoKey(
+        hKey, NULL, NULL, NULL,
+        &subkey_count,
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+
+    if (!subkey_count)
+        goto cleanup;
+
+    // Enumerate the subkeys, until RegEnumKeyEx fails.
+    for (int i=0; i<subkey_count; i++)
+    {
+        subkey_name_sz = MAX_KEY_LENGTH;
+        retCode = RegEnumKeyEx(
+            hKey, i, subkey_name, &subkey_name_sz,
+            NULL, NULL, NULL, NULL);
+        if (retCode)
+            break;
+
+        std::string subkey_path{SERVICE_REG_KEY};
+        subkey_path.append("\\");
+        subkey_path.append(subkey_name);
+        HKEY sub_key = OpenKey(HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
+        if (sub_key) {
+            std::string command;
+            if (!GetValString(sub_key, "command_line", command)) {
+                STARTUPINFO si = {0};
+                PROCESS_INFORMATION pi = {0};
+                int error;
+
+                GetStartupInfo(&si);
+                /* Create a detached child */
+                // TODO: consider waiting for the mappings (e.g. by using
+                // "detach_process"). We'll need to be careful not to use the
+                // old pipe handles. At the same time, we may want to block
+                // maps/unmaps while the service starts.
+                error = CreateProcess(NULL, (char *)command.c_str(),
+                    NULL, NULL, TRUE, DETACHED_PROCESS,
+                    NULL, NULL, &si, &pi);
+                if (!error) {
+                    derr << "Failed to recreate mapping: "
+                         << win32_lasterror_str() << dendl;
                 }
             }
+            CloseKey(sub_key);
         }
     }
 
-    CloseKey(hKey);
-    return 0;
+    cleanup:
+        CloseKey(hKey);
+        return 0;
 }
 
 class NBDServer : public Win32Service {
