@@ -75,6 +75,9 @@
 
 #define SERVICE_REG_KEY "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd"
 
+#define WNBD_STATUS_CONNECTED = "connected"
+#define WNBD_STATUS_DISCONNECTED = "disconnected"
+
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 
@@ -155,7 +158,7 @@ detach_process()
     exit(exit_code);
 }
 
-std::wstring to_wstring(const std::string& str)
+std::wstring to_wstring(consft std::string& str)
 {
     return utf_to_utf<wchar_t>(str.c_str(), str.c_str() + str.size());
 }
@@ -167,30 +170,24 @@ std::string to_string(const std::wstring& str)
 
 std::string get_device_name_per_pid(int pid)
 {
-    PGET_LIST_OUT Output = NULL;
-    DWORD Status = WnbdList(&Output);
-    if (!Output) {
-        std::cerr << "rbd-nbd: invalid output status: " << Status << std::endl;
-        return std::string("");
-    }
-    if (NULL != Output && ERROR_SUCCESS == Status) {
-        for (ULONG index = 0; index < Output->ActiveListCount; index++) {
-            USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
-            if (pid == iterator.Pid) {
-                return std::string(iterator.InstanceName);
-            }
-        }
+    Config cfg;
+    WNBDActiveDiskIterator wnbd_disk_iterator;
+
+    while(wnbd_disk_iterator.get(&cfg)) {
+      if (pid == cfg->pid) {
+        return cfg->devpath;
+      }
     }
     return std::string("");
 }
 
 void UnmapAtExit(void)
 {
-  std::string temp = get_device_name_per_pid(getpid());
-  if (temp.empty()) {
+  std::string devpath = get_device_name_per_pid(getpid());
+  if (devpath.empty()) {
       return;
   }
-  WnbdUnmap((char *)temp.c_str());
+  WnbdUnmap((char *)devpath.c_str());
 }
 
 BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType)
@@ -219,6 +216,13 @@ struct Config {
 
   std::string format;
   bool pretty_format = false;
+
+  // TODO: consider adding a "ConnectionInfo" structure.
+  // The disk number is provided by Windows.
+  int disk_number = -1;
+  int pid = 0;
+  std::string serial_number;
+  int connected = 0;
 };
 
 int map_registry_config(Config* cfg)
@@ -374,6 +378,52 @@ class RBDService : public Win32Service {
     int shutdown_hook() override {
         return stop_hook();
     }
+};
+
+class WNBDActiveDiskIterator {
+public:
+  WNBDActiveDiskIterator() {
+    DWORD status = WnbdList(&disk_list);
+    if (!status && !disk_list) {
+      derr << "Could not get WNBD devices. Return code: " << status << dendl;
+    }
+  }
+
+  ~WNBDActiveDiskIterator() {
+    if(disk_list) {
+      free(disk_list);
+      disk_list = NULL;
+    }
+  }
+
+  bool get(Config *cfg) {
+    if(!disk_list || index >= disk_list->ActiveListCount) {
+      return false;
+    }
+
+    USER_IN conn_info = disk_list->ActiveEntry[index].ConnectionInformation;
+    load_mapping_config_from_registry(conn_info.InstanceName, &cfg);
+
+    int disk_number = GetDiskNumberBySerialNumber(
+      to_wstring(conn_info.SerialNumber));
+
+    if (disk_number < 0) {
+      derr << "could not get disk number for current device: "
+           << conn_info.InstanceName << dendl;
+      cfg->disk_number = -1;
+    }
+    else {
+      cfg->disk_number = disk_number;
+    }
+
+    cfg->serial_number = std::string(conn_info.SerialNumber);
+    cfg->pid = conn_info.Pid;
+    cfg->connected = cfg->disk_number && is_process_running(iterator.Pid);
+  }
+
+private:
+  PGET_LIST_OUT disk_list = NULL;
+  int index = 0;
 };
 
 static void usage()
@@ -1102,72 +1152,40 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   }
 
   Config cfg;
-  PGET_LIST_OUT Output = NULL;
-  DWORD Status = WnbdList(&Output);
-  if (!Output) {
-    std::cerr << "rbd-nbd: invalid output status: " << Status << std::endl;
-    return -EINVAL;
-  }
+  WNBDActiveDiskIterator wnbd_disk_iterator;
   bool found = false;
-  if (NULL != Output && ERROR_SUCCESS == Status) {
-      InitWMI();
-      for(ULONG index = 0; index < Output->ActiveListCount; index++) {
-          USER_IN iterator = Output->ActiveEntry[index].ConnectionInformation;
-          if(!search_devpath.empty()) {
-            if(iterator.InstanceName != search_devpath)
-              continue;
-            found = true;
-          }
 
-          std::vector<DiskInfo> d;
-          bool verified = false;
-          DiskInfo temp;
+  while(wnbd_disk_iterator.get(&cfg)) {
+    if(!search_devpath.empty()) {
+      if(cfg.devpath != search_devpath)
+        continue;
+      found = true;
+    }
+    char* status = cfg->connected ?
+      WNBD_STATUS_CONNECTED : WNBD_STATUS_DISCONNECTED;
 
-          GetDiskDriveBySerialNumber(to_wstring(iterator.SerialNumber), d);
-          if (d.size() != 1) {
-              std::cerr << "could not get disk number for current device: " << iterator.InstanceName << std::endl;
-          } else {
-              temp = d[0];
-              load_mapping_config_from_registry(iterator.InstanceName, &cfg);
-              if (is_process_running(iterator.Pid)) {
-                  verified = true;
-              }
-          }
-
-          if (f) {
-              f->open_object_section("device");
-              if (verified) {
-                f->dump_int("id", iterator.Pid);
-              } else {
-                f->dump_int("id", -1);
-              }
-              f->dump_string("device", cfg.devpath);
-              f->dump_string("pool", cfg.poolname);
-              f->dump_string("namespace", cfg.nsname);
-              f->dump_string("image", cfg.imgname);
-              f->dump_string("snap", cfg.snapname);
-              if (d.size() == 1) {
-                f->dump_int("disk_number", temp.Index);
-              } else {
-                f->dump_int("disk_number", -1);
-              }
-              f->close_section();
-          } else {
-              should_print = true;
-              if (cfg.snapname.empty()) {
-                  cfg.snapname = "-";
-              }
-              if (verified) {
-                  tbl << static_cast<int>(iterator.Pid) << cfg.poolname << cfg.nsname << cfg.imgname << cfg.snapname
-                      << iterator.InstanceName << static_cast<int>(temp.Index)  << TextTable::endrow;
-              } else {
-                  tbl << -1 << " " << " " << " " << " "
-                      << iterator.InstanceName << -1 << TextTable::endrow;
-              }
-          }
+    if (f) {
+      f->open_object_section("device");
+      f->dump_int("id", cfg.pid);
+      f->dump_string("device", cfg.devpath);
+      f->dump_string("pool", cfg.poolname);
+      f->dump_string("namespace", cfg.nsname);
+      f->dump_string("image", cfg.imgname);
+      f->dump_string("snap", cfg.snapname);
+      f->dump_int("disk_number", cfg.disk_number);
+      f->dump_string("status" << status);
+      f->close_section();
+  } else {
+      should_print = true;
+      if (cfg.snapname.empty()) {
+          cfg.snapname = "-";
       }
-      ReleaseWMI();
+      tbl << cfg.pid << cfg.poolname << cfg.nsname <<
+          << cfg.imgname << cfg.snapname iterator.InstanceName
+          << cfg.disk_number << status << TextTable::endrow;
+    }
   }
+
   if (f) {
     f->close_section(); // devices
     f->flush(std::cout);
@@ -1377,6 +1395,7 @@ int main(int argc, const char *argv[])
   SetConsoleCtrlHandler(ConsoleHandlerRoutine, true);
   /* The system does not display the Windows Error Reporting dialog. */
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
+  InitWMI();
   int r = rbd_nbd(argc, argv);
   if (r < 0) {
     return r;

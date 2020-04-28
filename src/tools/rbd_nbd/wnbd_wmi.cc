@@ -6,6 +6,8 @@
 
 #include "wnbd_wmi.h"
 
+#include "include/windows/win32_errno.h"
+
 IWbemLocator* pWbemLoc;
 IWbemServices* pWbemSvc;
 
@@ -163,4 +165,17 @@ bool GetDiskDriveBySerialNumber(std::wstring serialNumber,
 
     SysFreeString(bstrQuery);
     return bRet;
+}
+
+int GetDiskNumberBySerialNumber(std::wstring serialNumber) {
+    std::vector<DiskInfo> d;
+    GetDiskDriveBySerialNumber(serialNumber, d);
+    if (d.size() > 1) {
+        return -ENOTUNIQ;
+    }
+    if (d.size() < 1) {
+        return -ENOENT;
+    }
+
+    return d[0].Index;
 }

@@ -34,3 +34,4 @@ UINT32 GetPropertyInt(IWbemClassObject* pclsObj, const std::wstring& property);
 bool GetDiskDrive(BSTR Query, std::vector<DiskInfo>& disks);
 bool GetDiskDriveBySerialNumber(std::wstring serialNumber,
                                 std::vector<DiskInfo>& disks);
+int GetDiskNumberBySerialNumber(std::wstring serialNumber);
