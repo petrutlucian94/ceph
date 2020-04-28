@@ -341,6 +341,19 @@ int restart_registered_mappings()
     return last_err;
 }
 
+int disconnect_all_mappings()
+{
+    Config cfg;
+    WNBDActiveDiskIterator iterator;
+    int last_err = 0;
+
+    while(iterator.get(&cfg)) {
+      last_err = do_unmap(&cfg) || last_err;
+    }
+
+    return last_err;
+}
+
 class RBDService : public Win32Service {
     // TODO: ensure that the ceph context is available when running the
     // service.
@@ -352,8 +365,7 @@ class RBDService : public Win32Service {
     }
     /* Invoked when the service is requested to stop. */
     int stop_hook() override {
-        // TODO: disconnect all mappings.
-        return 0;
+        return disconnect_all_mappings;
     }
     /* Invoked when the system is shutting down. */
     int shutdown_hook() override {
@@ -399,7 +411,7 @@ public:
 
     cfg->serial_number = std::string(conn_info.SerialNumber);
     cfg->pid = conn_info.Pid;
-    cfg->connected = cfg->disk_number && is_process_running(iterator.Pid);
+    cfg->connected = cfg->disk_number && is_process_running(conn_info.Pid);
     cfg->wnbd_mapped = true;
   }
 
@@ -1229,7 +1241,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
           cfg.snapname = "-";
       }
       tbl << cfg.pid << cfg.poolname << cfg.nsname <<
-          << cfg.imgname << cfg.snapname iterator.InstanceName
+          << cfg.imgname << cfg.snapname << cfg.devname
           << cfg.disk_number << status << TextTable::endrow;
     }
   }
