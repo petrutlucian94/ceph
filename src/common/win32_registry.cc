@@ -17,33 +17,38 @@
 #include "common/errno.h"
 #include "common/win32_registry.h"
 
+RegistryKey::RegistryKey(CephContext *cct_, HKEY hKey_): hKey(hKey_), cct(cct_)
+{
+}
 
-HKEY RegistryKey::open(CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value)
+std::optional<RegistryKey> RegistryKey::open(
+    CephContext *cct_, HKEY hRootKey, LPCTSTR strKey, bool create_value)
 {
     HKEY hKey = NULL;
     DWORD status = RegOpenKeyEx(hRootKey, strKey, 0, KEY_ALL_ACCESS, &hKey);
 
     if (status == ERROR_FILE_NOT_FOUND && create_value)
     {
-        dout(10) << "Creating registry key: " << strKey << dendl;
+        ldout(cct_, 10) << "Creating registry key: " << strKey << dendl;
         status = RegCreateKeyEx(
             hRootKey, strKey, 0, NULL, REG_OPTION_NON_VOLATILE,
             KEY_ALL_ACCESS, NULL, &hKey, NULL);
     }
 
     if (ERROR_SUCCESS != status) {
-        derr << "Error: " << win32_strerror(status)
-             << ". Could not open registry key: " << strKey << dendl;
+        lderr(cct_) << "Error: " << win32_strerror(status)
+                    << ". Could not open registry key: "
+                    << strKey << dendl;
     }
 
-    if(hkey)
-        return std::optional<std::string>{RegistryKey(cct, hkey)};
+    if(hKey)
+        return { RegistryKey(cct_, hKey) };
     return std::nullopt;
 }
 
 RegistryKey::~RegistryKey() {
     if(!hKey)
-        return
+        return;
 
     DWORD status = RegCloseKey(hKey);
     if (ERROR_SUCCESS != status) {
@@ -56,19 +61,21 @@ RegistryKey::~RegistryKey() {
 
 }
 
-int RegistryKey::remove(CephContext *cct, HKEY hRootKey, LPCTSTR strKey)
+int RegistryKey::remove(CephContext *cct_, HKEY hRootKey, LPCTSTR strKey)
 {
     DWORD status = RegDeleteKeyEx(hRootKey, strKey, KEY_WOW64_64KEY, 0);
 
     if (status == ERROR_FILE_NOT_FOUND)
     {
-        dout(20) << "Registry key : " << strKey << " does not exist."<< dendl;
+        ldout(cct_, 20) << "Registry key : " << strKey
+                        << " does not exist."<< dendl;
         return 0;
     }
 
     if (ERROR_SUCCESS != status) {
-        derr << "Error: " << win32_strerror(status)
-             << ". Could not delete registry key: " << strKey << dendl;
+        lderr(cct_) << "Error: " << win32_strerror(status)
+                    << ". Could not delete registry key: "
+                    << strKey << dendl;
         return -EINVAL;
     }
 
