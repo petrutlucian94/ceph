@@ -11,6 +11,7 @@
  */
 
 #include "include/compat.h"
+#include "common/ceph_context.h"
 
 class Win32Service {
 

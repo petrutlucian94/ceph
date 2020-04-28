@@ -1,5 +1,5 @@
 if(WIN32)
-    add_executable(rbd-nbd rbd-nbd-win32.cc wnbd_wmi.cc wnbd_ioctl.c)
+    add_executable(rbd-nbd win32/rbd-nbd.cc win32/wnbd_wmi.cc win32/wnbd_ioctl.c)
     target_link_libraries(rbd-nbd setupapi wbemuuid oleaut32 ${Boost_FILESYSTEM_LIBRARY})
     set_target_properties(rbd-nbd PROPERTIES COMPILE_FLAGS "-fpermissive")
 else()

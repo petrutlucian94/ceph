@@ -18,31 +18,25 @@
 
 #include "include/int_types.h"
 
-#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <process.h>
 
 #include <sys/socket.h>
 
-#include <boost/filesystem.hpp>
 #include <boost/locale/encoding_utf.hpp>
+
 #include "wnbd_wmi.h"
 #include "wnbd_ioctl.h"
-#include "userspace_shared.h"
-#include "nbd-win32.h"
+#include "nbd.h"
+#include "rbd-nbd.h"
 
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <regex>
-#include <boost/algorithm/string/predicate.hpp>
 
 #include "common/Formatter.h"
 #include "common/TextTable.h"
@@ -53,12 +47,10 @@
 #include "common/module.h"
 #include "common/safe_io.h"
 #include "common/version.h"
-#include "common/win32_registry.h"
 #include "common/win32_service.h"
 
 #include "global/global_init.h"
 
-#include "include/compat.h"
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
 #include "include/stringify.h"
@@ -73,50 +65,7 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "rbd-nbd: "
 
-#define SERVICE_REG_KEY "SYSTEM\\CurrentControlSet\\Services\\rbd-nbd"
-
-#define WNBD_STATUS_CONNECTED "connected"
-#define WNBD_STATUS_DISCONNECTED "disconnected"
-
-static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
-
-struct Config {
-  int nbds_max = 0;
-  int max_part = 255;
-  int timeout = -1;
-
-  bool exclusive = false;
-  bool readonly = false;
-  bool set_max_part = false;
-
-  intptr_t parent_pipe = 0;
-  int service = 0;
-
-  std::string poolname;
-  std::string nsname;
-  std::string imgname;
-  std::string snapname;
-  std::string devpath;
-
-  std::string format;
-  bool pretty_format = false;
-
-  // TODO: consider adding a "ConnectionInfo" structure.
-  // The disk number is provided by Windows.
-  int disk_number = -1;
-  int pid = 0;
-  std::string serial_number;
-  bool connected = false;
-  bool wnbd_mapped = false;
-  std::string command_line;
-};
-
-std::string get_device_name_per_pid(int pid);
-static bool map_device_using_suprocess(std::string command_line);
-static int do_unmap(Config *cfg);
-int load_mapping_config_from_registry(char* devpath, Config* cfg);
-
 
 std::wstring to_wstring(const std::string& str)
 {
@@ -136,133 +85,97 @@ bool is_process_running(DWORD pid)
     return ret == WAIT_TIMEOUT;
 }
 
-// Iterate over mapped devices, retrieving info from the WNBD driver.
-class WNBDActiveDiskIterator {
-public:
-  WNBDActiveDiskIterator() {
-    DWORD status = WnbdList(&disk_list);
-    if (!status || !disk_list) {
-      derr << "Could not get WNBD devices. Return code: " << status << dendl;
-    }
+WNBDActiveDiskIterator::WNBDActiveDiskIterator() {
+  DWORD status = WnbdList(&disk_list);
+  if (!status || !disk_list) {
+    derr << "Could not get WNBD devices. Return code: " << status << dendl;
   }
+}
 
-  ~WNBDActiveDiskIterator() {
-    if(disk_list) {
-      free(disk_list);
-      disk_list = NULL;
-    }
+WNBDActiveDiskIterator::~WNBDActiveDiskIterator() {
+  if(disk_list) {
+    free(disk_list);
+    disk_list = NULL;
   }
+}
 
-  bool get(Config *cfg) {
-    index += 1;
+bool WNBDActiveDiskIterator::get(Config *cfg) {
+  index += 1;
 
-    if(!disk_list || index >= disk_list->ActiveListCount) {
-      return false;
-    }
-
-    USER_IN conn_info = disk_list->ActiveEntry[index].ConnectionInformation;
-    load_mapping_config_from_registry(conn_info.InstanceName, cfg);
-
-    int disk_number = GetDiskNumberBySerialNumber(
-      to_wstring(conn_info.SerialNumber));
-
-    if (disk_number < 0) {
-      derr << "could not get disk number for current device: "
-           << conn_info.InstanceName << dendl;
-      cfg->disk_number = -1;
-    }
-    else {
-      cfg->disk_number = disk_number;
-    }
-
-    cfg->serial_number = std::string(conn_info.SerialNumber);
-    cfg->pid = conn_info.Pid;
-    cfg->connected = cfg->disk_number && is_process_running(conn_info.Pid);
-    cfg->wnbd_mapped = true;
-
-    return true;
-  }
-
-private:
-  PGET_LIST_OUT disk_list = NULL;
-  int index = -1;
-};
-
-// Iterate over the Windows registry key, retrieving registered mappings.
-class RegistryDiskIterator {
-public:
-  RegistryDiskIterator() {
-    init();
-  }
-
-  int init() {
-    reg_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE,
-                                SERVICE_REG_KEY, false);
-    if(!reg_key) {
-      return -EINVAL;
-    }
-
-    if(RegQueryInfoKey(
-        reg_key->hKey, NULL, NULL, NULL,
-        &subkey_count,
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL))
-      return -EINVAL;
-
-    return 0;
-  }
-
-  bool get(Config *cfg) {
-    index += 1;
-
-    if (!reg_key || !subkey_count || index >= subkey_count)
-      return false;
-
-    DWORD subkey_name_sz = MAX_PATH;
-    if(RegEnumKeyEx(reg_key->hKey, index, subkey_name, &subkey_name_sz,
-                    NULL, NULL, NULL, NULL))
-      return false;
-
-    return load_mapping_config_from_registry(subkey_name, cfg) == 0;
-  }
-
-private:
-  int index = -1;
-  DWORD subkey_count = 0;
-  char subkey_name[MAX_PATH];
-  std::optional<RegistryKey> reg_key;
-};
-
-// Iterate over all RBD mappings, getting info from the registry and WNBD.
-class WNBDDiskIterator {
-public:
-  bool get(Config *cfg) {
-    bool found_active = active_iterator.get(cfg);
-    if (found_active) {
-      active_devices.insert(cfg->devpath);
-      return true;
-    }
-
-    while(registry_iterator.get(cfg)) {
-      if (active_devices.find(cfg->devpath) != active_devices.end()) {
-        // Skip active devices that were already yielded.
-        continue;
-      }
-      return true;
-    }
-
+  if(!disk_list || index >= disk_list->ActiveListCount) {
     return false;
   }
 
-private:
-  // We'll keep track of the active devices.
-  std::set<std::string> active_devices;
+  USER_IN conn_info = disk_list->ActiveEntry[index].ConnectionInformation;
+  load_mapping_config_from_registry(conn_info.InstanceName, cfg);
 
-  WNBDActiveDiskIterator active_iterator;
-  RegistryDiskIterator registry_iterator;
-};
+  int disk_number = GetDiskNumberBySerialNumber(
+    to_wstring(conn_info.SerialNumber));
 
-void
-daemonize_complete(HANDLE parent_pipe)
+  if (disk_number < 0) {
+    derr << "could not get disk number for current device: "
+         << conn_info.InstanceName << dendl;
+    cfg->disk_number = -1;
+  }
+  else {
+    cfg->disk_number = disk_number;
+  }
+
+  cfg->serial_number = std::string(conn_info.SerialNumber);
+  cfg->pid = conn_info.Pid;
+  cfg->connected = cfg->disk_number && is_process_running(conn_info.Pid);
+  cfg->wnbd_mapped = true;
+
+  return true;
+}
+
+
+RegistryDiskIterator::RegistryDiskIterator() {
+  reg_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE,
+                              SERVICE_REG_KEY, false);
+  if(!reg_key) {
+    return;
+  }
+
+  if(RegQueryInfoKey(reg_key->hKey, NULL, NULL, NULL, &subkey_count,
+                     NULL, NULL, NULL, NULL, NULL, NULL, NULL))
+    return;
+}
+
+bool RegistryDiskIterator::get(Config *cfg) {
+  index += 1;
+
+  if (!reg_key || !subkey_count || index >= subkey_count)
+    return false;
+
+  DWORD subkey_name_sz = MAX_PATH;
+  if(RegEnumKeyEx(reg_key->hKey, index, subkey_name, &subkey_name_sz,
+                  NULL, NULL, NULL, NULL))
+    return false;
+
+  return load_mapping_config_from_registry(subkey_name, cfg) == 0;
+}
+
+// Iterate over all RBD mappings, getting info from the registry and WNBD.
+bool WNBDDiskIterator::get(Config *cfg) {
+  bool found_active = active_iterator.get(cfg);
+  if (found_active) {
+    active_devices.insert(cfg->devpath);
+    return true;
+  }
+
+  while(registry_iterator.get(cfg)) {
+    if (active_devices.find(cfg->devpath) != active_devices.end()) {
+      // Skip active devices that were already yielded.
+      continue;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+void daemonize_complete(HANDLE parent_pipe)
 {
     // If running as a child because '--detach' option was specified,
     // communicate with the parent to inform that the child is ready.
@@ -279,7 +192,7 @@ daemonize_complete(HANDLE parent_pipe)
 /* Spawn a subprocess using the specified command line, which is expected
    to be a "rbd-nbd map" command. A pipe is passed to the child process,
    which will allow it to communicate the mapping status */
-static bool map_device_using_suprocess(std::string command_line)
+bool map_device_using_suprocess(std::string command_line)
 {
     SECURITY_ATTRIBUTES sa;
     STARTUPINFO si;
@@ -344,7 +257,7 @@ static bool map_device_using_suprocess(std::string command_line)
     return exit_code;
 }
 
-void UnmapAtExit(void)
+void unmap_at_exit()
 {
   std::string devpath = get_device_name_per_pid(getpid());
   if (devpath.empty()) {
@@ -353,10 +266,10 @@ void UnmapAtExit(void)
   WnbdUnmap((char *)devpath.c_str());
 }
 
-BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType)
+BOOL WINAPI console_handler_routine(DWORD dwCtrlType)
 {
-    exit(1);
-    return true;
+  exit(1);
+  return true;
 }
 
 std::string get_device_name_per_pid(int pid)
@@ -372,7 +285,7 @@ std::string get_device_name_per_pid(int pid)
     return std::string("");
 }
 
-int map_registry_config(Config* cfg)
+int save_config_to_registry(Config* cfg)
 {
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
@@ -401,7 +314,7 @@ int map_registry_config(Config* cfg)
     return ret_val;
 }
 
-int unmap_registry_config(Config* cfg)
+int remove_config_from_registry(Config* cfg)
 {
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
@@ -522,33 +435,7 @@ typedef HANDLE NBD_FD_TYPE;
 static NBD_FD_TYPE nbd = INVALID_HANDLE_VALUE;
 static int nbd_index = -1;
 
-enum Command {
-  None,
-  Connect,
-  Disconnect,
-  List,
-  Show,
-  Service
-};
-
 static Command cmd = None;
-
-#define RBD_NBD_BLKSIZE 512UL
-
-#define HELP_INFO 1
-#define VERSION_INFO 2
-
-#ifdef CEPH_BIG_ENDIAN
-#define ntohll(a) (a)
-#elif defined(CEPH_LITTLE_ENDIAN)
-#define ntohll(a) swab(a)
-#else
-#error "Could not determine endianess"
-#endif
-#define htonll(a) ntohll(a)
-
-static int parse_args(vector<const char*>& args, std::ostream *err_msg,
-                      Command *command, Config *cfg);
 
 class NBDServer
 {
@@ -933,7 +820,7 @@ static NBDServer *start_server(int fd, librbd::Image& image)
   return server;
 }
 
-static void construct_devpath_if_missing(Config* cfg) {
+void construct_devpath_if_missing(Config* cfg) {
   // Windows doesn't allow us to request specific disk paths when mapping an
   // image. This will just be used by rbd-nbd and wnbd as an identifier.
   if (cfg->devpath.empty()) {
@@ -954,7 +841,7 @@ static void construct_devpath_if_missing(Config* cfg) {
   }
 }
 
-static int initialize_wnbd_connection(Config* cfg, unsigned long long size)
+int initialize_wnbd_connection(Config* cfg, unsigned long long size)
 {
   // On Windows, we can't pass socket descriptors to our driver. Instead,
   // we're going to open a tcp server and request the driver to connect to it.
@@ -1114,8 +1001,8 @@ static int do_map(int argc, const char *argv[], Config *cfg)
       r = -1;
       goto close_ret;
   }
-  atexit(UnmapAtExit);
-  r = map_registry_config(cfg);
+  atexit(unmap_at_exit);
+  r = save_config_to_registry(cfg);
   if (r < 0)
       goto close_nbd;
 
@@ -1165,7 +1052,7 @@ static int do_unmap(Config *cfg)
       else
         return -EINVAL;
   }
-  unmap_registry_config(cfg);
+  remove_config_from_registry(cfg);
   return 0;
 }
 
@@ -1274,7 +1161,8 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   return 0;
 }
 
-static int parse_args(vector<const char*>& args, std::ostream *err_msg,
+static int parse_args(std::vector<const char*>& args,
+                      std::ostream *err_msg,
                       Command *command, Config *cfg) {
   std::string conf_file_list;
   std::string cluster;
@@ -1365,12 +1253,8 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
         *err_msg << "rbd-nbd: must specify nbd device or image-or-snap-spec";
         return -EINVAL;
       }
-      if (boost::starts_with(*args.begin(), "/dev/")) {
-        cfg->devpath = *args.begin();
-      } else {
-        if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
-          return -EINVAL;
-        }
+      if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
+        return -EINVAL;
       }
       args.erase(args.begin());
       break;
@@ -1379,12 +1263,8 @@ static int parse_args(vector<const char*>& args, std::ostream *err_msg,
         *err_msg << "rbd-nbd: must specify nbd device or image-or-snap-spec";
         return -EINVAL;
       }
-      if (boost::starts_with(*args.begin(), "/dev/")) {
-        cfg->devpath = *args.begin();
-      } else {
-        if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
-          return -EINVAL;
-        }
+      if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
+        return -EINVAL;
       }
       args.erase(args.begin());
       break;
@@ -1406,7 +1286,7 @@ static int rbd_nbd(int argc, const char *argv[])
 {
   int r;
   Config cfg;
-  vector<const char*> args;
+  std::vector<const char*> args;
   argv_to_vec(argc, argv, args);
 
   std::ostringstream err_msg;
@@ -1466,7 +1346,7 @@ static int rbd_nbd(int argc, const char *argv[])
 
 int main(int argc, const char *argv[])
 {
-  SetConsoleCtrlHandler(ConsoleHandlerRoutine, true);
+  SetConsoleCtrlHandler(console_handler_routine, true);
   /* The system does not display the Windows Error Reporting dialog. */
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
   InitWMI();
