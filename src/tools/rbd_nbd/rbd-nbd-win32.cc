@@ -81,7 +81,7 @@
 static BOOL WINAPI ConsoleHandlerRoutine(DWORD dwCtrlType);
 using boost::locale::conv::utf_to_utf;
 
-static bool detach_process();
+static bool map_device_using_suprocess(std::string command_line)
 
 BOOL is_process_running(DWORD pid)
 {
@@ -106,19 +106,25 @@ daemonize_complete(HANDLE parent_pipe)
     global_init_postfork_finish(g_ceph_context);
 }
 
-/* If one of the command line option is "--detach", creates
- * a new process in case of parent, waits for child to start and exits.
- * In case of the child, returns. */
-static bool
-detach_process()
+/* Spawn a subprocess using the specified command line, which is expected
+   to be a "rbd-nbd map" command. A pipe is passed to the child process,
+   which will allow it to communicate the mapping status */
+static bool map_device_using_suprocess(std::string command_line)
 {
     SECURITY_ATTRIBUTES sa;
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
-    HANDLE read_pipe, write_pipe;
+    HANDLE read_pipe = NULL, write_pipe = NULL;
     char buffer[4096];
     char ch;
     DWORD exit_code = 0;
+
+    dout(5) << __func__ << ": command_line: " << command_line << dendl;
+
+    // We may get a command line containign an old pipe handle when
+    // recreating mappings, so we'll have to remove it.
+    std::regex pattern("(--pipe-handle [\'\"]?\\d+[\'\"]?)");
+    command_line = std::regex_replace(command_line, pattern, "");
 
     /* Set the security attribute such that a process created will
      * inherit the pipe handles. */
@@ -133,21 +139,26 @@ detach_process()
 
     GetStartupInfo(&si);
 
-    /* To the child, we pass an extra argument '--pipe-handle write_pipe' */
-    sprintf(buffer, "%s %s %lld", GetCommandLine(), "--pipe-handle",
+    /* Pass an extra argument '--pipe-handle <write_pipe>' */
+    sprintf(buffer, "%s %s %lld", command_line.c_str(), "--pipe-handle",
         (intptr_t)write_pipe);
 
     /* Create a detached child */
     if (!CreateProcess(NULL, buffer, NULL, NULL, TRUE, DETACHED_PROCESS,
                       NULL, NULL, &si, &pi)) {
         derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
+        exit_code = -1;
+        goto finally;
     }
 
     /* Close one end of the pipe in the parent. */
     CloseHandle(write_pipe);
+    write_pipe = NULL;
 
     /* Block and wait for child to say it is ready. */
     if (!ReadFile(read_pipe, &ch, 1, NULL, NULL)) {
+        // TODO: this is quite unlikely, but we should kill the subprocess and
+        // return an error.
         derr << "Failed to read from child: " << win32_lasterror_str() << dendl;
         if (!is_process_running(pi.dwProcessId)) {
             GetExitCodeProcess(pi.hProcess, &exit_code);
@@ -155,7 +166,12 @@ detach_process()
         }
     }
 
-    exit(exit_code);
+    finally:
+      if(write_pipe)
+        CloseHandle(write_pipe)
+      if(read_pipe)
+        CloseHandle(read_pipe)
+    return exit_code;
 }
 
 std::wstring to_wstring(consft std::string& str)
@@ -261,7 +277,7 @@ int unmap_registry_config(Config* cfg)
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
     strKey.append(cfg->devpath);
-    return DeleteKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str());
+    return RegistryKey::remove(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str());
 }
 
 #define MAX_KEY_LENGTH 255
@@ -304,35 +320,25 @@ int restart_registered_mappings()
 {
     Config cfg;
     WNBDDiskIterator iterator;
+    int last_err = 0;
 
-    while(iterator.get(cfg)) {
-      if(!cfg->command_line) {
-        return
+    while(iterator.get(&cfg)) {
+      if(!cfg.command_line) {
+        derr << "Could not recreate mapping, missing command line: "
+             << cfg.devpath << dendl;
+        last_err = -EINVAL;
+        continue;
       }
-    }
-        std::string command;
-        if (sub_key && sub_key->get("command_line", command)) {
-            STARTUPINFO si = {0};
-            PROCESS_INFORMATION pi = {0};
-            int error;
+      if(cfg.wnbd_mapped) {
+        dout(5) << __func__ << ": device already mapped: "
+                << cfg.devpath << dendl;
+        continue;
+      }
 
-            GetStartupInfo(&si);
-            /* Create a detached child */
-            // TODO: consider waiting for the mappings (e.g. by using
-            // "detach_process"). We'll need to be careful not to use the
-            // old pipe handles. At the same time, we may want to block
-            // maps/unmaps while the service starts.
-            error = CreateProcess(NULL, (char *)command.c_str(),
-                NULL, NULL, TRUE, DETACHED_PROCESS,
-                NULL, NULL, &si, &pi);
-            if (!error) {
-                derr << "Failed to recreate mapping: "
-                     << win32_lasterror_str() << dendl;
-            }
-        }
+      last_err = map_device_using_suprocess(cfg.command_line) || last_err;
     }
 
-    return 0;
+    return last_err;
 }
 
 class RBDService : public Win32Service {
@@ -1023,7 +1029,7 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   global_init_chdir(g_ceph_context);
 
   if (g_conf()->daemonize && !cfg->parent_pipe) {
-      detach_process();
+    return map_device_using_suprocess(GetCommandLine());
   }
 
   r = rados.init_with_context(g_ceph_context);
