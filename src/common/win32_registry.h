@@ -12,13 +12,26 @@
 
 #include "include/compat.h"
 
+class RegistryKey {
+public:
+  ~RegistryKey();
 
-// TODO: consider adding a class.
-HKEY OpenKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value);
-int DeleteKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey);
-int FlushKey(CephContext *cct, HKEY hKey);
-int CloseKey(CephContext *cct, HKEY hKey);
-int SetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD data);
-int SetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string data);
-int GetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD* value);
-int GetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string& value);
+  static std::optional<RegistryKey> open(
+    CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value);
+  static remove(CephContext *cct, HKEY hRootKey, LPCTSTR strKey);
+
+  int flush();
+
+  int set(LPCTSTR lpValue, DWORD data);
+  int set(LPCTSTR lpValue, std::string data);
+
+  int get(LPCTSTR lpValue, DWORD* value);
+  int get(LPCTSTR lpValue, std::string& value);
+
+  HKEY hKey = NULL;
+
+private:
+  RegistryKey(CephContext *cct_, HKEY hKey_): cct(cct_), hkey(hKey_);
+
+  CephContext *cct;
+};

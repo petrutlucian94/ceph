@@ -18,7 +18,7 @@
 #include "common/win32_registry.h"
 
 
-HKEY OpenKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value)
+HKEY RegistryKey::open(CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value)
 {
     HKEY hKey = NULL;
     DWORD status = RegOpenKeyEx(hRootKey, strKey, 0, KEY_ALL_ACCESS, &hKey);
@@ -36,10 +36,27 @@ HKEY OpenKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey, bool create_value)
              << ". Could not open registry key: " << strKey << dendl;
     }
 
-    return hKey;
+    if(hkey)
+        return std::optional<std::string>{RegistryKey(cct, hkey)};
+    return std::nullopt;
 }
 
-int DeleteKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey)
+RegistryKey::~RegistryKey() {
+    if(!hKey)
+        return
+
+    DWORD status = RegCloseKey(hKey);
+    if (ERROR_SUCCESS != status) {
+        derr << "Error: " << win32_strerror(status)
+             << ". Could not close registry key." << dendl;
+    }
+    else {
+        hKey = NULL;
+    }
+
+}
+
+int RegistryKey::remove(CephContext *cct, HKEY hRootKey, LPCTSTR strKey)
 {
     DWORD status = RegDeleteKeyEx(hRootKey, strKey, KEY_WOW64_64KEY, 0);
 
@@ -58,7 +75,7 @@ int DeleteKey(CephContext *cct, HKEY hRootKey, LPCTSTR strKey)
     return 0;
 }
 
-int FlushKey(CephContext *cct, HKEY hKey) {
+int RegistryKey::flush() {
     DWORD status = RegFlushKey(hKey);
     if (ERROR_SUCCESS != status) {
         derr << "Error: " << win32_strerror(status)
@@ -69,18 +86,7 @@ int FlushKey(CephContext *cct, HKEY hKey) {
     return 0;
 }
 
-int CloseKey(CephContext *cct, HKEY hKey) {
-    DWORD status = RegCloseKey(hKey);
-    if (ERROR_SUCCESS != status) {
-        derr << "Error: " << win32_strerror(status)
-             << ". Could not close registry key." << dendl;
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-int SetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD data)
+int RegistryKey::set(LPCTSTR lpValue, DWORD data)
 {
     DWORD status = RegSetValueEx(hKey, lpValue, 0, REG_DWORD,
                                  (LPBYTE)&data, sizeof(DWORD));
@@ -93,7 +99,7 @@ int SetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD data)
     return 0;
 }
 
-int SetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string data)
+int RegistryKey::set(LPCTSTR lpValue, std::string data)
 {
     DWORD status = RegSetValueEx(hKey, lpValue, 0, REG_SZ,
                                  (LPBYTE)data.c_str(), data.length());
@@ -106,7 +112,7 @@ int SetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string data)
     return 0;
 }
 
-int GetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD* value)
+int RegistryKey::get(LPCTSTR lpValue, DWORD* value)
 {
     DWORD data;
     DWORD size = sizeof(data);
@@ -123,7 +129,7 @@ int GetValDword(CephContext *cct, HKEY hKey, LPCTSTR lpValue, DWORD* value)
     return 0;
 }
 
-int GetValString(CephContext *cct, HKEY hKey, LPCTSTR lpValue, std::string& value)
+int RegistryKey::get(LPCTSTR lpValue, std::string& value)
 {
     std::string data{""};
     DWORD size = 0;

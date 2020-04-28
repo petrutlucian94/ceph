@@ -230,27 +230,27 @@ int map_registry_config(Config* cfg)
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
     strKey.append(cfg->devpath);
-    HKEY hKey = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), true);
-    if (!hKey) {
+    auto reg_key = RegistryKey::open(
+      g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), true);
+    if (!reg_key) {
         return -EINVAL;
     }
 
     int ret_val = 0;
-    if (SetValDword(g_ceph_context, hKey, "pid", getpid()) ||
-        SetValString(g_ceph_context, hKey, "devpath", cfg->devpath) ||
-        SetValString(g_ceph_context, hKey, "poolname", cfg->poolname) ||
-        SetValString(g_ceph_context, hKey, "nsname", cfg->nsname) ||
-        SetValString(g_ceph_context, hKey, "imgname", cfg->imgname) ||
-        SetValString(g_ceph_context, hKey, "snapname", cfg->snapname) ||
-        SetValString(g_ceph_context, hKey, "command_line", GetCommandLine())) {
+    if (reg_key->set("pid", getpid()) ||
+        reg_key->set("devpath", cfg->devpath) ||
+        reg_key->set("poolname", cfg->poolname) ||
+        reg_key->set("nsname", cfg->nsname) ||
+        reg_key->set("imgname", cfg->imgname) ||
+        reg_key->set("snapname", cfg->snapname) ||
+        reg_key->set("command_line", GetCommandLine())) {
         ret_val = -EINVAL;
     }
 
     // Registry writes are immediately available to other processes.
     // Still, we'll do a flush to ensure that the mapping can be
     // recreated after a system crash.
-    FlushKey(g_ceph_context, hKey);
-    CloseKey(g_ceph_context, hKey);
+    reg_key->flush();
     return ret_val;
 }
 
@@ -269,37 +269,37 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
     std::string strKey{ SERVICE_REG_KEY };
     strKey.append("\\");
     strKey.append(devpath);
-    HKEY hKey = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-    if (!hKey) {
+    auto reg_key = RegistryKey::open(
+      g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+    if (!reg_key) {
         return -EINVAL;
     }
     std::string reg_value;
 
-    if (!GetValString(g_ceph_context, hKey, "devpath", reg_value)) {
+    if (!reg_key->get(g_ceph_context, hKey, "devpath", reg_value)) {
         cfg->devpath = reg_value;
     }
-    if (!GetValString(g_ceph_context, hKey, "poolname", reg_value)) {
+    if (!!reg_key->get("poolname", reg_value)) {
         cfg->poolname = reg_value;
     }
-    if (!GetValString(g_ceph_context, hKey, "nsname", reg_value)) {
+    if (!!reg_key->get("nsname", reg_value)) {
         cfg->nsname = reg_value;
     }
-    if (!GetValString(g_ceph_context, hKey, "imgname", reg_value)) {
+    if (!!reg_key->get("imgname", reg_value)) {
         cfg->imgname = reg_value;
     }
-    if (!GetValString(g_ceph_context, hKey, "snapname", reg_value)) {
+    if (!!reg_key->get("snapname", reg_value)) {
         cfg->snapname = reg_value;
     }
 
-    CloseKey(g_ceph_context, hKey);
     return 0;
 }
 
 int restart_registered_mappings()
 {
     std::string strKey{ SERVICE_REG_KEY };
-    HKEY hKey = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-    if (!hKey) {
+    auto reg_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+    if (!reg_key) {
         return -EINVAL;
     }
 
@@ -309,19 +309,19 @@ int restart_registered_mappings()
 
     // Get the number of subkeys.
     DWORD retCode = RegQueryInfoKey(
-        hKey, NULL, NULL, NULL,
+        reg_key.hKey, NULL, NULL, NULL,
         &subkey_count,
         NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
     if (!subkey_count)
-        goto cleanup;
+        return 0;
 
     // Enumerate the subkeys, until RegEnumKeyEx fails.
     for (int i=0; i<subkey_count; i++)
     {
         subkey_name_sz = MAX_KEY_LENGTH;
         retCode = RegEnumKeyEx(
-            hKey, i, subkey_name, &subkey_name_sz,
+            reg_key.hKey, i, subkey_name, &subkey_name_sz,
             NULL, NULL, NULL, NULL);
         if (retCode)
             break;
@@ -329,35 +329,30 @@ int restart_registered_mappings()
         std::string subkey_path{SERVICE_REG_KEY};
         subkey_path.append("\\");
         subkey_path.append(subkey_name);
-        HKEY sub_key = OpenKey(g_ceph_context, HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
-        if (sub_key) {
-            std::string command;
-            if (!GetValString(g_ceph_context, sub_key, "command_line", command)) {
-                STARTUPINFO si = {0};
-                PROCESS_INFORMATION pi = {0};
-                int error;
+        auto sub_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
+        std::string command;
+        if (sub_key && sub_key->get("command_line", command)) {
+            STARTUPINFO si = {0};
+            PROCESS_INFORMATION pi = {0};
+            int error;
 
-                GetStartupInfo(&si);
-                /* Create a detached child */
-                // TODO: consider waiting for the mappings (e.g. by using
-                // "detach_process"). We'll need to be careful not to use the
-                // old pipe handles. At the same time, we may want to block
-                // maps/unmaps while the service starts.
-                error = CreateProcess(NULL, (char *)command.c_str(),
-                    NULL, NULL, TRUE, DETACHED_PROCESS,
-                    NULL, NULL, &si, &pi);
-                if (!error) {
-                    derr << "Failed to recreate mapping: "
-                         << win32_lasterror_str() << dendl;
-                }
+            GetStartupInfo(&si);
+            /* Create a detached child */
+            // TODO: consider waiting for the mappings (e.g. by using
+            // "detach_process"). We'll need to be careful not to use the
+            // old pipe handles. At the same time, we may want to block
+            // maps/unmaps while the service starts.
+            error = CreateProcess(NULL, (char *)command.c_str(),
+                NULL, NULL, TRUE, DETACHED_PROCESS,
+                NULL, NULL, &si, &pi);
+            if (!error) {
+                derr << "Failed to recreate mapping: "
+                     << win32_lasterror_str() << dendl;
             }
-            CloseKey(g_ceph_context, sub_key);
         }
     }
 
-    cleanup:
-        CloseKey(g_ceph_context, hKey);
-        return 0;
+    return 0;
 }
 
 class RBDService : public Win32Service {
