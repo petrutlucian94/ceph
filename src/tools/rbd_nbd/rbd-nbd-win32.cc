@@ -222,7 +222,9 @@ struct Config {
   int disk_number = -1;
   int pid = 0;
   std::string serial_number;
-  int connected = 0;
+  bool connected = false;
+  bool wnbd_mapped = false;
+  std::string command_line;
 };
 
 int map_registry_config(Config* cfg)
@@ -279,17 +281,20 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
     if (!reg_key->get(g_ceph_context, hKey, "devpath", reg_value)) {
         cfg->devpath = reg_value;
     }
-    if (!!reg_key->get("poolname", reg_value)) {
+    if (!reg_key->get("poolname", reg_value)) {
         cfg->poolname = reg_value;
     }
-    if (!!reg_key->get("nsname", reg_value)) {
+    if (!reg_key->get("nsname", reg_value)) {
         cfg->nsname = reg_value;
     }
-    if (!!reg_key->get("imgname", reg_value)) {
+    if (!reg_key->get("imgname", reg_value)) {
         cfg->imgname = reg_value;
     }
-    if (!!reg_key->get("snapname", reg_value)) {
+    if (!reg_key->get("snapname", reg_value)) {
         cfg->snapname = reg_value;
+    }
+    if (!reg_key->get("command_line", reg_value)) {
+        cfg->command_line = reg_value;
     }
 
     return 0;
@@ -297,39 +302,14 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
 
 int restart_registered_mappings()
 {
-    std::string strKey{ SERVICE_REG_KEY };
-    auto reg_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-    if (!reg_key) {
-        return -EINVAL;
+    Config cfg;
+    WNBDDiskIterator iterator;
+
+    while(iterator.get(cfg)) {
+      if(!cfg->command_line) {
+        return
+      }
     }
-
-    CHAR subkey_name[MAX_KEY_LENGTH];
-    DWORD subkey_name_sz;
-    DWORD subkey_count=0;
-
-    // Get the number of subkeys.
-    DWORD retCode = RegQueryInfoKey(
-        reg_key.hKey, NULL, NULL, NULL,
-        &subkey_count,
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-
-    if (!subkey_count)
-        return 0;
-
-    // Enumerate the subkeys, until RegEnumKeyEx fails.
-    for (int i=0; i<subkey_count; i++)
-    {
-        subkey_name_sz = MAX_KEY_LENGTH;
-        retCode = RegEnumKeyEx(
-            reg_key.hKey, i, subkey_name, &subkey_name_sz,
-            NULL, NULL, NULL, NULL);
-        if (retCode)
-            break;
-
-        std::string subkey_path{SERVICE_REG_KEY};
-        subkey_path.append("\\");
-        subkey_path.append(subkey_name);
-        auto sub_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE, subkey_path.c_str(), true);
         std::string command;
         if (sub_key && sub_key->get("command_line", command)) {
             STARTUPINFO si = {0};
@@ -379,7 +359,7 @@ class WNBDActiveDiskIterator {
 public:
   WNBDActiveDiskIterator() {
     DWORD status = WnbdList(&disk_list);
-    if (!status && !disk_list) {
+    if (!status || !disk_list) {
       derr << "Could not get WNBD devices. Return code: " << status << dendl;
     }
   }
@@ -414,11 +394,78 @@ public:
     cfg->serial_number = std::string(conn_info.SerialNumber);
     cfg->pid = conn_info.Pid;
     cfg->connected = cfg->disk_number && is_process_running(iterator.Pid);
+    cfg->wnbd_mapped = true;
   }
 
 private:
   PGET_LIST_OUT disk_list = NULL;
   int index = 0;
+};
+
+class RegistryDiskIterator {
+public:
+  RegistryDiskIterator() {
+    init();
+  }
+
+  int init() {
+    reg_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE,
+                                SERVICE_REG_KEY, false);
+    if(!reg_key) {
+      return -EINVAL;
+    }
+
+    if(RegQueryInfoKey(
+        reg_key->hKey, NULL, NULL, NULL,
+        &subkey_count,
+        NULL, NULL, NULL, NULL, NULL, NULL, NULL))
+      return -EINVAL;
+  }
+
+  bool get(Config *cfg) {
+    if (!reg_key || !subkey_count || index >= subkey_count)
+      return false;
+
+    subkey_name_sz = MAX_KEY_LENGTH;
+    if(RegEnumKeyEx(reg_key->hKey, i, subkey_name, &subkey_name_sz,
+                    NULL, NULL, NULL, NULL))
+      return false;
+
+    return load_mapping_config_from_registry(subkey_name, cfg) == 0;
+  }
+
+private:
+  int index = 0;
+  int subkey_count = 0;
+  std::optional<RegistryKey> reg_key;
+};
+
+class WNBDDiskIterator {
+public:
+  bool get(Config *cfg) {
+    bool found_active = active_iterator.get(cfg);
+    if (found_active) {
+      active_devices.insert(cfg->devpath);
+      return true;
+    }
+
+    while(registry_iterator.get(cfg)) {
+      if (active_devices.find(cfg->devpath) != active_devices.end()) {
+        // Skip active devices that were already yielded.
+        continue;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+private:
+  // We'll keep track of the active devices.
+  std::set<std::string> active_devices;
+
+  WNBDActiveDiskIterator active_iterator;
+  RegistryDiskIterator registry_iterator;
 };
 
 static void usage()
@@ -1147,7 +1194,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   }
 
   Config cfg;
-  WNBDActiveDiskIterator wnbd_disk_iterator;
+  WNBDDiskIterator wnbd_disk_iterator;
   bool found = false;
 
   while(wnbd_disk_iterator.get(&cfg)) {
