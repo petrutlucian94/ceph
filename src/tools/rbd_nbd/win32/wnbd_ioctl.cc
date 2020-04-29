@@ -154,8 +154,7 @@ WnbdMap(PCHAR InstanceName,
 
   WnbdDriverHandle = GetWnbdDriverHandle();
   if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
-    Status = ERROR_INVALID_HANDLE;
-    goto Exit;
+    return ERROR_INVALID_HANDLE;
   }
 
   memcpy(&ConnectIn.InstanceName, InstanceName, strlen(InstanceName) + 1);
@@ -180,7 +179,6 @@ WnbdMap(PCHAR InstanceName,
   }
 
   CloseHandle(WnbdDriverHandle);
-Exit:
   return Status;
 }
 
@@ -199,8 +197,7 @@ WnbdUnmap(PCHAR InstanceName)
 
   WnbdDriverHandle = GetWnbdDriverHandle();
   if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
-    Status = ERROR_INVALID_HANDLE;
-    goto Exit;
+    return ERROR_INVALID_HANDLE;
   }
 
   memcpy(&DisconnectIn.InstanceName[0], InstanceName, strlen(InstanceName));
@@ -217,7 +214,6 @@ WnbdUnmap(PCHAR InstanceName)
   }
 
   CloseHandle(WnbdDriverHandle);
-Exit:
   return Status;
 }
 
@@ -233,16 +229,15 @@ WnbdList(PGET_LIST_OUT* Output)
 
   WnbdDriverHandle = GetWnbdDriverHandle();
   if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
-    Status = ERROR_INVALID_HANDLE;
-    goto Exit;
+    return ERROR_INVALID_HANDLE;
   }
 
   // TODO: handle the situation in which the buffer is too small.
   // Make sure that the driver returns the right error code.
   Buffer = malloc(65000);
   if (!Buffer) {
-    CloseHandle(WnbdDriverHandle);
     Status = ERROR_NOT_ENOUGH_MEMORY;
+    goto Exit;
   }
   memset(Buffer, 0, 65000);
   Command.IoCode = IOCTL_WNBDVM_LIST;
@@ -252,21 +247,21 @@ WnbdList(PGET_LIST_OUT* Output)
     &Command, sizeof(Command), Buffer, 65000, &BytesReturned, NULL);
 
   if (!DevStatus) {
-    Status = GetLastError();
+    Status = GetLastError() || ERROR_INVALID_FUNCTION;
     derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_LIST failed."
          << " Error: " << Status << dendl;
+    goto Exit;
   }
 
-  PGET_LIST_OUT ActiveConnectList = (PGET_LIST_OUT)Buffer;
+Exit:
+  CloseHandle(WnbdDriverHandle);
 
-  if (Buffer && BytesReturned && ActiveConnectList->ActiveListCount) {
-    Status = ERROR_SUCCESS;
-  }
-  if (ERROR_SUCCESS != Status) {
+  if (ERROR_SUCCESS != Status && Buffer) {
     free(Buffer);
     Buffer = NULL;
   }
+
   *Output = (PGET_LIST_OUT)Buffer;
-Exit:
+
   return Status;
 }

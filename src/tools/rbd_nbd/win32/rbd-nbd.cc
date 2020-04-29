@@ -389,14 +389,14 @@ int restart_registered_mappings()
   return last_err;
 }
 
-int disconnect_all_mappings()
+int disconnect_all_mappings(bool unregister)
 {
   Config cfg;
   WNBDActiveDiskIterator iterator;
   int last_err = 0;
 
   while(iterator.get(&cfg)) {
-    last_err = do_unmap(&cfg) || last_err;
+    last_err = do_unmap(&cfg, unregister) || last_err;
   }
 
   return last_err;
@@ -413,7 +413,7 @@ class RBDService : public Win32Service {
     }
     /* Invoked when the service is requested to stop. */
     int stop_hook() override {
-      return disconnect_all_mappings();
+      return disconnect_all_mappings(false);
     }
     /* Invoked when the system is shutting down. */
     int shutdown_hook() override {
@@ -610,8 +610,8 @@ static int do_map(Config *cfg)
   if (cfg->exclusive) {
     r = image.lock_acquire(RBD_LOCK_MODE_EXCLUSIVE);
     if (r < 0) {
-      cerr << "rbd-nbd: failed to acquire exclusive lock: " << cpp_strerror(r)
-           << std::endl;
+      derr << "rbd-nbd: failed to acquire exclusive lock: " << cpp_strerror(r)
+           << dendl;
       goto close_fd;
     }
   }
@@ -633,8 +633,8 @@ static int do_map(Config *cfg)
 
   if (info.size > _UI64_MAX) {
     r = -EFBIG;
-    cerr << "rbd-nbd: image is too large (" << byte_u_t(info.size)
-         << ", max is " << byte_u_t(_UI64_MAX) << ")" << std::endl;
+    derr << "rbd-nbd: image is too large (" << byte_u_t(info.size)
+         << ", max is " << byte_u_t(_UI64_MAX) << ")" << dendl;
     goto close_fd;
   }
 
@@ -672,21 +672,25 @@ close_ret:
   return r;
 }
 
-static int do_unmap(Config *cfg)
+static int do_unmap(Config *cfg, bool unregister)
 {
   DWORD r;
   construct_devpath_if_missing(cfg);
   r = WnbdUnmap((char *)cfg->devpath.c_str());
-  if (r != 0) {
-      cerr << "rbd-nbd: failed to unmap device: "
-           << cfg->devpath << ". Error: " << r << std::endl;
-      if (r == ERROR_FILE_NOT_FOUND)
-        return -ENODEV;
-      else
-        return -EINVAL;
+  if (r && r != ERROR_FILE_NOT_FOUND) {
+    derr << "rbd-nbd: failed to unmap device: "
+         << cfg->devpath << ". Error: " << r << dendl;
+    return -EINVAL;
   }
-  remove_config_from_registry(cfg);
-  return 0;
+
+  if(unregister) {
+    r = remove_config_from_registry(cfg);
+    if (r) {
+      derr << "rbd-nbd: failed to unregister device: "
+           << cfg->devpath << ". Error: " << r << dendl;
+    }
+  }
+  return r;
 }
 
 static int parse_imgpath(const std::string &imgpath, Config *cfg,
@@ -694,7 +698,7 @@ static int parse_imgpath(const std::string &imgpath, Config *cfg,
   std::regex pattern("^(?:([^/]+)/(?:([^/@]+)/)?)?([^@]+)(?:@([^/@]+))?$");
   std::smatch match;
   if (!std::regex_match(imgpath, match, pattern)) {
-    std::cerr << "rbd-nbd: invalid spec '" << imgpath << "'" << std::endl;
+    derr << "rbd-nbd: invalid spec '" << imgpath << "'" << dendl;
     return -EINVAL;
   }
 
@@ -728,7 +732,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   } else if (format == "xml") {
     f.reset(new XMLFormatter(pretty_format));
   } else if (!format.empty() && format != "plain") {
-    std::cerr << "rbd-nbd: invalid output format: " << format << std::endl;
+    derr << "rbd-nbd: invalid output format: " << format << dendl;
     return -EINVAL;
   }
 
@@ -760,7 +764,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
 
     if (f) {
       f->open_object_section("device");
-      f->dump_int("id", cfg.pid);
+      f->dump_int("id", cfg.pid || -1);
       f->dump_string("device", cfg.devpath);
       f->dump_string("pool", cfg.poolname);
       f->dump_string("namespace", cfg.nsname);
@@ -774,7 +778,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
     if (cfg.snapname.empty()) {
         cfg.snapname = "-";
     }
-    tbl << cfg.pid << cfg.poolname << cfg.nsname
+    tbl << (cfg.pid || -1) << cfg.poolname << cfg.nsname
         << cfg.imgname << cfg.snapname << cfg.devpath
         << cfg.disk_number << status << TextTable::endrow;
     }
@@ -923,7 +927,7 @@ static int rbd_nbd(int argc, const char *argv[])
   argv_to_vec(argc, argv, args);
 
   if (args.empty()) {
-    cerr << argv[0] << ": -h or --help for usage" << std::endl;
+    derr << argv[0] << ": -h or --help for usage" << dendl;
     exit(1);
   }
 
@@ -936,7 +940,7 @@ static int rbd_nbd(int argc, const char *argv[])
     std::cout << pretty_version_to_str() << std::endl;
     return 0;
   } else if (r < 0) {
-    cerr << err_msg.str() << std::endl;
+    derr << err_msg.str() << dendl;
     return r;
   }
 
@@ -945,7 +949,7 @@ static int rbd_nbd(int argc, const char *argv[])
   switch (cmd) {
     case Connect:
       if (cfg.imgname.empty()) {
-        cerr << "rbd-nbd: image name was not specified" << std::endl;
+        derr << "rbd-nbd: image name was not specified" << dendl;
         return -EINVAL;
       }
 
@@ -954,7 +958,7 @@ static int rbd_nbd(int argc, const char *argv[])
         return -EINVAL;
       break;
     case Disconnect:
-      r = do_unmap(&cfg);
+      r = do_unmap(&cfg, true);
       if (r < 0)
         return r;
       break;

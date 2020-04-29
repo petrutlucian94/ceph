@@ -78,7 +78,7 @@ bool is_process_running(DWORD pid);
 void daemonize_complete(HANDLE parent_pipe);
 void unmap_at_exit();
 
-int disconnect_all_mappings();
+int disconnect_all_mappings(bool unregister);
 int restart_registered_mappings();
 bool map_device_using_suprocess(std::string command_line);
 
@@ -96,7 +96,7 @@ BOOL WINAPI console_handler_routine(DWORD dwCtrlType);
 static int parse_args(std::vector<const char*>& args,
                       std::ostream *err_msg,
                       Command *command, Config *cfg);
-static int do_unmap(Config *cfg);
+static int do_unmap(Config *cfg, bool unregister);
 
 
 // Iterate over mapped devices, retrieving info from the WNBD driver.
