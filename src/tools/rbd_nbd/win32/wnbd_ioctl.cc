@@ -4,13 +4,25 @@
  * Licensed under LGPL-2.1 (see LICENSE)
  */
 
-#define dout_context g_ceph_context
-#define dout_subsys ceph_subsys_rbd
+#include "windefs.h"
+#include <windows.h>
 
 #include "wnbd_ioctl.h"
 
+#include <ntddscsi.h>
+#include <setupapi.h>
+#include <string.h>
+#include <process.h>
+
 #include "common/debug.h"
 #include "common/errno.h"
+
+#include "global/global_context.h"
+
+#define STRING_OVERFLOWS(Str, MaxLen) strlen(Str + 1) > MaxLen
+
+#define dout_context g_ceph_context
+#define dout_subsys ceph_subsys_rbd
 
 
 HANDLE
@@ -22,7 +34,7 @@ GetWnbdDriverHandle()
     ULONG DevIndex = 0;
     ULONG RequiredSize = 0;
     ULONG ErrorCode = 0;
-    HANDLE WnbdDriverHandle = { 0 };
+    HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
     DWORD BytesReturned = 0;
     USER_COMMAND Command = { 0 };
     BOOL DevStatus = 0;
@@ -31,26 +43,20 @@ GetWnbdDriverHandle()
                                   DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (DevInfo == INVALID_HANDLE_VALUE) {
         derr << "SetupDiGetClassDevs failed. Error: " << GetLastError() << dendl;
-        return INVALID_HANDLE_VALUE;
+        goto Exit;
     }
 
     DevInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
     DevIndex = 0;
 
     while (SetupDiEnumDeviceInterfaces(DevInfo, NULL, &WNBD_GUID, DevIndex++, &DevInterfaceData)) {
-        if (DevInterfaceDetailData != NULL) {
-            free(DevInterfaceDetailData);
-            DevInterfaceDetailData = NULL;
-        }
-
         if (!SetupDiGetDeviceInterfaceDetail(DevInfo, &DevInterfaceData, NULL, 0, &RequiredSize, NULL)) {
             ErrorCode = GetLastError();
 
             if (ERROR_INSUFFICIENT_BUFFER != ErrorCode) {
                 derr << "SetupDiGetDeviceInterfaceDetail failed. Error: "
                      << ErrorCode << dendl;
-                SetupDiDestroyDeviceInfoList(DevInfo);
-                return INVALID_HANDLE_VALUE;
+                goto Exit;
             }
         }
 
@@ -59,19 +65,17 @@ GetWnbdDriverHandle()
 
         if (!DevInterfaceDetailData) {
             derr << "Unable to allocate resources." << dendl;
-            SetupDiDestroyDeviceInfoList(DevInfo);
-            return INVALID_HANDLE_VALUE;
+            goto Exit;
         }
 
         DevInterfaceDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 
-        if (!SetupDiGetDeviceInterfaceDetail(DevInfo, &DevInterfaceData, DevInterfaceDetailData,
-            RequiredSize, &RequiredSize, NULL)) {
+        if (!SetupDiGetDeviceInterfaceDetail(
+                DevInfo, &DevInterfaceData, DevInterfaceDetailData,
+                RequiredSize, &RequiredSize, NULL)) {
             derr << "SetupDiGetDeviceInterfaceDetail failed. Error: "
                  << GetLastError() << dendl;
-            SetupDiDestroyDeviceInfoList(DevInfo);
-            free(DevInterfaceDetailData);
-            return INVALID_HANDLE_VALUE;
+            goto Exit;
         }
 
         WnbdDriverHandle = CreateFile(DevInterfaceDetailData->DevicePath,
@@ -84,17 +88,15 @@ GetWnbdDriverHandle()
             &Command, sizeof(Command), &Command, sizeof(Command), &BytesReturned, NULL);
 
         if (!DevStatus) {
-            ErroCode = GetLastError();
+            ErrorCode = GetLastError();
             derr << "Failed sending NOOP command IOCTL_MINIPORT_PROCESS_SERVICE_IRP "
-                 << "to \\\\.\\SCSI" << DevInterfaceDetailData->DevicePath <<
+                 << "to \\\\.\\SCSI" << DevInterfaceDetailData->DevicePath
                  << ". Error: " << ErrorCode << dendl;
             CloseHandle(WnbdDriverHandle);
             WnbdDriverHandle = INVALID_HANDLE_VALUE;
             continue;
         } else {
-            SetupDiDestroyDeviceInfoList(DevInfo);
-            free(DevInterfaceDetailData);
-            return WnbdDriverHandle;
+            goto Exit;
         }
     }
 
@@ -102,19 +104,27 @@ GetWnbdDriverHandle()
     if (ErrorCode != ERROR_NO_MORE_ITEMS) {
         derr << "SetupDiGetDeviceInterfaceDetail failed. Error: "
              << ErrorCode << dendl;
-        SetupDiDestroyDeviceInfoList(DevInfo);
-        free(DevInterfaceDetailData);
-        return INVALID_HANDLE_VALUE;
+        goto Exit;
     }
-
-    SetupDiDestroyDeviceInfoList(DevInfo);
 
     if (DevInterfaceDetailData == NULL) {
         derr << "Could not find any devices!" << dendl;
-        return INVALID_HANDLE_VALUE;
     }
 
-    return INVALID_HANDLE_VALUE;
+Exit:
+    if (DevInterfaceDetailData) {
+        free(DevInterfaceDetailData);
+    }
+    if (DevInfo) {
+        SetupDiDestroyDeviceInfoList(DevInfo);
+    }
+
+    if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
+        derr << "Could not get WNBD driver handle. Can not send requests. "
+             << "Make sure that the driver is installed." << dendl;
+    }
+
+    return WnbdDriverHandle;
 }
 
 DWORD
@@ -132,32 +142,38 @@ WnbdMap(PCHAR InstanceName,
     BOOL DevStatus = 0;
     INT Pid = getpid();
 
+    if(STRING_OVERFLOWS(InstanceName, MAX_NAME_LENGTH) ||
+       STRING_OVERFLOWS(HostName, MAX_NAME_LENGTH) ||
+       STRING_OVERFLOWS(PortName, MAX_NAME_LENGTH) ||
+       STRING_OVERFLOWS(ExportName, MAX_NAME_LENGTH)) {
+        return ERROR_BUFFER_OVERFLOW;
+    }
+
     WnbdDriverHandle = GetWnbdDriverHandle();
     if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
         Status = ERROR_INVALID_HANDLE;
-        derr << "Could not get WNBD driver handle. Can not send requests. "
-             << "Make sure that the driver is installed." << dendl;
         goto Exit;
     }
 
-    memcpy(&ConnectIn.InstanceName, InstanceName, min(strlen(InstanceName)+1, MAX_NAME_LENGTH));
-    memcpy(&ConnectIn.Hostname, HostName, min(strlen(HostName)+1, MAX_NAME_LENGTH));
-    memcpy(&ConnectIn.PortName, PortName, min(strlen(PortName)+1, MAX_NAME_LENGTH));
-    memcpy(&ConnectIn.ExportName, ExportName, min(strlen(ExportName)+1, MAX_NAME_LENGTH));
-    memcpy(&ConnectIn.SerialNumber, InstanceName, min(strlen(InstanceName)+1, MAX_NAME_LENGTH));
+    memcpy(&ConnectIn.InstanceName, InstanceName, strlen(InstanceName) + 1);
+    memcpy(&ConnectIn.Hostname, HostName, strlen(HostName) + 1);
+    memcpy(&ConnectIn.PortName, PortName, strlen(PortName) + 1);
+    memcpy(&ConnectIn.ExportName, ExportName, strlen(ExportName) + 1);
+    memcpy(&ConnectIn.SerialNumber, InstanceName, strlen(InstanceName) + 1);
     ConnectIn.DiskSize = DiskSize;
     ConnectIn.IoControlCode = IOCTL_WNBDVM_MAP;
     ConnectIn.Pid = Pid;
     ConnectIn.MustNegotiate = MustNegotiate;
     ConnectIn.BlockSize = 0;
 
-    DevStatus = DeviceIoControl(WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP, &ConnectIn, sizeof(USER_IN),
+    DevStatus = DeviceIoControl(WnbdDriverHandle,
+        IOCTL_MINIPORT_PROCESS_SERVICE_IRP, &ConnectIn, sizeof(USER_IN),
         NULL, 0, &BytesReturned, NULL);
 
     if (!DevStatus) {
         Status = GetLastError();
-        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed. Error: "
-             << Status << dendl;
+        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_MAP failed."
+             << " Error: " << Status << dendl;
     }
 
     CloseHandle(WnbdDriverHandle);
@@ -174,15 +190,17 @@ WnbdUnmap(PCHAR InstanceName)
     DWORD BytesReturned = 0;
     BOOL DevStatus = FALSE;
 
+    if(STRING_OVERFLOWS(InstanceName, MAX_NAME_LENGTH)) {
+        return ERROR_BUFFER_OVERFLOW;
+    }
+
     WnbdDriverHandle = GetWnbdDriverHandle();
     if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
         Status = ERROR_INVALID_HANDLE;
-        derr << "Could not get WNBD driver handle. Can not send requests. "
-             << "Make sure that the driver is installed." << dendl;
         goto Exit;
     }
 
-    memcpy(&DisconnectIn.InstanceName[0], InstanceName, min(strlen(InstanceName), MAX_NAME_LENGTH));
+    memcpy(&DisconnectIn.InstanceName[0], InstanceName, strlen(InstanceName));
     DisconnectIn.IoControlCode = IOCTL_WNBDVM_UNMAP;
 
     DevStatus = DeviceIoControl(WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
@@ -190,8 +208,8 @@ WnbdUnmap(PCHAR InstanceName)
 
     if (!DevStatus) {
         Status = GetLastError();
-        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed. Error: "
-             << Status << dendl;
+        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_UNMAP failed."
+             << " Error: " << Status << dendl;
     }
 
     CloseHandle(WnbdDriverHandle);
@@ -212,8 +230,6 @@ WnbdList(PGET_LIST_OUT* Output)
     WnbdDriverHandle = GetWnbdDriverHandle();
     if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
         Status = ERROR_INVALID_HANDLE;
-        derr << "Could not get WNBD driver handle. Can not send requests. "
-             << "Make sure that the driver is installed." << dendl;
         goto Exit;
     }
 
@@ -232,8 +248,8 @@ WnbdList(PGET_LIST_OUT* Output)
 
     if (!DevStatus) {
         Status = GetLastError();
-        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed. Error: "
-             << Status << dendl;
+        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_LIST failed."
+             << " Error: " << Status << dendl;
     }
 
     PGET_LIST_OUT ActiveConnectList = (PGET_LIST_OUT)Buffer;

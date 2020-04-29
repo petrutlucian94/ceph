@@ -101,6 +101,8 @@ WNBDActiveDiskIterator::~WNBDActiveDiskIterator() {
   }
 }
 
+// TODO: propagate errors by returning something other than bool, maybe negative
+// error codes.
 bool WNBDActiveDiskIterator::get(Config *cfg) {
   index += 1;
 
@@ -275,8 +277,8 @@ void unmap_at_exit()
 
 BOOL WINAPI console_handler_routine(DWORD dwCtrlType)
 {
-  dout(5) << "Received control signal: " << dwCtrlType << dendl;
-          << ". Exiting.";
+  dout(5) << "Received control signal: " << dwCtrlType
+          << ". Exiting." << dendl;
   // The cleanup routine should already be registered using atexit.
   exit(1);
   return true;

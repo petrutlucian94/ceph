@@ -12,19 +12,11 @@ extern "C" {
 
 #include <windows.h>
 #include <winioctl.h>
-#include <shlobj.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <winioctl.h>
-#include <ntddscsi.h>
-#include <setupapi.h>
-#include <string.h>
-#include <process.h>
 
 /* WNBD Defines */
 #include "wnbd_shared.h"
 
-#define IOCTL_MINIPORT_PROCESS_SERVICE_IRP CTL_CODE(IOCTL_SCSI_BASE,  0x040e, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+#define IOCTL_MINIPORT_PROCESS_SERVICE_IRP CTL_CODE(IOCTL_SCSI_BASE, 0x040e, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 
 DWORD
 WnbdUnmap(PCHAR instanceName);
