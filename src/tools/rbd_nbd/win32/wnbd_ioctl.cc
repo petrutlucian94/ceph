@@ -4,46 +4,33 @@
  * Licensed under LGPL-2.1 (see LICENSE)
  */
 
+#define dout_context g_ceph_context
+#define dout_subsys ceph_subsys_rbd
+
 #include "wnbd_ioctl.h"
 
-void GLAToString()
-{
-    LPVOID LpMsgBuf;
+#include "common/debug.h"
+#include "common/errno.h"
 
-    FormatMessage(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_SYSTEM |
-        FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        GetLastError(),
-        0,
-        (LPTSTR)&LpMsgBuf,
-        0,
-        NULL
-    );
-
-    fprintf(stderr, "GetLastError: %s", (LPTSTR)LpMsgBuf);
-
-    LocalFree(LpMsgBuf);
-}
 
 HANDLE
-GetWnbdDriverHandle(VOID)
+GetWnbdDriverHandle()
 {
     HDEVINFO DevInfo = { 0 };
     SP_DEVICE_INTERFACE_DATA DevInterfaceData = { 0 };
     PSP_DEVICE_INTERFACE_DETAIL_DATA DevInterfaceDetailData = NULL;
-    ULONG DevIndex = { 0 };
-    ULONG RequiredSize = { 0 };
-    ULONG GLA = { 0 };
+    ULONG DevIndex = 0;
+    ULONG RequiredSize = 0;
+    ULONG ErrorCode = 0;
     HANDLE WnbdDriverHandle = { 0 };
-    DWORD BytesReturned = { 0 };
+    DWORD BytesReturned = 0;
     USER_COMMAND Command = { 0 };
-    BOOL DevStatus = { 0 };
+    BOOL DevStatus = 0;
 
-    DevInfo = SetupDiGetClassDevs(&WNBD_GUID, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    DevInfo = SetupDiGetClassDevs(&WNBD_GUID, NULL, NULL,
+                                  DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (DevInfo == INVALID_HANDLE_VALUE) {
-        fprintf(stderr, "SetupDiGetClassDevs failed with error 0x%lx\n", GetLastError());
+        derr << "SetupDiGetClassDevs failed. Error: " << GetLastError() << dendl;
         return INVALID_HANDLE_VALUE;
     }
 
@@ -57,10 +44,11 @@ GetWnbdDriverHandle(VOID)
         }
 
         if (!SetupDiGetDeviceInterfaceDetail(DevInfo, &DevInterfaceData, NULL, 0, &RequiredSize, NULL)) {
-            GLA = GetLastError();
+            ErrorCode = GetLastError();
 
-            if (GLA != ERROR_INSUFFICIENT_BUFFER) {
-                fprintf(stderr, "SetupDiGetDeviceInterfaceDetail failed with error 0x%lx\n", GLA);
+            if (ERROR_INSUFFICIENT_BUFFER != ErrorCode) {
+                derr << "SetupDiGetDeviceInterfaceDetail failed. Error: "
+                     << ErrorCode << dendl;
                 SetupDiDestroyDeviceInfoList(DevInfo);
                 return INVALID_HANDLE_VALUE;
             }
@@ -70,17 +58,17 @@ GetWnbdDriverHandle(VOID)
             (PSP_DEVICE_INTERFACE_DETAIL_DATA)malloc(RequiredSize);
 
         if (!DevInterfaceDetailData) {
-            fprintf(stderr, "Unable to allocate resources\n");
+            derr << "Unable to allocate resources." << dendl;
             SetupDiDestroyDeviceInfoList(DevInfo);
             return INVALID_HANDLE_VALUE;
         }
 
         DevInterfaceDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 
-
         if (!SetupDiGetDeviceInterfaceDetail(DevInfo, &DevInterfaceData, DevInterfaceDetailData,
             RequiredSize, &RequiredSize, NULL)) {
-            fprintf(stderr, "SetupDiGetDeviceInterfaceDetail failed with error 0x%lx\n", GetLastError());
+            derr << "SetupDiGetDeviceInterfaceDetail failed. Error: "
+                 << GetLastError() << dendl;
             SetupDiDestroyDeviceInfoList(DevInfo);
             free(DevInterfaceDetailData);
             return INVALID_HANDLE_VALUE;
@@ -96,12 +84,12 @@ GetWnbdDriverHandle(VOID)
             &Command, sizeof(Command), &Command, sizeof(Command), &BytesReturned, NULL);
 
         if (!DevStatus) {
-            DWORD error = GetLastError();
-            fprintf(stderr, "Failed sending NOOP command IOCTL_MINIPORT_PROCESS_SERVICE_IRP\n");
-            fprintf(stderr, "\\\\.\\SCSI%s: error:%lu.\n", DevInterfaceDetailData->DevicePath, error);
+            ErroCode = GetLastError();
+            derr << "Failed sending NOOP command IOCTL_MINIPORT_PROCESS_SERVICE_IRP "
+                 << "to \\\\.\\SCSI" << DevInterfaceDetailData->DevicePath <<
+                 << ". Error: " << ErrorCode << dendl;
             CloseHandle(WnbdDriverHandle);
             WnbdDriverHandle = INVALID_HANDLE_VALUE;
-            GLAToString();
             continue;
         } else {
             SetupDiDestroyDeviceInfoList(DevInfo);
@@ -110,10 +98,10 @@ GetWnbdDriverHandle(VOID)
         }
     }
 
-    GLA = GetLastError();
-
-    if (GLA != ERROR_NO_MORE_ITEMS) {
-        fprintf(stderr, "SetupDiGetDeviceInterfaceDetail failed with error 0x%lx\n", GLA);
+    ErrorCode = GetLastError();
+    if (ErrorCode != ERROR_NO_MORE_ITEMS) {
+        derr << "SetupDiGetDeviceInterfaceDetail failed. Error: "
+             << ErrorCode << dendl;
         SetupDiDestroyDeviceInfoList(DevInfo);
         free(DevInterfaceDetailData);
         return INVALID_HANDLE_VALUE;
@@ -122,11 +110,11 @@ GetWnbdDriverHandle(VOID)
     SetupDiDestroyDeviceInfoList(DevInfo);
 
     if (DevInterfaceDetailData == NULL) {
-        fprintf(stderr, "Unable to find any Nothing devices!\n");
+        derr << "Could not find any devices!" << dendl;
         return INVALID_HANDLE_VALUE;
     }
-    return INVALID_HANDLE_VALUE;
 
+    return INVALID_HANDLE_VALUE;
 }
 
 DWORD
@@ -146,10 +134,9 @@ WnbdMap(PCHAR InstanceName,
 
     WnbdDriverHandle = GetWnbdDriverHandle();
     if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
-        Status = GetLastError();
-        fprintf(stderr, "Could not get WNBD driver handle. Can not send requests.\n");
-        fprintf(stderr, "The driver maybe is not installed\n");
-        GLAToString();
+        Status = ERROR_INVALID_HANDLE;
+        derr << "Could not get WNBD driver handle. Can not send requests. "
+             << "Make sure that the driver is installed." << dendl;
         goto Exit;
     }
 
@@ -169,8 +156,8 @@ WnbdMap(PCHAR InstanceName,
 
     if (!DevStatus) {
         Status = GetLastError();
-        fprintf(stderr, "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed\n");
-        GLAToString();
+        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed. Error: "
+             << Status << dendl;
     }
 
     CloseHandle(WnbdDriverHandle);
@@ -189,10 +176,9 @@ WnbdUnmap(PCHAR InstanceName)
 
     WnbdDriverHandle = GetWnbdDriverHandle();
     if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
-        Status = GetLastError();
-        fprintf(stderr, "Could not get WNBD driver handle. Can not send requests.\n");
-        fprintf(stderr, "The driver maybe is not installed\n");
-        GLAToString();
+        Status = ERROR_INVALID_HANDLE;
+        derr << "Could not get WNBD driver handle. Can not send requests. "
+             << "Make sure that the driver is installed." << dendl;
         goto Exit;
     }
 
@@ -204,8 +190,8 @@ WnbdUnmap(PCHAR InstanceName)
 
     if (!DevStatus) {
         Status = GetLastError();
-        fprintf(stderr, "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed\n");
-        GLAToString();
+        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed. Error: "
+             << Status << dendl;
     }
 
     CloseHandle(WnbdDriverHandle);
@@ -225,13 +211,14 @@ WnbdList(PGET_LIST_OUT* Output)
 
     WnbdDriverHandle = GetWnbdDriverHandle();
     if (WnbdDriverHandle == INVALID_HANDLE_VALUE) {
-        Status = GetLastError();
-        fprintf(stderr, "Could not get WNBD driver handle. Can not send requests.\n");
-        fprintf(stderr, "The driver maybe is not installed\n");
-        GLAToString("wnbd-client");
+        Status = ERROR_INVALID_HANDLE;
+        derr << "Could not get WNBD driver handle. Can not send requests. "
+             << "Make sure that the driver is installed." << dendl;
         goto Exit;
     }
 
+    // TODO: handle the situation in which the buffer is too small.
+    // Make sure that the driver returns the right error code.
     Buffer = malloc(65000);
     if (!Buffer) {
         CloseHandle(WnbdDriverHandle);
@@ -245,8 +232,8 @@ WnbdList(PGET_LIST_OUT* Output)
 
     if (!DevStatus) {
         Status = GetLastError();
-        fprintf(stderr, "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed\n");
-        GLAToString();
+        derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP failed. Error: "
+             << Status << dendl;
     }
 
     PGET_LIST_OUT ActiveConnectList = (PGET_LIST_OUT)Buffer;
