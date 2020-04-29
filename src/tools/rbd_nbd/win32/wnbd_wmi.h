@@ -10,28 +10,22 @@
 
 #include <string>
 #include <vector>
-#include <iostream>
 
 struct DiskInfo
 {
-    std::wstring deviceId;
-    std::wstring freeSpace;
-    uint32_t Index;
-};
-
-
-struct Win32_Proc
-{
-    std::wstring CommandLine;
-    uint32_t process;
+  std::wstring deviceId;
+  std::wstring freeSpace;
+  uint32_t Index;
 };
 
 bool ReleaseWMI();
 bool InitWMI();
-std::wstring GetProperty(IWbemClassObject* pclsObj, const std::wstring& property);
-UINT32 GetPropertyInt(IWbemClassObject* pclsObj, const std::wstring& property);
+std::wstring GetProperty(IWbemClassObject* pclsObj,
+                         const std::wstring& property);
+UINT32 GetPropertyInt(IWbemClassObject* pclsObj,
+                      const std::wstring& property);
 
-bool GetDiskDrive(BSTR Query, std::vector<DiskInfo>& disks);
-bool GetDiskDriveBySerialNumber(std::wstring serialNumber,
-                                std::vector<DiskInfo>& disks);
+bool GetDiskDrives(BSTR Query, std::vector<DiskInfo>& disks);
+bool GetDiskDrivesBySerialNumber(std::wstring serialNumber,
+                                 std::vector<DiskInfo>& disks);
 int GetDiskNumberBySerialNumber(std::wstring serialNumber);
