@@ -5,9 +5,12 @@
  * rbd-nbd - RBD in userspace
  *
  * Copyright (C) 2015 - 2016 Kylin Corporation
+ * Copyright (C) 2020 SUSE LINUX GmbH
  *
  * Author: Yunchuan Wen <yunchuan.wen@kylin-cloud.com>
  *         Li Wang <li.wang@kylin-cloud.com>
+ *         Lucian Petrut <lpetrut@cloudbasesolutions.com>
+ *         Alin Serdean <aserdean@cloudbasesolutions.com>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -68,20 +71,20 @@ using boost::locale::conv::utf_to_utf;
 
 std::wstring to_wstring(const std::string& str)
 {
-    return utf_to_utf<wchar_t>(str.c_str(), str.c_str() + str.size());
+  return utf_to_utf<wchar_t>(str.c_str(), str.c_str() + str.size());
 }
 
 std::string to_string(const std::wstring& str)
 {
-    return utf_to_utf<char>(str.c_str(), str.c_str() + str.size());
+  return utf_to_utf<char>(str.c_str(), str.c_str() + str.size());
 }
 
 bool is_process_running(DWORD pid)
 {
-    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    DWORD ret = WaitForSingleObject(process, 0);
-    CloseHandle(process);
-    return ret == WAIT_TIMEOUT;
+  HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+  DWORD ret = WaitForSingleObject(process, 0);
+  CloseHandle(process);
+  return ret == WAIT_TIMEOUT;
 }
 
 WNBDActiveDiskIterator::WNBDActiveDiskIterator() {
@@ -122,7 +125,8 @@ bool WNBDActiveDiskIterator::get(Config *cfg) {
 
   cfg->serial_number = std::string(conn_info.SerialNumber);
   cfg->pid = conn_info.Pid;
-  cfg->connected = cfg->disk_number && is_process_running(conn_info.Pid);
+  cfg->connected = cfg->disk_number > 0 &&
+                   is_process_running(conn_info.Pid);
   cfg->wnbd_mapped = true;
 
   return true;
@@ -176,16 +180,16 @@ bool WNBDDiskIterator::get(Config *cfg) {
 
 void daemonize_complete(HANDLE parent_pipe)
 {
-    // If running as a child because '--detach' option was specified,
-    // communicate with the parent to inform that the child is ready.
-    // TODO: consider exiting in this case. The parent didn't wait for us,
-    // maybe it was killed after a timeout.
-    if (!WriteFile(parent_pipe, "a", 1, NULL, NULL)) {
-        derr << "Failed to communicate with the parent: "
-             << win32_lasterror_str() << dendl;
-    }
+  // If running as a child because '--detach' option was specified,
+  // communicate with the parent to inform that the child is ready.
+  // TODO: consider exiting in this case. The parent didn't wait for us,
+  // maybe it was killed after a timeout.
+  if (!WriteFile(parent_pipe, "a", 1, NULL, NULL)) {
+    derr << "Failed to communicate with the parent: "
+         << win32_lasterror_str() << dendl;
+  }
 
-    global_init_postfork_finish(g_ceph_context);
+  global_init_postfork_finish(g_ceph_context);
 }
 
 /* Spawn a subprocess using the specified command line, which is expected
@@ -193,209 +197,217 @@ void daemonize_complete(HANDLE parent_pipe)
    which will allow it to communicate the mapping status */
 bool map_device_using_suprocess(std::string command_line)
 {
-    SECURITY_ATTRIBUTES sa;
-    STARTUPINFO si;
-    PROCESS_INFORMATION pi;
-    HANDLE read_pipe = NULL, write_pipe = NULL;
-    char buffer[4096];
-    char ch;
-    DWORD exit_code = 0;
+  SECURITY_ATTRIBUTES sa;
+  STARTUPINFO si;
+  PROCESS_INFORMATION pi;
+  HANDLE read_pipe = NULL, write_pipe = NULL;
+  char buffer[4096];
+  char ch;
+  DWORD exit_code = 0;
 
-    dout(5) << __func__ << ": command_line: " << command_line << dendl;
+  dout(5) << __func__ << ": command_line: " << command_line << dendl;
 
-    // We may get a command line containign an old pipe handle when
-    // recreating mappings, so we'll have to remove it.
-    std::regex pattern("(--pipe-handle [\'\"]?\\d+[\'\"]?)");
-    command_line = std::regex_replace(command_line, pattern, "");
+  // We may get a command line containign an old pipe handle when
+  // recreating mappings, so we'll have to remove it.
+  std::regex pattern("(--pipe-handle [\'\"]?\\d+[\'\"]?)");
+  command_line = std::regex_replace(command_line, pattern, "");
 
-    /* Set the security attribute such that a process created will
-     * inherit the pipe handles. */
-    sa.nLength = sizeof(sa);
-    sa.lpSecurityDescriptor = NULL;
-    sa.bInheritHandle = TRUE;
+  /* Set the security attribute such that a process created will
+   * inherit the pipe handles. */
+  sa.nLength = sizeof(sa);
+  sa.lpSecurityDescriptor = NULL;
+  sa.bInheritHandle = TRUE;
 
-    /* Create an anonymous pipe to communicate with the child. */
-    if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
-        derr << "CreatePipe failed: " << win32_lasterror_str() << dendl;
+  /* Create an anonymous pipe to communicate with the child. */
+  if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
+    derr << "CreatePipe failed: " << win32_lasterror_str() << dendl;
+  }
+
+  GetStartupInfo(&si);
+
+  /* Pass an extra argument '--pipe-handle <write_pipe>' */
+  sprintf(buffer, "%s %s %lld", command_line.c_str(), "--pipe-handle",
+          (intptr_t)write_pipe);
+
+  /* Create a detached child */
+  if (!CreateProcess(NULL, buffer, NULL, NULL, TRUE, DETACHED_PROCESS,
+                     NULL, NULL, &si, &pi)) {
+    derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
+    exit_code = -1;
+    goto finally;
+  }
+
+  /* Close one end of the pipe in the parent. */
+  CloseHandle(write_pipe);
+  write_pipe = NULL;
+
+  /* Block and wait for child to say it is ready. */
+  if (!ReadFile(read_pipe, &ch, 1, NULL, NULL)) {
+    derr << "Failed to read from child: " << win32_lasterror_str() << dendl;
+    if (!is_process_running(pi.dwProcessId)) {
+        GetExitCodeProcess(pi.hProcess, &exit_code);
+        derr << "Child failed with exit code: " << exit_code << dendl;
     }
-
-    GetStartupInfo(&si);
-
-    /* Pass an extra argument '--pipe-handle <write_pipe>' */
-    sprintf(buffer, "%s %s %lld", command_line.c_str(), "--pipe-handle",
-        (intptr_t)write_pipe);
-
-    /* Create a detached child */
-    if (!CreateProcess(NULL, buffer, NULL, NULL, TRUE, DETACHED_PROCESS,
-                      NULL, NULL, &si, &pi)) {
-        derr << "CreateProcess failed: " << win32_lasterror_str() << dendl;
-        exit_code = -1;
-        goto finally;
+    // The process closed the pipe without notifying us or exiting.
+    // This is quite unlikely, but we'll terminate the process.
+    else {
+      dout(5) << "Terminating unresponsive process." << dendl;
+      TerminateProcess(pi.hProcess, 1);
     }
+  }
 
-    /* Close one end of the pipe in the parent. */
-    CloseHandle(write_pipe);
-    write_pipe = NULL;
-
-    /* Block and wait for child to say it is ready. */
-    if (!ReadFile(read_pipe, &ch, 1, NULL, NULL)) {
-        // TODO: this is quite unlikely, but we should kill the subprocess and
-        // return an error.
-        derr << "Failed to read from child: " << win32_lasterror_str() << dendl;
-        if (!is_process_running(pi.dwProcessId)) {
-            GetExitCodeProcess(pi.hProcess, &exit_code);
-            derr << "Child failed with exit code: " << exit_code << dendl;
-        }
-    }
-
-    finally:
-      if(write_pipe)
-        CloseHandle(write_pipe);
-      if(read_pipe)
-        CloseHandle(read_pipe);
-    return exit_code;
+  finally:
+    if(write_pipe)
+      CloseHandle(write_pipe);
+    if(read_pipe)
+      CloseHandle(read_pipe);
+  return exit_code;
 }
 
 void unmap_at_exit()
 {
   std::string devpath = get_device_name_per_pid(getpid());
   if (devpath.empty()) {
-      return;
+    return;
   }
   WnbdUnmap((char *)devpath.c_str());
 }
 
 BOOL WINAPI console_handler_routine(DWORD dwCtrlType)
 {
+  dout(5) << "Received control signal: " << dwCtrlType << dendl;
+          << ". Exiting.";
+  // The cleanup routine should already be registered using atexit.
   exit(1);
   return true;
 }
 
 std::string get_device_name_per_pid(int pid)
 {
-    Config cfg;
-    WNBDActiveDiskIterator wnbd_disk_iterator;
+  Config cfg;
+  WNBDActiveDiskIterator wnbd_disk_iterator;
 
-    while(wnbd_disk_iterator.get(&cfg)) {
-      if (pid == cfg.pid) {
-        return cfg.devpath;
-      }
+  while(wnbd_disk_iterator.get(&cfg)) {
+    if (pid == cfg.pid) {
+      return cfg.devpath;
     }
-    return std::string("");
+  }
+  return std::string("");
 }
 
 int save_config_to_registry(Config* cfg)
 {
-    std::string strKey{ SERVICE_REG_KEY };
-    strKey.append("\\");
-    strKey.append(cfg->devpath);
-    auto reg_key = RegistryKey::open(
-      g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), true);
-    if (!reg_key) {
-        return -EINVAL;
-    }
+  std::string strKey{ SERVICE_REG_KEY };
+  strKey.append("\\");
+  strKey.append(cfg->devpath);
+  auto reg_key = RegistryKey::open(
+    g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), true);
+  if (!reg_key) {
+      return -EINVAL;
+  }
 
-    int ret_val = 0;
-    if (reg_key->set("pid", getpid()) ||
-        reg_key->set("devpath", cfg->devpath) ||
-        reg_key->set("poolname", cfg->poolname) ||
-        reg_key->set("nsname", cfg->nsname) ||
-        reg_key->set("imgname", cfg->imgname) ||
-        reg_key->set("snapname", cfg->snapname) ||
-        reg_key->set("command_line", GetCommandLine())) {
-        ret_val = -EINVAL;
-    }
+  int ret_val = 0;
+  // Registry writes are immediately available to other processes.
+  // Still, we'll do a flush to ensure that the mapping can be
+  // recreated after a system crash.
+  if (reg_key->set("pid", getpid()) ||
+      reg_key->set("devpath", cfg->devpath) ||
+      reg_key->set("poolname", cfg->poolname) ||
+      reg_key->set("nsname", cfg->nsname) ||
+      reg_key->set("imgname", cfg->imgname) ||
+      reg_key->set("snapname", cfg->snapname) ||
+      reg_key->set("command_line", GetCommandLine()) ||
+      reg_key->flush()) {
+    ret_val = -EINVAL;
+  }
 
-    // Registry writes are immediately available to other processes.
-    // Still, we'll do a flush to ensure that the mapping can be
-    // recreated after a system crash.
-    reg_key->flush();
-    return ret_val;
+  return ret_val;
 }
 
 int remove_config_from_registry(Config* cfg)
 {
-    std::string strKey{ SERVICE_REG_KEY };
-    strKey.append("\\");
-    strKey.append(cfg->devpath);
-    return RegistryKey::remove(g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str());
+  std::string strKey{ SERVICE_REG_KEY };
+  strKey.append("\\");
+  strKey.append(cfg->devpath);
+  return RegistryKey::remove(
+    g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str());
 }
 
 int load_mapping_config_from_registry(char* devpath, Config* cfg)
 {
-    std::string strKey{ SERVICE_REG_KEY };
-    strKey.append("\\");
-    strKey.append(devpath);
-    auto reg_key = RegistryKey::open(
-      g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-    if (!reg_key) {
-        return -EINVAL;
-    }
+  std::string strKey{ SERVICE_REG_KEY };
+  strKey.append("\\");
+  strKey.append(devpath);
+  auto reg_key = RegistryKey::open(
+    g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
+  if (!reg_key) {
+    return -EINVAL;
+  }
 
-    reg_key->get("devpath", cfg->devpath);
-    reg_key->get("poolname", cfg->poolname);
-    reg_key->get("nsname", cfg->nsname);
-    reg_key->get("imgname", cfg->imgname);
-    reg_key->get("snapname", cfg->snapname);
-    reg_key->get("command_line", cfg->command_line);
+  reg_key->get("devpath", cfg->devpath);
+  reg_key->get("poolname", cfg->poolname);
+  reg_key->get("nsname", cfg->nsname);
+  reg_key->get("imgname", cfg->imgname);
+  reg_key->get("snapname", cfg->snapname);
+  reg_key->get("command_line", cfg->command_line);
 
-    return 0;
+  return 0;
 }
 
 int restart_registered_mappings()
 {
-    Config cfg;
-    WNBDDiskIterator iterator;
-    int last_err = 0;
+  Config cfg;
+  WNBDDiskIterator iterator;
+  int last_err = 0;
 
-    while(iterator.get(&cfg)) {
-      if(cfg.command_line.empty()) {
-        derr << "Could not recreate mapping, missing command line: "
-             << cfg.devpath << dendl;
-        last_err = -EINVAL;
-        continue;
-      }
-      if(cfg.wnbd_mapped) {
-        dout(5) << __func__ << ": device already mapped: "
-                << cfg.devpath << dendl;
-        continue;
-      }
-
-      last_err = map_device_using_suprocess(cfg.command_line) || last_err;
+  while(iterator.get(&cfg)) {
+    if(cfg.command_line.empty()) {
+      derr << "Could not recreate mapping, missing command line: "
+           << cfg.devpath << dendl;
+      last_err = -EINVAL;
+      continue;
+    }
+    if(cfg.wnbd_mapped) {
+      dout(5) << __func__ << ": device already mapped: "
+              << cfg.devpath << dendl;
+      continue;
     }
 
-    return last_err;
+    last_err = map_device_using_suprocess(cfg.command_line) || last_err;
+  }
+
+  return last_err;
 }
 
 int disconnect_all_mappings()
 {
-    Config cfg;
-    WNBDActiveDiskIterator iterator;
-    int last_err = 0;
+  Config cfg;
+  WNBDActiveDiskIterator iterator;
+  int last_err = 0;
 
-    while(iterator.get(&cfg)) {
-      last_err = do_unmap(&cfg) || last_err;
-    }
+  while(iterator.get(&cfg)) {
+    last_err = do_unmap(&cfg) || last_err;
+  }
 
-    return last_err;
+  return last_err;
 }
 
 class RBDService : public Win32Service {
-    // TODO: ensure that the ceph context is available when running the
-    // service.
+  // TODO: ensure that the ceph context is available when running the
+  // service.
   public:
     RBDService(): Win32Service(g_ceph_context) {}
 
     int run_hook() override {
-        return restart_registered_mappings();
+      return restart_registered_mappings();
     }
     /* Invoked when the service is requested to stop. */
     int stop_hook() override {
-        return disconnect_all_mappings();
+      return disconnect_all_mappings();
     }
     /* Invoked when the system is shutting down. */
     int shutdown_hook() override {
-        return stop_hook();
+      return stop_hook();
     }
 };
 
@@ -449,19 +461,19 @@ void construct_devpath_if_missing(Config* cfg) {
   }
 }
 
-int initialize_wnbd_connection(Config* cfg, unsigned long long size)
+int initialize_wnbd_connection(Config* cfg, uint64_t size, uint64_t nbd_flags)
 {
   // On Windows, we can't pass socket descriptors to our driver. Instead,
   // we're going to open a tcp server and request the driver to connect to it.
   union {
        struct sockaddr_in inaddr;
        struct sockaddr addr;
-    } a;
+  } a;
   socklen_t addrlen = sizeof(a.inaddr);
   unsigned int conn = 0;
   unsigned int listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (listener == INVALID_SOCKET)
-      return SOCKET_ERROR;
+    return SOCKET_ERROR;
 
   memset(&a, 0, sizeof(a));
   a.inaddr.sin_family = AF_INET;
@@ -481,15 +493,17 @@ int initialize_wnbd_connection(Config* cfg, unsigned long long size)
   hostname = inet_ntoa(a.inaddr.sin_addr);
   construct_devpath_if_missing(cfg);
 
-  if (WnbdMap((char *)cfg->devpath.c_str(), hostname, port, (char *)"", size, FALSE)) {
-      derr << "Failed to initialize NBD connection: "
-           << win32_lasterror_str() << dendl;
-      goto error;
+  // TODO: pass NBD flags.
+  if (WnbdMap((char *)cfg->devpath.c_str(), hostname,
+              port, (char *)"", size, FALSE)) {
+    derr << "Failed to initialize NBD connection: "
+         << win32_lasterror_str() << dendl;
+    goto error;
   }
 
   conn = accept(listener, NULL, NULL);
   if (conn == INVALID_SOCKET)
-      goto error;
+    goto error;
 
   closesocket(listener);
 
@@ -518,7 +532,6 @@ static int do_map(int argc, const char *argv[], Config *cfg)
   librbd::Image image;
 
   uint64_t flags;
-  uint64_t size;
 
   int fd = -1;
 
@@ -602,17 +615,15 @@ static int do_map(int argc, const char *argv[], Config *cfg)
     goto close_fd;
   }
 
-  size = info.size;
-
-  fd = initialize_wnbd_connection(cfg, size);
+  fd = initialize_wnbd_connection(cfg, info.size, flags);
   if (fd < 0) {
-      r = -1;
-      goto close_ret;
+    r = -1;
+    goto close_ret;
   }
   atexit(unmap_at_exit);
   r = save_config_to_registry(cfg);
   if (r < 0)
-      goto close_nbd;
+    goto close_nbd;
 
   server = start_server(fd, image);
 
@@ -644,7 +655,8 @@ static int do_unmap(Config *cfg)
   construct_devpath_if_missing(cfg);
   r = WnbdUnmap((char *)cfg->devpath.c_str());
   if (r != 0) {
-      cerr << "rbd-nbd: failed to unmap device: " << cfg->devpath << " with last error: " << r << std::endl;
+      cerr << "rbd-nbd: failed to unmap device: "
+           << cfg->devpath << ". Error: " << r << std::endl;
       if (r == ERROR_FILE_NOT_FOUND)
         return -ENODEV;
       else
@@ -735,13 +747,13 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
       f->dump_string("status", status);
       f->close_section();
   } else {
-      should_print = true;
-      if (cfg.snapname.empty()) {
-          cfg.snapname = "-";
-      }
-      tbl << cfg.pid << cfg.poolname << cfg.nsname
-          << cfg.imgname << cfg.snapname << cfg.devpath
-          << cfg.disk_number << status << TextTable::endrow;
+    should_print = true;
+    if (cfg.snapname.empty()) {
+        cfg.snapname = "-";
+    }
+    tbl << cfg.pid << cfg.poolname << cfg.nsname
+        << cfg.imgname << cfg.snapname << cfg.devpath
+        << cfg.disk_number << status << TextTable::endrow;
     }
   }
 
@@ -753,7 +765,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
     std::cout << tbl;
   }
   if (!search_devpath.empty() && !found) {
-      return -ENOENT;
+    return -ENOENT;
   }
 
   return 0;

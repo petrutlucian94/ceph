@@ -83,7 +83,8 @@ int restart_registered_mappings();
 bool map_device_using_suprocess(std::string command_line);
 
 std::string get_device_name_per_pid(int pid);
-int initialize_wnbd_connection(Config* cfg, unsigned long long size);
+int initialize_wnbd_connection(Config* cfg, uint64_t size,
+                               uint64_t nbd_flags);
 
 void construct_devpath_if_missing(Config* cfg);
 int save_config_to_registry(Config* cfg);
