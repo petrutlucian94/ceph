@@ -116,13 +116,15 @@ class WNBDActiveDiskIterator {
 class RegistryDiskIterator {
   public:
     RegistryDiskIterator();
+    ~RegistryDiskIterator();
 
     bool get(Config *cfg);
   private:
     int index = -1;
     DWORD subkey_count = 0;
     char subkey_name[MAX_PATH];
-  std::optional<RegistryKey> reg_key;
+
+  RegistryKey* reg_key = NULL;
 };
 
 // Iterate over all RBD mappings, getting info from the registry and WNBD.

@@ -10,18 +10,15 @@
  *
  */
 
-#include <optional>
-
 #include "include/compat.h"
 #include "common/ceph_context.h"
 
 
 class RegistryKey {
 public:
+  RegistryKey(CephContext *cct_, HKEY hRootKey, LPCTSTR strKey, bool create_value);
   ~RegistryKey();
 
-  static std::optional<RegistryKey> open(
-    CephContext *cct_, HKEY hRootKey, LPCTSTR strKey, bool create_value);
   static remove(CephContext *cct_, HKEY hRootKey, LPCTSTR strKey);
 
   int flush();
@@ -35,7 +32,5 @@ public:
   HKEY hKey = NULL;
 
 private:
-  RegistryKey(CephContext *cct_, HKEY hKey_);
-
   CephContext *cct;
 };

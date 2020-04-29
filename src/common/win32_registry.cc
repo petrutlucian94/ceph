@@ -17,14 +17,9 @@
 #include "common/errno.h"
 #include "common/win32_registry.h"
 
-RegistryKey::RegistryKey(CephContext *cct_, HKEY hKey_): hKey(hKey_), cct(cct_)
+RegistryKey::RegistryKey(CephContext *cct_, HKEY hRootKey, LPCTSTR strKey,
+                         bool create_value): cct(cct_)
 {
-}
-
-std::optional<RegistryKey> RegistryKey::open(
-  CephContext *cct_, HKEY hRootKey, LPCTSTR strKey, bool create_value)
-{
-  HKEY hKey = NULL;
   DWORD status = RegOpenKeyEx(hRootKey, strKey, 0, KEY_ALL_ACCESS, &hKey);
 
   if (status == ERROR_FILE_NOT_FOUND && create_value)
@@ -40,10 +35,6 @@ std::optional<RegistryKey> RegistryKey::open(
                 << ". Could not open registry key: "
                 << strKey << dendl;
   }
-
-  if(hKey)
-    return { RegistryKey(cct_, hKey) };
-  return std::nullopt;
 }
 
 RegistryKey::~RegistryKey() {

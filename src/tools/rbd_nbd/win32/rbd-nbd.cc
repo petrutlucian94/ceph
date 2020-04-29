@@ -136,9 +136,9 @@ bool WNBDActiveDiskIterator::get(Config *cfg) {
 
 
 RegistryDiskIterator::RegistryDiskIterator() {
-  reg_key = RegistryKey::open(g_ceph_context, HKEY_LOCAL_MACHINE,
-                              SERVICE_REG_KEY, false);
-  if(!reg_key) {
+  reg_key = new RegistryKey(g_ceph_context, HKEY_LOCAL_MACHINE,
+                            SERVICE_REG_KEY, false);
+  if(!reg_key->hKey) {
     return;
   }
 
@@ -147,10 +147,14 @@ RegistryDiskIterator::RegistryDiskIterator() {
     return;
 }
 
+RegistryDiskIterator::~RegistryDiskIterator() {
+  delete reg_key;
+}
+
 bool RegistryDiskIterator::get(Config *cfg) {
   index += 1;
 
-  if (!reg_key || !subkey_count || index >= subkey_count)
+  if (!reg_key->hKey || !subkey_count || index >= subkey_count)
     return false;
 
   DWORD subkey_name_sz = MAX_PATH;
@@ -302,9 +306,9 @@ int save_config_to_registry(Config* cfg)
   std::string strKey{ SERVICE_REG_KEY };
   strKey.append("\\");
   strKey.append(cfg->devpath);
-  auto reg_key = RegistryKey::open(
+  auto reg_key = RegistryKey(
     g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), true);
-  if (!reg_key) {
+  if (!reg_key.hKey) {
       return -EINVAL;
   }
 
@@ -312,14 +316,14 @@ int save_config_to_registry(Config* cfg)
   // Registry writes are immediately available to other processes.
   // Still, we'll do a flush to ensure that the mapping can be
   // recreated after a system crash.
-  if (reg_key->set("pid", getpid()) ||
-      reg_key->set("devpath", cfg->devpath) ||
-      reg_key->set("poolname", cfg->poolname) ||
-      reg_key->set("nsname", cfg->nsname) ||
-      reg_key->set("imgname", cfg->imgname) ||
-      reg_key->set("snapname", cfg->snapname) ||
-      reg_key->set("command_line", GetCommandLine()) ||
-      reg_key->flush()) {
+  if (reg_key.set("pid", getpid()) ||
+      reg_key.set("devpath", cfg->devpath) ||
+      reg_key.set("poolname", cfg->poolname) ||
+      reg_key.set("nsname", cfg->nsname) ||
+      reg_key.set("imgname", cfg->imgname) ||
+      reg_key.set("snapname", cfg->snapname) ||
+      reg_key.set("command_line", GetCommandLine()) ||
+      reg_key.flush()) {
     ret_val = -EINVAL;
   }
 
@@ -340,18 +344,18 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
   std::string strKey{ SERVICE_REG_KEY };
   strKey.append("\\");
   strKey.append(devpath);
-  auto reg_key = RegistryKey::open(
+  auto reg_key = RegistryKey(
     g_ceph_context, HKEY_LOCAL_MACHINE, strKey.c_str(), false);
-  if (!reg_key) {
+  if (!reg_key.hKey) {
     return -EINVAL;
   }
 
-  reg_key->get("devpath", cfg->devpath);
-  reg_key->get("poolname", cfg->poolname);
-  reg_key->get("nsname", cfg->nsname);
-  reg_key->get("imgname", cfg->imgname);
-  reg_key->get("snapname", cfg->snapname);
-  reg_key->get("command_line", cfg->command_line);
+  reg_key.get("devpath", cfg->devpath);
+  reg_key.get("poolname", cfg->poolname);
+  reg_key.get("nsname", cfg->nsname);
+  reg_key.get("imgname", cfg->imgname);
+  reg_key.get("snapname", cfg->snapname);
+  reg_key.get("command_line", cfg->command_line);
 
   return 0;
 }
