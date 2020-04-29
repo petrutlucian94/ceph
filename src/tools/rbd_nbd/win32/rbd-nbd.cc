@@ -89,7 +89,7 @@ bool is_process_running(DWORD pid)
 
 WNBDActiveDiskIterator::WNBDActiveDiskIterator() {
   DWORD status = WnbdList(&disk_list);
-  if (!status || !disk_list) {
+  if (!disk_list) {
     derr << "Could not get WNBD devices. Return code: " << status << dendl;
   }
 }
@@ -105,6 +105,7 @@ WNBDActiveDiskIterator::~WNBDActiveDiskIterator() {
 // error codes.
 bool WNBDActiveDiskIterator::get(Config *cfg) {
   index += 1;
+  *cfg = Config();
 
   if(!disk_list || index >= disk_list->ActiveListCount) {
     return false;
@@ -153,6 +154,7 @@ RegistryDiskIterator::~RegistryDiskIterator() {
 
 bool RegistryDiskIterator::get(Config *cfg) {
   index += 1;
+  *cfg = Config();
 
   if (!reg_key->hKey || !subkey_count || index >= subkey_count)
     return false;
@@ -167,6 +169,8 @@ bool RegistryDiskIterator::get(Config *cfg) {
 
 // Iterate over all RBD mappings, getting info from the registry and WNBD.
 bool WNBDDiskIterator::get(Config *cfg) {
+  *cfg = Config();
+
   bool found_active = active_iterator.get(cfg);
   if (found_active) {
     active_devices.insert(cfg->devpath);
@@ -528,45 +532,58 @@ static void run_server(NBDServer *server, HANDLE parent_pipe)
   server->wait_for_disconnect();
 }
 
-static int do_map(int argc, const char *argv[], Config *cfg)
+boost::intrusive_ptr<CephContext> do_global_init(
+      int argc, const char *argv[], Config *cfg) {
+  std::vector<const char*> args;
+  argv_to_vec(argc, argv, args);
+
+  bool is_daemon = false;
+  code_environment_t code_env;
+  int flags;
+
+  // TODO: improve daemon check
+  if(cmd == Connect || cmd == Service) {
+    is_daemon = true;
+  }
+
+  if(is_daemon) {
+    code_env = CODE_ENVIRONMENT_DAEMON;
+    flags = CINIT_FLAG_UNPRIVILEGED_DAEMON_DEFAULTS;
+  }
+  else {
+    code_env = CODE_ENVIRONMENT_UTILITY;
+    flags = CINIT_FLAG_NO_MON_CONFIG;
+  }
+  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
+                         code_env, flags);
+  // TODO: check if we still need to override this.
+  g_ceph_context->_conf.set_val_or_die("pid_file", "");
+
+  // TODO: Those can probably be dropped.
+  if (global_init_prefork(g_ceph_context) >= 0) {
+    global_init_postfork_start(g_ceph_context);
+  }
+
+  // There's no fork on Windows, we should be safe calling this anytime.
+  common_init_finish(g_ceph_context);
+  global_init_chdir(g_ceph_context);
+
+  return cct;
+}
+
+static int do_map(Config *cfg)
 {
   int r;
+  uint64_t flags;
+  int fd = -1;
 
   librados::Rados rados;
   librbd::RBD rbd;
   librados::IoCtx io_ctx;
   librbd::Image image;
-
-  uint64_t flags;
-
-  int fd = -1;
-
   librbd::image_info_t info;
 
   NBDServer *server;
-
-  vector<const char*> args;
-  argv_to_vec(argc, argv, args);
-  if (args.empty()) {
-    cerr << argv[0] << ": -h or --help for usage" << std::endl;
-    exit(1);
-  }
-  if (ceph_argparse_need_usage(args)) {
-    usage();
-    exit(0);
-  }
-
-  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
-                         CODE_ENVIRONMENT_DAEMON,
-                         CINIT_FLAG_UNPRIVILEGED_DAEMON_DEFAULTS);
-  g_ceph_context->_conf.set_val_or_die("pid_file", "");
-
-  if (global_init_prefork(g_ceph_context) >= 0) {
-    global_init_postfork_start(g_ceph_context);
-  }
-
-  common_init_finish(g_ceph_context);
-  global_init_chdir(g_ceph_context);
 
   if (g_conf()->daemonize && !cfg->parent_pipe) {
     return map_device_using_suprocess(GetCommandLine());
@@ -905,6 +922,11 @@ static int rbd_nbd(int argc, const char *argv[])
   std::vector<const char*> args;
   argv_to_vec(argc, argv, args);
 
+  if (args.empty()) {
+    cerr << argv[0] << ": -h or --help for usage" << std::endl;
+    exit(1);
+  }
+
   std::ostringstream err_msg;
   r = parse_args(args, &err_msg, &cmd, &cfg);
   if (r == HELP_INFO) {
@@ -918,6 +940,8 @@ static int rbd_nbd(int argc, const char *argv[])
     return r;
   }
 
+  auto cct = do_global_init(argc, argv, &cfg);
+
   switch (cmd) {
     case Connect:
       if (cfg.imgname.empty()) {
@@ -925,7 +949,7 @@ static int rbd_nbd(int argc, const char *argv[])
         return -EINVAL;
       }
 
-      r = do_map(argc, argv, &cfg);
+      r = do_map(&cfg);
       if (r < 0)
         return -EINVAL;
       break;

@@ -58,7 +58,7 @@ int RegistryKey::remove(CephContext *cct_, HKEY hRootKey, LPCTSTR strKey)
   if (status == ERROR_FILE_NOT_FOUND)
   {
     ldout(cct_, 20) << "Registry key : " << strKey
-                    << " does not exist."<< dendl;
+                    << " does not exist." << dendl;
     return 0;
   }
 
