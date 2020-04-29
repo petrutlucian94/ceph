@@ -128,7 +128,7 @@ int RegistryKey::get(LPCTSTR lpValue, DWORD* value)
                                    &type, (LPBYTE)&data, &size);
     if (ERROR_SUCCESS != status) {
         derr << "Error: " << win32_strerror(status)
-             << ". Could not set registry value: " << (char*)lpValue << dendl;
+             << ". Could not get registry value: " << (char*)lpValue << dendl;
         return -EINVAL;
     }
     *value = data;
@@ -151,7 +151,7 @@ int RegistryKey::get(LPCTSTR lpValue, std::string& value)
 
     if (ERROR_SUCCESS != status) {
         derr << "Error: " << win32_strerror(status)
-             << ". Could not set registry value: " << (char*)lpValue << dendl;
+             << ". Could not get registry value: " << (char*)lpValue << dendl;
         return -EINVAL;
     }
     value.assign(data.c_str());

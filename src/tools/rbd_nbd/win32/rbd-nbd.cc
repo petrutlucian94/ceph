@@ -331,26 +331,13 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
     if (!reg_key) {
         return -EINVAL;
     }
-    std::string reg_value;
 
-    if (!reg_key->get("devpath", reg_value)) {
-        cfg->devpath = reg_value;
-    }
-    if (!reg_key->get("poolname", reg_value)) {
-        cfg->poolname = reg_value;
-    }
-    if (!reg_key->get("nsname", reg_value)) {
-        cfg->nsname = reg_value;
-    }
-    if (!reg_key->get("imgname", reg_value)) {
-        cfg->imgname = reg_value;
-    }
-    if (!reg_key->get("snapname", reg_value)) {
-        cfg->snapname = reg_value;
-    }
-    if (!reg_key->get("command_line", reg_value)) {
-        cfg->command_line = reg_value;
-    }
+    reg_key->get("devpath", cfg->devpath);
+    reg_key->get("poolname", cfg->poolname);
+    reg_key->get("nsname", cfg->nsname);
+    reg_key->get("imgname", cfg->imgname);
+    reg_key->get("snapname", cfg->snapname);
+    reg_key->get("command_line", cfg->command_line);
 
     return 0;
 }

@@ -29,15 +29,6 @@
 #define HELP_INFO 1
 #define VERSION_INFO 2
 
-#ifdef CEPH_BIG_ENDIAN
-#define ntohll(a) (a)
-#elif defined(CEPH_LITTLE_ENDIAN)
-#define ntohll(a) swab(a)
-#else
-#error "Could not determine endianess"
-#endif
-#define htonll(a) ntohll(a)
-
 
 struct Config {
   int nbds_max = 0;
