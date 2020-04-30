@@ -150,6 +150,10 @@ if [[ -z $SKIP_BUILD ]]; then
     echo "Building using $NUM_WORKERS workers. Log: ${BUILD_DIR}/build.log"
     echo "" > "${BUILD_DIR}/build.log"
 
+    # We're only building the ceph components that have been ported so far.
+    # In order to keep the CMake files simple, we'll do the filtering here
+    # for now.
+    #
     # We're going to use an associative array having subdirectories as keys
     # and targets as values.
     declare -A make_targets
@@ -157,6 +161,7 @@ if [[ -z $SKIP_BUILD ]]; then
     make_targets["src/tools/immutable_object_cache"]="all"
     make_targets["src/tools/rbd"]="all"
     make_targets["src/tools/rbd_mirror"]="all"
+    make_targets["src/tools/rbd_nbd"]="all"
     make_targets["src/compressor"]="all"
     if [[ -z $SKIP_TESTS ]]; then
         make_targets["src/test"]="all"
