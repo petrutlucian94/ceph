@@ -350,6 +350,8 @@ extern _CRTIMP errno_t __cdecl _putenv_s(const char *_Name,const char *_Value);
 #define O_CLOEXEC 0
 #define SOCKOPT_VAL_TYPE char*
 
+#define DEV_NULL "nul"
+
 #else /* WIN32 */
 
 #define SOCKOPT_VAL_TYPE void*
@@ -359,6 +361,8 @@ extern _CRTIMP errno_t __cdecl _putenv_s(const char *_Name,const char *_Value);
 static inline int compat_closesocket(int fildes) {
   return close(fildes);
 }
+
+#define DEV_NULL "/dev/null"
 
 #endif /* WIN32 */
 
