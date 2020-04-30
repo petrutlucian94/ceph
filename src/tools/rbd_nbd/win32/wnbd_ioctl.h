@@ -30,7 +30,7 @@ WnbdMap(PCHAR InstanceName,
         BOOLEAN Removable);
 
 DWORD
-WnbdList(PGET_LIST_OUT* Output);
+WnbdList(PDISK_INFO_LIST* Output);
 
 #ifdef __cplusplus
 }

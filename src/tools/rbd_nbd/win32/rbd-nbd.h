@@ -121,7 +121,7 @@ class WNBDActiveDiskIterator : public BaseIterator {
     bool get(Config *cfg);
 
   private:
-    PGET_LIST_OUT disk_list = NULL;
+    PDISK_INFO_LIST disk_list = NULL;
 };
 
 // Iterate over the Windows registry key, retrieving registered mappings.

@@ -84,7 +84,7 @@ GetWnbdDriverHandle()
       GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING,
       FILE_FLAG_OVERLAPPED, 0);
 
-    Command.IoCode = IOCTL_WNBDVM_PORT;
+    Command.IoCode = IOCTL_WNBD_PORT;
 
     DevStatus = DeviceIoControl(
       WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP, &Command,
@@ -138,7 +138,7 @@ WnbdMap(PCHAR InstanceName,
         UINT64 DiskSize,
         BOOLEAN MustNegotiate)
 {
-  USER_IN ConnectIn = { 0 };
+  CONNECTION_INFO ConnectIn = { 0 };
   HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
   DWORD Status = ERROR_SUCCESS;
   DWORD BytesReturned = 0;
@@ -163,18 +163,18 @@ WnbdMap(PCHAR InstanceName,
   memcpy(&ConnectIn.ExportName, ExportName, strlen(ExportName) + 1);
   memcpy(&ConnectIn.SerialNumber, InstanceName, strlen(InstanceName) + 1);
   ConnectIn.DiskSize = DiskSize;
-  ConnectIn.IoControlCode = IOCTL_WNBDVM_MAP;
+  ConnectIn.IoControlCode = IOCTL_WNBD_MAP;
   ConnectIn.Pid = Pid;
   ConnectIn.MustNegotiate = MustNegotiate;
   ConnectIn.BlockSize = 0;
 
   DevStatus = DeviceIoControl(
     WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
-    &ConnectIn, sizeof(USER_IN), NULL, 0, &BytesReturned, NULL);
+    &ConnectIn, sizeof(CONNECTION_INFO), NULL, 0, &BytesReturned, NULL);
 
   if (!DevStatus) {
     Status = GetLastError();
-    derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_MAP failed."
+    derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBD_MAP failed."
          << " Error: " << Status << dendl;
   }
 
@@ -185,7 +185,7 @@ WnbdMap(PCHAR InstanceName,
 DWORD
 WnbdUnmap(PCHAR InstanceName)
 {
-  USER_IN DisconnectIn = { 0 };
+  CONNECTION_INFO DisconnectIn = { 0 };
   HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
   DWORD Status = ERROR_SUCCESS;
   DWORD BytesReturned = 0;
@@ -201,15 +201,15 @@ WnbdUnmap(PCHAR InstanceName)
   }
 
   memcpy(&DisconnectIn.InstanceName[0], InstanceName, strlen(InstanceName));
-  DisconnectIn.IoControlCode = IOCTL_WNBDVM_UNMAP;
+  DisconnectIn.IoControlCode = IOCTL_WNBD_UNMAP;
 
   DevStatus = DeviceIoControl(
     WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
-    &DisconnectIn, sizeof(USER_IN), NULL, 0, &BytesReturned, NULL);
+    &DisconnectIn, sizeof(CONNECTION_INFO), NULL, 0, &BytesReturned, NULL);
 
   if (!DevStatus) {
     Status = GetLastError();
-    derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_UNMAP failed."
+    derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBD_UNMAP failed."
          << " Error: " << Status << dendl;
   }
 
@@ -218,7 +218,7 @@ WnbdUnmap(PCHAR InstanceName)
 }
 
 DWORD
-WnbdList(PGET_LIST_OUT* Output)
+WnbdList(PDISK_INFO_LIST* Output)
 {
   HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
   DWORD Status = ERROR_SUCCESS;
@@ -240,7 +240,7 @@ WnbdList(PGET_LIST_OUT* Output)
     goto Exit;
   }
   memset(Buffer, 0, 65000);
-  Command.IoCode = IOCTL_WNBDVM_LIST;
+  Command.IoCode = IOCTL_WNBD_LIST;
 
   DevStatus = DeviceIoControl(
     WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
@@ -248,7 +248,7 @@ WnbdList(PGET_LIST_OUT* Output)
 
   if (!DevStatus) {
     Status = GetLastError() || ERROR_INVALID_FUNCTION;
-    derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBDVM_LIST failed."
+    derr << "IOCTL_MINIPORT_PROCESS_SERVICE_IRP IOCTL_WNBD_LIST failed."
          << " Error: " << Status << dendl;
     goto Exit;
   }
@@ -261,7 +261,7 @@ Exit:
     Buffer = NULL;
   }
 
-  *Output = (PGET_LIST_OUT)Buffer;
+  *Output = (PDISK_INFO_LIST)Buffer;
 
   return Status;
 }

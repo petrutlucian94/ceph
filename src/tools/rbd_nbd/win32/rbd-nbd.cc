@@ -112,7 +112,7 @@ bool WNBDActiveDiskIterator::get(Config *cfg) {
     return false;
   }
 
-  USER_IN conn_info = disk_list->ActiveEntry[index].ConnectionInformation;
+  CONNECTION_INFO conn_info = disk_list->ActiveEntry[index].ConnectionInformation;
   load_mapping_config_from_registry(conn_info.InstanceName, cfg);
 
   int disk_number = GetDiskNumberBySerialNumber(
