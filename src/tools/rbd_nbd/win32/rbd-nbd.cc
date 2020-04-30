@@ -102,8 +102,6 @@ WNBDActiveDiskIterator::~WNBDActiveDiskIterator() {
   }
 }
 
-// TODO: propagate errors by returning something other than bool, maybe negative
-// error codes.
 bool WNBDActiveDiskIterator::get(Config *cfg) {
   index += 1;
   *cfg = Config();
@@ -423,8 +421,6 @@ int disconnect_all_mappings(bool unregister)
 }
 
 class RBDService : public Win32Service {
-  // TODO: ensure that the ceph context is available when running the
-  // service.
   public:
     RBDService(): Win32Service(g_ceph_context) {}
 
@@ -470,10 +466,15 @@ static NBDServer *start_server(int fd, librbd::Image& image)
   return server;
 }
 
-void construct_devpath_if_missing(Config* cfg) {
+int construct_devpath_if_missing(Config* cfg) {
   // Windows doesn't allow us to request specific disk paths when mapping an
   // image. This will just be used by rbd-nbd and wnbd as an identifier.
   if (cfg->devpath.empty()) {
+    if(!cfg->imgname.empty()) {
+      derr << "Missing image name." << dendl;
+      return -EINVAL;
+    }
+
     if (!cfg->poolname.empty()) {
       cfg->devpath += cfg->poolname;
       cfg->devpath += '/';
@@ -482,13 +483,16 @@ void construct_devpath_if_missing(Config* cfg) {
       cfg->devpath += cfg->nsname;
       cfg->devpath += '/';
     }
-    // TODO: ensure that either the device path or the image name are set.
-    if (!cfg->imgname.empty()) {
-      cfg->devpath += cfg->imgname;
-    } else if (!cfg->snapname.empty()) {
+
+    cfg->devpath += cfg->imgname;
+
+    if (!cfg->snapname.empty()) {
+      cfg->devpath += '@';
       cfg->devpath += cfg->snapname;
     }
   }
+
+  return 0;
 }
 
 int initialize_wnbd_connection(Config* cfg, uint64_t size, uint64_t nbd_flags)
@@ -521,7 +525,9 @@ int initialize_wnbd_connection(Config* cfg, uint64_t size, uint64_t nbd_flags)
   snprintf(port, 100, "%d", ntohs(a.inaddr.sin_port));
   char* hostname;
   hostname = inet_ntoa(a.inaddr.sin_addr);
-  construct_devpath_if_missing(cfg);
+  if(construct_devpath_if_missing(cfg)) {
+    goto error;
+  }
 
   // TODO: pass NBD flags.
   if (WnbdMap((char *)cfg->devpath.c_str(), hostname,
@@ -695,7 +701,9 @@ close_ret:
 static int do_unmap(Config *cfg, bool unregister)
 {
   DWORD r;
-  construct_devpath_if_missing(cfg);
+  if(construct_devpath_if_missing(cfg)) {
+    return -EINVAL;
+  }
   r = WnbdUnmap((char *)cfg->devpath.c_str());
   if (r && r != ERROR_FILE_NOT_FOUND) {
     derr << "rbd-nbd: failed to unmap device: "
@@ -993,7 +1001,9 @@ static int rbd_nbd(int argc, const char *argv[])
         return -EINVAL;
       break;
     case Show:
-      construct_devpath_if_missing(&cfg);
+      if(construct_devpath_if_missing(&cfg)) {
+        return -EINVAL;
+      }
       r = do_list_mapped_devices(cfg.format, cfg.pretty_format, cfg.devpath);
       if (r < 0)
         return -EINVAL;
