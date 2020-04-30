@@ -86,7 +86,7 @@ std::string get_device_name_per_pid(int pid);
 int initialize_wnbd_connection(Config* cfg, uint64_t size,
                                uint64_t nbd_flags);
 
-void construct_devpath_if_missing(Config* cfg);
+int construct_devpath_if_missing(Config* cfg);
 int save_config_to_registry(Config* cfg);
 int remove_config_from_registry(Config* cfg);
 int load_mapping_config_from_registry(char* devpath, Config* cfg);
@@ -128,7 +128,9 @@ class WNBDActiveDiskIterator : public BaseIterator {
 class RegistryDiskIterator : public BaseIterator {
   public:
     RegistryDiskIterator();
-    ~RegistryDiskIterator();
+    ~RegistryDiskIterator() {
+      delete reg_key;
+    }
 
     bool get(Config *cfg);
   private:

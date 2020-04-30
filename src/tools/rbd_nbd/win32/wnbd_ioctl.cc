@@ -36,7 +36,7 @@ GetWnbdDriverHandle()
   ULONG ErrorCode = 0;
   HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
   DWORD BytesReturned = 0;
-  USER_COMMAND Command = { 0 };
+  WNBD_COMMAND Command = { 0 };
   BOOL DevStatus = 0;
 
   DevInfo = SetupDiGetClassDevs(&WNBD_GUID, NULL, NULL,
@@ -222,9 +222,9 @@ WnbdList(PDISK_INFO_LIST* Output)
 {
   HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
   DWORD Status = ERROR_SUCCESS;
-  DWORD BytesReturned = 0;
+  DWORD Length = 0, BytesReturned = 0;
   PUCHAR Buffer = NULL;
-  USER_COMMAND Command = { 0 };
+  WNBD_COMMAND Command = { 0 };
   BOOL DevStatus = FALSE;
 
   WnbdDriverHandle = GetWnbdDriverHandle();
@@ -232,19 +232,21 @@ WnbdList(PDISK_INFO_LIST* Output)
     return ERROR_INVALID_HANDLE;
   }
 
-  // TODO: handle the situation in which the buffer is too small.
-  // Make sure that the driver returns the right error code.
-  Buffer = malloc(65000);
+  Command.IoCode = IOCTL_WNBD_LIST;
+  DevStatus = DeviceIoControl(
+    WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
+    &Command, sizeof(Command), NULL, 0, &Length, NULL);
+
+  Buffer = malloc(Length);
   if (!Buffer) {
     Status = ERROR_NOT_ENOUGH_MEMORY;
     goto Exit;
   }
-  memset(Buffer, 0, 65000);
-  Command.IoCode = IOCTL_WNBD_LIST;
+  memset(Buffer, 0, Length);
 
   DevStatus = DeviceIoControl(
     WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
-    &Command, sizeof(Command), Buffer, 65000, &BytesReturned, NULL);
+    &Command, sizeof(Command), Buffer, Length, &BytesReturned, NULL);
 
   if (!DevStatus) {
     Status = GetLastError() || ERROR_INVALID_FUNCTION;
