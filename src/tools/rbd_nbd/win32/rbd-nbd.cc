@@ -91,6 +91,7 @@ WNBDActiveDiskIterator::WNBDActiveDiskIterator() {
   DWORD status = WnbdList(&disk_list);
   if (!disk_list) {
     derr << "Could not get WNBD devices. Return code: " << status << dendl;
+    error = EINVAL;
   }
 }
 
@@ -140,12 +141,16 @@ RegistryDiskIterator::RegistryDiskIterator() {
   reg_key = new RegistryKey(g_ceph_context, HKEY_LOCAL_MACHINE,
                             SERVICE_REG_KEY, false);
   if(!reg_key->hKey) {
+    error = EINVAL;
     return;
   }
 
   if(RegQueryInfoKey(reg_key->hKey, NULL, NULL, NULL, &subkey_count,
-                     NULL, NULL, NULL, NULL, NULL, NULL, NULL))
+                     NULL, NULL, NULL, NULL, NULL, NULL, NULL)) {
+    derr << "Could not query registry key: " << SERVICE_REG_KEY << dendl;
+    error = EINVAL;
     return;
+  }
 }
 
 RegistryDiskIterator::~RegistryDiskIterator() {
@@ -156,15 +161,24 @@ bool RegistryDiskIterator::get(Config *cfg) {
   index += 1;
   *cfg = Config();
 
-  if (!reg_key->hKey || !subkey_count || index >= subkey_count)
+  if (!reg_key->hKey || !subkey_count || index >= subkey_count) {
     return false;
+  }
 
   DWORD subkey_name_sz = MAX_PATH;
   if(RegEnumKeyEx(reg_key->hKey, index, subkey_name, &subkey_name_sz,
-                  NULL, NULL, NULL, NULL))
+                  NULL, NULL, NULL, NULL)) {
+    derr << "Could not enumerate registry subkey: " << subkey_name << dendl;
+    error = EINVAL;
     return false;
+  }
 
-  return load_mapping_config_from_registry(subkey_name, cfg) == 0;
+  if(load_mapping_config_from_registry(subkey_name, cfg)) {
+    error = EINVAL;
+    return false;
+  };
+
+  return true;
 }
 
 // Iterate over all RBD mappings, getting info from the registry and WNBD.
@@ -177,6 +191,11 @@ bool WNBDDiskIterator::get(Config *cfg) {
     return true;
   }
 
+  error = active_iterator.get_error();
+  if (error) {
+    return false;
+  }
+
   while(registry_iterator.get(cfg)) {
     if (active_devices.find(cfg->devpath) != active_devices.end()) {
       // Skip active devices that were already yielded.
@@ -185,6 +204,7 @@ bool WNBDDiskIterator::get(Config *cfg) {
     return true;
   }
 
+  error = registry_iterator.get_error();
   return false;
 }
 
@@ -386,7 +406,7 @@ int restart_registered_mappings()
     last_err = map_device_using_suprocess(cfg.command_line) || last_err;
   }
 
-  return last_err;
+  return iterator.get_error() || last_err;
 }
 
 int disconnect_all_mappings(bool unregister)
@@ -399,7 +419,7 @@ int disconnect_all_mappings(bool unregister)
     last_err = do_unmap(&cfg, unregister) || last_err;
   }
 
-  return last_err;
+  return iterator.get_error() || last_err;
 }
 
 class RBDService : public Win32Service {
@@ -782,6 +802,11 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
         << cfg.imgname << cfg.snapname << cfg.devpath
         << cfg.disk_number << status << TextTable::endrow;
     }
+  }
+  int error = wnbd_disk_iterator.get_error();
+  if(error) {
+    derr << "Could not get disk list: " << error << dendl;
+    return -error;
   }
 
   if (f) {

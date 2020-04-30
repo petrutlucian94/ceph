@@ -99,8 +99,21 @@ static int parse_args(std::vector<const char*>& args,
 static int do_unmap(Config *cfg, bool unregister);
 
 
+class BaseIterator {
+  public:
+    virtual bool get(Config *cfg) = 0;
+
+    int get_error() {
+      return error;
+    }
+  protected:
+    int error = 0;
+    int index = -1;
+};
+
+
 // Iterate over mapped devices, retrieving info from the WNBD driver.
-class WNBDActiveDiskIterator {
+class WNBDActiveDiskIterator : public BaseIterator {
   public:
     WNBDActiveDiskIterator();
     ~WNBDActiveDiskIterator();
@@ -109,18 +122,16 @@ class WNBDActiveDiskIterator {
 
   private:
     PGET_LIST_OUT disk_list = NULL;
-    int index = -1;
 };
 
 // Iterate over the Windows registry key, retrieving registered mappings.
-class RegistryDiskIterator {
+class RegistryDiskIterator : public BaseIterator {
   public:
     RegistryDiskIterator();
     ~RegistryDiskIterator();
 
     bool get(Config *cfg);
   private:
-    int index = -1;
     DWORD subkey_count = 0;
     char subkey_name[MAX_PATH];
 
@@ -128,7 +139,7 @@ class RegistryDiskIterator {
 };
 
 // Iterate over all RBD mappings, getting info from the registry and WNBD.
-class WNBDDiskIterator {
+class WNBDDiskIterator : public BaseIterator {
   public:
     bool get(Config *cfg);
 
