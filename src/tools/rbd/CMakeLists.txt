@@ -52,6 +52,10 @@ set(rbd_srcs
   action/Trash.cc
   action/Watch.cc)
 
+if(WIN32)
+  list(APPEND rbd_srcs action/Wnbd.cc)
+endif()
+
 add_executable(rbd ${rbd_srcs}
   $<TARGET_OBJECTS:common_texttable_obj>)
 set_target_properties(rbd PROPERTIES OUTPUT_NAME rbd)
