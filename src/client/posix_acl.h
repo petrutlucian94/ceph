@@ -30,6 +30,8 @@ int posix_acl_check(const void *xattr, size_t size);
 int posix_acl_equiv_mode(const void *xattr, size_t size, mode_t *mode_p);
 int posix_acl_inherit_mode(bufferptr& acl, mode_t *mode_p);
 int posix_acl_access_chmod(bufferptr& acl, mode_t mode);
-int posix_acl_permits(const bufferptr& acl, uid_t i_uid, gid_t i_gid,
-		      const UserPerm& groups, unsigned want);
-#endif
+int posix_acl_permits(
+    const bufferptr& acl, uid_t i_uid, gid_t i_gid,
+    const UserPerm& groups, unsigned want);
+
+#endif /* CEPH_POSIX_ACL */

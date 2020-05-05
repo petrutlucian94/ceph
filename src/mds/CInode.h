@@ -21,6 +21,7 @@
 #include <string_view>
 
 #include "common/config.h"
+#include "include/compat.h"
 #include "include/counter.h"
 #include "include/elist.h"
 #include "include/types.h"
