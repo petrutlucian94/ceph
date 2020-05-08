@@ -83,7 +83,7 @@ int ceph_resolve_file_search(const std::string& filename_list,
 			     std::string& result)
 {
   list<string> ls;
-  get_str_list(filename_list, ls);
+  get_str_list(filename_list, ";,", ls);
 
   int ret = -ENOENT;
   list<string>::iterator iter;
@@ -373,7 +373,7 @@ int md_config_t::parse_config_files(ConfigValues& values,
   }
 
   std::list<std::string> conf_files;
-  get_str_list(conf_files_str, conf_files);
+  get_str_list(conf_files_str,";,", conf_files);
   auto p = conf_files.begin();
   while (p != conf_files.end()) {
     string &s = *p;
