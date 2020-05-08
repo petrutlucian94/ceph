@@ -89,7 +89,7 @@ int ceph_resolve_file_search(const std::string& filename_list,
 			     std::string& result)
 {
   list<string> ls;
-  get_str_list(filename_list, ls);
+  get_str_list(filename_list, ";,", ls);
 
   int ret = -ENOENT;
   list<string>::iterator iter;
@@ -442,7 +442,7 @@ md_config_t::get_conffile_paths(const ConfigValues& values,
   }
 
   std::list<std::string> paths;
-  get_str_list(conf_files_str, paths);
+  get_str_list(conf_files_str, ";,", paths);
   for (auto i = paths.begin(); i != paths.end(); ) {
     string& path = *i;
     if (path.find("$data_dir") != path.npos &&
