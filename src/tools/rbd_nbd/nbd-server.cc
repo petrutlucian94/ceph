@@ -25,6 +25,7 @@
 #include "common/errno.h"
 #include "common/safe_io.h"
 #include "common/SubProcess.h"
+#include "common/Formatter.h"
 
 #include "global/global_context.h"
 
@@ -37,6 +38,36 @@
 #endif
 #define htonll(a) ntohll(a)
 
+int NbdServerHook::call (std::string_view command, const cmdmap_t& cmdmap,
+     Formatter *f,
+     std::ostream& errss,
+     bufferlist& out) {
+    if (command == "nbd stats") {
+      return m_server->dump_stats(f);
+    }
+    return -ENOSYS;
+  }
+
+int NBDServer::dump_stats(Formatter *f)
+{
+  if(!f) {
+    return -EINVAL;
+  }
+
+  std::lock_guard l{stats_lock};
+  f->open_object_section("stats");
+  f->dump_int("TotalReceivedIORequests", stats.TotalReceivedIORequests);
+  f->dump_int("TotalSubmittedIORequests", stats.TotalSubmittedIORequests);
+  f->dump_int("TotalReceivedIOReplies", stats.TotalReceivedIOReplies);
+  f->dump_int("UnsubmittedIORequests", stats.UnsubmittedIORequests);
+  f->dump_int("PendingSubmittedIORequests", stats.PendingSubmittedIORequests);
+  f->dump_int("AbortedSubmittedIORequests", stats.AbortedSubmittedIORequests);
+  f->dump_int("AbortedUnsubmittedIORequests", stats.AbortedUnsubmittedIORequests);
+  f->dump_int("CompletedAbortedIORequests", stats.CompletedAbortedIORequests);
+  f->close_section();
+
+  return 0;
+}
 
 void NBDServer::run_quiesce_hook(const std::string &command) {
   dout(10) << __func__ << ": " << quiesce_hook << " " << devpath << " "
@@ -179,6 +210,11 @@ void NBDServer::reader_entry()
 
     dout(20) << *ctx << ": start" << dendl;
 
+    if(ctx->command != NBD_CMD_DISC) {
+      stats.TotalReceivedIORequests += 1;
+      stats.UnsubmittedIORequests += 1;
+    }
+
     switch (ctx->command)
     {
       case NBD_CMD_DISC:
@@ -220,6 +256,13 @@ void NBDServer::reader_entry()
         c->release();
         goto signal;
     }
+    {
+      std::lock_guard l{stats_lock};
+
+      stats.TotalSubmittedIORequests += 1;
+      stats.UnsubmittedIORequests -= 1;
+      stats.PendingSubmittedIORequests += 1;
+    }
   }
   dout(20) << __func__ << ": terminated" << dendl;
 
@@ -240,7 +283,14 @@ void NBDServer::writer_entry()
 
     dout(20) << __func__ << ": got: " << *ctx << dendl;
 
+    stats.TotalReceivedIOReplies += 1;
+
     int r = safe_send(fd, &ctx->reply, sizeof(struct nbd_reply));
+
+    {
+      std::lock_guard l{stats_lock};
+      stats.PendingSubmittedIORequests -= 1;
+    }
 
     if (r < 0) {
       derr << *ctx << ": failed to write reply header: " << cpp_strerror(r)

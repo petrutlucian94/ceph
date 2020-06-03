@@ -18,12 +18,44 @@
 
 #include <linux/nbd.h>
 
+#include "common/admin_socket.h"
 #include "common/ceph_context.h"
 #include "common/module.h"
 #include "common/Thread.h"
 
 #include "include/rbd/librbd.hpp"
 #include "include/xlist.h"
+
+#include "global/global_context.h"
+
+typedef struct _NBD_STATS {
+    UINT64 TotalReceivedIORequests;
+    UINT64 TotalSubmittedIORequests;
+    UINT64 TotalReceivedIOReplies;
+    UINT64 UnsubmittedIORequests;
+    UINT64 PendingSubmittedIORequests;
+    UINT64 AbortedSubmittedIORequests;
+    UINT64 AbortedUnsubmittedIORequests;
+    UINT64 CompletedAbortedIORequests;
+} NBD_STATS, *PNBD_STATS;
+
+class NBDServer;
+
+class NbdServerHook : public AdminSocketHook {
+  NBDServer *m_server;
+
+public:
+  explicit NbdServerHook(NBDServer *server) : m_server(server) {
+    g_ceph_context->get_admin_socket()->register_command(
+      "nbd stats", this, "get NBD stats");
+  }
+  ~NbdServerHook() override {
+    g_ceph_context->get_admin_socket()->unregister_commands(this);
+  }
+
+  int call(std::string_view command, const cmdmap_t& cmdmap,
+     Formatter *f, std::ostream& errss, bufferlist& out) override;
+};
 
 class NBDServer
 {
@@ -33,6 +65,9 @@ private:
   std::string devpath;
   bool quiesce;
   std::string quiesce_hook;
+
+  NBD_STATS stats = {0};
+  NbdServerHook* admin_hook;
 
 public:
   NBDServer(int _fd, librbd::Image& _image, std::string _devpath, bool _quiesce,
@@ -57,11 +92,12 @@ public:
         break;
       }
     }
+    admin_hook = new NbdServerHook(this);
   }
 
 private:
-  ceph::mutex disconnect_lock =
-    ceph::make_mutex("NBDServer::DisconnectLocker");
+  ceph::mutex disconnect_lock = ceph::make_mutex("NBDServer::DisconnectLocker");
+  ceph::mutex stats_lock = ceph::make_mutex("NBDServer::StatsLock");
   ceph::condition_variable disconnect_cond;
   std::atomic<bool> terminated = { false };
   std::atomic<bool> allow_internal_flush = { false };
@@ -135,6 +171,7 @@ private:
 public:
   void start();
   void wait_for_disconnect();
+  int dump_stats(Formatter *f);
 
   ~NBDServer();
 };
