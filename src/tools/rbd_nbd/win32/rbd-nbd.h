@@ -60,6 +60,7 @@ struct Config {
   bool connected = false;
   bool wnbd_mapped = false;
   std::string command_line;
+  std::string admin_sock_path;
 };
 
 enum Command {
@@ -68,7 +69,8 @@ enum Command {
   Disconnect,
   List,
   Show,
-  Service
+  Service,
+  Stats
 };
 
 std::wstring to_wstring(const std::string& str);

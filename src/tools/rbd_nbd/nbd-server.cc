@@ -64,8 +64,16 @@ int NBDServer::dump_stats(Formatter *f)
   f->dump_int("AbortedSubmittedIORequests", stats.AbortedSubmittedIORequests);
   f->dump_int("AbortedUnsubmittedIORequests", stats.AbortedUnsubmittedIORequests);
   f->dump_int("CompletedAbortedIORequests", stats.CompletedAbortedIORequests);
-  f->close_section();
+  f->dump_int("ReadErrors", stats.ReadErrors);
+  f->dump_int("WriteErrors", stats.WriteErrors);
+  f->dump_int("MinIOSize", stats.MinIOSize);
+  f->dump_int("MaxIOSize", stats.MaxIOSize);
+  f->dump_float("AvgIOSize", stats.AvgIOSize);
+  f->dump_int("TotalReadBytes", stats.TotalReadBytes);
+  f->dump_int("TotalWrittenBytes", stats.TotalWrittenBytes);
+  f->dump_int("ZeroSizedReadWrite", stats.ZeroSizedReadWrite);
 
+  f->close_section();
   return 0;
 }
 
@@ -211,8 +219,23 @@ void NBDServer::reader_entry()
     dout(20) << *ctx << ": start" << dendl;
 
     if(ctx->command != NBD_CMD_DISC) {
-      stats.TotalReceivedIORequests += 1;
-      stats.UnsubmittedIORequests += 1;
+      {
+        std::lock_guard l{stats_lock};
+        stats.TotalReceivedIORequests += 1;
+        stats.UnsubmittedIORequests += 1;
+        if(ctx->command == NBD_CMD_READ ||
+              ctx->command == NBD_CMD_WRITE) {
+          if(ctx->request.len < stats.MinIOSize) {
+            stats.MinIOSize = ctx->request.len;
+          }
+          if(ctx->request.len > stats.MaxIOSize) {
+            stats.MaxIOSize = ctx->request.len;
+          }
+          if(!ctx->request.len) {
+            stats.ZeroSizedReadWrite += 1;
+          }
+        }
+      }
     }
 
     switch (ctx->command)
@@ -295,6 +318,35 @@ void NBDServer::writer_entry()
     {
       std::lock_guard l{stats_lock};
       stats.PendingSubmittedIORequests -= 1;
+
+      if(ctx->reply.error) {
+        switch(ctx->command) {
+        case NBD_CMD_READ:
+          stats.ReadErrors += 1;
+          break;
+        case NBD_CMD_WRITE:
+          stats.WriteErrors += 1;
+          break;
+        }
+      }
+
+      // TODO: do we still increase the count when hitting errors?
+      switch(ctx->command) {
+      case NBD_CMD_READ:
+        stats.TotalReceivedReadReplies += 1;
+        stats.TotalReadBytes += ctx->request.len;
+        break;
+      case NBD_CMD_WRITE:
+        stats.TotalReceivedWriteReplies += 1;
+        stats.TotalWrittenBytes += ctx->request.len;
+        break;
+      }
+
+      if(ctx->command == NBD_CMD_READ || ctx->command == NBD_CMD_WRITE) {
+        stats.AvgIOSize = (
+          stats.TotalReadBytes + stats.TotalWrittenBytes) /
+          (stats.TotalReceivedReadReplies + stats.TotalReceivedWriteReplies);
+      }
     }
 
     if (r < 0) {
