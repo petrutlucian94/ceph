@@ -32,11 +32,21 @@ typedef struct _NBD_STATS {
     UINT64 TotalReceivedIORequests;
     UINT64 TotalSubmittedIORequests;
     UINT64 TotalReceivedIOReplies;
+    UINT64 TotalReceivedReadReplies;
+    UINT64 TotalReceivedWriteReplies;
     UINT64 UnsubmittedIORequests;
     UINT64 PendingSubmittedIORequests;
     UINT64 AbortedSubmittedIORequests;
     UINT64 AbortedUnsubmittedIORequests;
     UINT64 CompletedAbortedIORequests;
+    UINT64 ReadErrors;
+    UINT64 WriteErrors;
+    UINT64 MinIOSize;
+    UINT64 MaxIOSize;
+    double AvgIOSize;
+    UINT64 TotalReadBytes;
+    UINT64 TotalWrittenBytes;
+    UINT64 ZeroSizedReadWrite;
 } NBD_STATS, *PNBD_STATS;
 
 class NBDServer;
@@ -93,6 +103,8 @@ public:
       }
     }
     admin_hook = new NbdServerHook(this);
+
+    stats.MinIOSize = (UINT64) -1;
   }
 
 private:

@@ -50,6 +50,7 @@
 #include "common/module.h"
 #include "common/version.h"
 #include "common/win32/service.h"
+#include "common/admin_socket_client.h"
 
 #include "global/global_init.h"
 
@@ -352,6 +353,7 @@ int save_config_to_registry(Config* cfg)
       reg_key.set("imgname", cfg->imgname) ||
       reg_key.set("snapname", cfg->snapname) ||
       reg_key.set("command_line", GetCommandLine()) ||
+      reg_key.set("admin_sock_path", g_conf()->admin_socket) ||
       reg_key.flush()) {
     ret_val = -EINVAL;
   }
@@ -385,6 +387,7 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
   reg_key.get("imgname", cfg->imgname);
   reg_key.get("snapname", cfg->snapname);
   reg_key.get("command_line", cfg->command_line);
+  reg_key.get("admin_sock_path", cfg->admin_sock_path);
 
   return 0;
 }
@@ -872,6 +875,53 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   return 0;
 }
 
+static int do_stats(const std::string &format, bool pretty_format,
+                    std::string search_devpath)
+{
+  std::unique_ptr<ceph::Formatter> f;
+  TextTable tbl;
+
+  if (format == "json") {
+    f.reset(new JSONFormatter(pretty_format));
+  } else if (format == "xml") {
+    f.reset(new XMLFormatter(pretty_format));
+  } else if (!format.empty() && format != "plain") {
+    derr << "rbd-nbd: invalid output format: " << format << dendl;
+    return -EINVAL;
+  }
+
+  Config cfg;
+  WNBDDiskIterator wnbd_disk_iterator;
+  bool found = false;
+
+  while(wnbd_disk_iterator.get(&cfg)) {
+    if(cfg.devpath != search_devpath)
+      continue;
+    found = true;
+
+    AdminSocketClient client = AdminSocketClient(cfg.admin_sock_path);
+    std::string output;
+    std::string result = client.do_request("{\"prefix\":\"nbd stats\"}",
+                                           &output);
+    if(!result.empty()) {
+      std::cerr << "Admin socket error: " << result << std::endl;
+      return -EINVAL;
+    }
+
+    // todo: format the output
+    std::cout << output << std::endl;
+
+    return 0;
+  }
+  int error = wnbd_disk_iterator.get_error();
+  if(!error) {
+    error = -ENOENT;
+  }
+
+  derr << "Could not get disk list: " << error << dendl;
+  return -error;
+}
+
 static int parse_args(std::vector<const char*>& args,
                       std::ostream *err_msg,
                       Command *command, Config *cfg) {
@@ -940,6 +990,8 @@ static int parse_args(std::vector<const char*>& args,
       cmd = Show;
     } else if (strcmp(*args.begin(), "service") == 0) {
       cmd = Service;
+    } else if (strcmp(*args.begin(), "stats") == 0) {
+      cmd = Stats;
     } else {
       *err_msg << "rbd-nbd: unknown command: " <<  *args.begin();
       return -EINVAL;
@@ -954,26 +1006,9 @@ static int parse_args(std::vector<const char*>& args,
 
   switch (cmd) {
     case Connect:
-      if (args.begin() == args.end()) {
-        *err_msg << "rbd-nbd: must specify image-or-snap-spec";
-        return -EINVAL;
-      }
-      if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
-        return -EINVAL;
-      }
-      args.erase(args.begin());
-      break;
     case Disconnect:
-      if (args.begin() == args.end()) {
-        *err_msg << "rbd-nbd: must specify nbd device or image-or-snap-spec";
-        return -EINVAL;
-      }
-      if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
-        return -EINVAL;
-      }
-      args.erase(args.begin());
-      break;
     case Show:
+    case Stats:
       if (args.begin() == args.end()) {
         *err_msg << "rbd-nbd: must specify nbd device or image-or-snap-spec";
         return -EINVAL;
@@ -1063,6 +1098,11 @@ static int rbd_nbd(int argc, const char *argv[])
           return -EINVAL;
       break;
     }
+    case Stats:
+      if(construct_devpath_if_missing(&cfg)) {
+        return -EINVAL;
+      }
+      return do_stats(cfg.format, cfg.pretty_format, cfg.devpath);
     default:
       usage();
       break;
