@@ -187,7 +187,11 @@ set_target_properties(librbd_plugin_parent_cache PROPERTIES
   VERSION 1.0.0
   SOVERSION 1)
 install(TARGETS librbd_plugin_parent_cache DESTINATION ${librbd_plugins_dir})
-add_dependencies(librbd_plugins librbd_plugin_parent_cache)
+
+if(NOT WIN32)
+  # We'll have to avoid a circular dependency.
+  add_dependencies(librbd_plugins librbd_plugin_parent_cache)
+endif()
 
 if(WITH_EVENTTRACE)
   list(APPEND librbd_internal_srcs ../common/EventTrace.cc)
