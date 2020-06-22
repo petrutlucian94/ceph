@@ -177,13 +177,18 @@ set(rbd_plugin_parent_cache_srcs
   plugin/ParentCache.cc)
 add_library(librbd_plugin_parent_cache SHARED ${rbd_plugin_parent_cache_srcs})
 target_link_libraries(librbd_plugin_parent_cache PRIVATE
-  ceph_immutable_object_cache_lib ceph-common librados)
+  ceph_immutable_object_cache_lib ceph-common librados
+  $<$<PLATFORM_ID:Windows>:librbd>)
 set_target_properties(librbd_plugin_parent_cache PROPERTIES
   OUTPUT_NAME ceph_librbd_parent_cache
   VERSION 1.0.0
   SOVERSION 1)
 install(TARGETS librbd_plugin_parent_cache DESTINATION ${librbd_plugins_dir})
-add_dependencies(librbd_plugins librbd_plugin_parent_cache)
+
+if(NOT WIN32)
+  # We'll have to avoid a circular dependency.
+  add_dependencies(librbd_plugins librbd_plugin_parent_cache)
+endif()
 
 if(WITH_EVENTTRACE)
   list(APPEND librbd_internal_srcs ../common/EventTrace.cc)
