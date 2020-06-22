@@ -136,7 +136,8 @@ WnbdMap(PCHAR InstanceName,
         PCHAR PortName,
         PCHAR ExportName,
         UINT64 DiskSize,
-        BOOLEAN MustNegotiate)
+        BOOLEAN MustNegotiate,
+        UINT16 NbdFlags)
 {
   CONNECTION_INFO ConnectIn = { 0 };
   HANDLE WnbdDriverHandle = INVALID_HANDLE_VALUE;
@@ -167,6 +168,7 @@ WnbdMap(PCHAR InstanceName,
   ConnectIn.Pid = Pid;
   ConnectIn.MustNegotiate = MustNegotiate;
   ConnectIn.BlockSize = 0;
+  ConnectIn.NbdFlags = NbdFlags;
 
   DevStatus = DeviceIoControl(
     WnbdDriverHandle, IOCTL_MINIPORT_PROCESS_SERVICE_IRP,
