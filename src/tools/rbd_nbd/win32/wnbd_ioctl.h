@@ -27,7 +27,8 @@ WnbdMap(PCHAR InstanceName,
         PCHAR PortName,
         PCHAR ExportName,
         UINT64 DiskSize,
-        BOOLEAN Removable);
+        BOOLEAN MustNegotiate,
+        UINT16 NbdFlags);
 
 DWORD
 WnbdList(PDISK_INFO_LIST* Output);
