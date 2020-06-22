@@ -466,6 +466,8 @@ static void usage()
             << "               [options] <show|show-mapped> <image-or-snap-spec>    Show mapped nbd device\n"
             << "Map options:\n"
             << "  --device <device path>  Optional mapping unique identifier\n"
+            << "  --exclusive             Forbid writes by other clients\n"
+            << "  --read-only             Map read-only\n"
             << "\n"
             << "Show|List options:\n"
             << "  --format plain|json|xml Output format (default: plain)\n"
@@ -554,7 +556,7 @@ int initialize_wnbd_connection(Config* cfg, uint64_t size, uint64_t nbd_flags)
 
   // TODO: pass NBD flags.
   err = WnbdMap((char *)cfg->devpath.c_str(), hostname,
-                    port, (char *)"", size, FALSE);
+                port, (char *)"", size, FALSE, nbd_flags);
   if (err) {
     derr << "Failed to initialize NBD connection: "
          << err << dendl;
@@ -894,6 +896,10 @@ static int parse_args(std::vector<const char*>& args,
     } else if (ceph_argparse_witharg(args, i, &cfg->devpath, "--device", (char *)NULL)) {
     } else if (ceph_argparse_witharg(args, i, &cfg->format, err, "--format",
                                      (char *)NULL)) {
+    } else if (ceph_argparse_flag(args, i, "--read-only", (char *)NULL)) {
+      cfg->readonly = true;
+    } else if (ceph_argparse_flag(args, i, "--exclusive", (char *)NULL)) {
+      cfg->exclusive = true;
     } else if (ceph_argparse_flag(args, i, "--pretty-format", (char *)NULL)) {
       cfg->pretty_format = true;
     } else if (ceph_argparse_witharg(args, i, &cfg->parent_pipe, err, "--pipe-handle", (char *)NULL)) {
