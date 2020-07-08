@@ -681,9 +681,17 @@ static int do_map(Config *cfg)
   if (r < 0)
     goto close_fd;
 
-  flags = NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_HAS_FLAGS;
+  bool rbd_cache = g_conf().get_val<bool>("rbd_cache");
+  std::string rbd_cache_policy = g_conf().get_val<std::string>("rbd_cache_policy");
+
+  flags = NBD_FLAG_SEND_TRIM | NBD_FLAG_HAS_FLAGS;
   if (!cfg->snapname.empty() || cfg->readonly) {
     flags |= NBD_FLAG_READ_ONLY;
+  }
+  else if (rbd_cache && rbd_cache_policy == "writeback") {
+    // writearound and writeback shouldn't require flushes.
+    flags |= NBD_FLAG_SEND_FLUSH;
+    flags |= NBD_FLAG_SEND_FUA;
   }
 
   if (info.size > _UI64_MAX) {
