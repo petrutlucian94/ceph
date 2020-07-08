@@ -200,10 +200,15 @@ void NBDServer::reader_entry()
     NBDServer::IOContext *pctx = ctx.release();
     io_start(pctx);
     librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(pctx, aio_callback);
+    int op_flags = 0;
     switch (pctx->command)
     {
       case NBD_CMD_WRITE:
-        image.aio_write(pctx->request.from, pctx->request.len, pctx->data, c);
+        if (pctx->request.type & NBD_CMD_FLAG_FUA) {
+          op_flags |= LIBRADOS_OP_FLAG_FADVISE_FUA;
+        }
+        image.aio_write2(pctx->request.from, pctx->request.len, pctx->data, c,
+                         op_flags);
         break;
       case NBD_CMD_READ:
         image.aio_read(pctx->request.from, pctx->request.len, pctx->data, c);
