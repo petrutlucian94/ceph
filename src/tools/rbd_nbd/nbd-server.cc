@@ -258,27 +258,28 @@ void NBDServer::reader_entry()
 
     NBDServer::IOContext *pctx = ctx.release();
     io_start(pctx);
-    librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(pctx, aio_callback);
-    switch (pctx->command)
-    {
-      case NBD_CMD_WRITE:
-        image.aio_write(pctx->request.from, pctx->request.len, pctx->data, c);
-        break;
-      case NBD_CMD_READ:
-        image.aio_read(pctx->request.from, pctx->request.len, pctx->data, c);
-        break;
-      case NBD_CMD_FLUSH:
-        image.aio_flush(c);
-        allow_internal_flush = true;
-        break;
-      case NBD_CMD_TRIM:
-        image.aio_discard(pctx->request.from, pctx->request.len, c);
-        break;
-      default:
-        derr << *pctx << ": invalid request command" << dendl;
-        c->release();
-        goto signal;
-    }
+    // librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(pctx, aio_callback);
+    pctx->server->io_finish(pctx);
+    // switch (pctx->command)
+    // {
+    //   case NBD_CMD_WRITE:
+    //     image.aio_write(pctx->request.from, pctx->request.len, pctx->data, c);
+    //     break;
+    //   case NBD_CMD_READ:
+    //     image.aio_read(pctx->request.from, pctx->request.len, pctx->data, c);
+    //     break;
+    //   case NBD_CMD_FLUSH:
+    //     image.aio_flush(c);
+    //     allow_internal_flush = true;
+    //     break;
+    //   case NBD_CMD_TRIM:
+    //     image.aio_discard(pctx->request.from, pctx->request.len, c);
+    //     break;
+    //   default:
+    //     derr << *pctx << ": invalid request command" << dendl;
+    //     c->release();
+    //     goto signal;
+    // }
     {
       std::lock_guard l{stats_lock};
 
@@ -305,6 +306,10 @@ void NBDServer::writer_entry()
     }
 
     dout(20) << __func__ << ": got: " << *ctx << dendl;
+
+    ctx->reply.error = htonl(0);
+    bufferptr ptr(buffer::create(ctx->request.len));
+    ctx->data.push_back(ptr);
 
     stats.TotalReceivedIOReplies += 1;
 
