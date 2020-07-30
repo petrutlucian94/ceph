@@ -42,6 +42,11 @@ dokanTag="v1.3.1.1000"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
 
+wnbdUrl="https://github.com/cloudbase/wnbd"
+wnbdTag="master"
+wnbdSrcDir="${depsSrcDir}/wnbd"
+wnbdLibDir="${depsToolsetDir}/wnbd/lib"
+
 # Allow for OS specific customizations through the OS flag (normally
 # passed through from win32_build).
 # Valid options are currently "ubuntu" and "suse".
@@ -355,5 +360,17 @@ $MINGW_DLLTOOL -d $dokanSrcDir/dokan/dokan.def \
 # dokan.h is defined in both ./dokan and ./sys while both are using
 # sys/public.h without the "sys" prefix.
 cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokan
+
+cd $depsSrcDir
+if [[ ! -d $wnbdSrcDir ]]; then
+    git clone $wnbdUrl
+    cd $wnbdSrcDir && git checkout $wnbdTag
+fi
+cd $wnbdSrcDir
+mkdir -p $wnbdLibDir
+$MINGW_DLLTOOL -d $wnbdSrcDir/libwnbd/libwnbd.def \
+               -D libwnbd.dll \
+               -l $wnbdLibDir/libwnbd.a
+
 
 touch $depsToolsetDir/completed
