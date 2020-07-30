@@ -71,6 +71,8 @@ winLibDir="${depsToolsetDir}/windows/lib"
 generatorUsed="Unix Makefiles"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
+wnbdSrcDir="${depsSrcDir}/wnbd"
+wnbdLibDir="${depsToolsetDir}/wnbd/lib"
 
 depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir;$snappyDir"
 depsDirs+=";$winLibDir"
@@ -142,6 +144,8 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D WITH_CEPH_DEBUG_MUTEX=$WITH_CEPH_DEBUG_MUTEX \
       -D DOKAN_INCLUDE_DIRS="$dokanSrcDir/dokan" \
       -D DOKAN_LIBRARIES="$dokanLibDir/libdokan.a" \
+      -D WNBD_INCLUDE_DIRS="$wnbdSrcDir/include" \
+      -D WNBD_LIBRARIES="$wnbdLibDir/wnbd.a" \
       -G "$generatorUsed" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 fi # [[ -z $SKIP_CMAKE ]]
@@ -157,6 +161,7 @@ if [[ -z $SKIP_BUILD ]]; then
     make_targets["src/tools/immutable_object_cache"]="all"
     make_targets["src/tools/rbd"]="all"
     make_targets["src/tools/rbd_mirror"]="all"
+    make_targets["src/tools/rbd_wnbd"]="all"
     make_targets["src/compressor"]="all"
     if [[ -z $SKIP_TESTS ]]; then
         make_targets["src/test"]="all"
