@@ -413,12 +413,14 @@ __s32 wsae_to_errno(__s32 r)
   return wsae_to_errno_unsigned(abs(r)) * sign;
 }
 
-__u32 errno_to_ntstatus(__u32 r) {
+__u32 errno_to_ntstatus(__s32 r) {
   // errno -> NTSTATUS
   // In some cases, there might be more than one applicable NTSTATUS
   // value or there might be none. Certain values can be overridden
   // when the caller (or whoever is supposed to handle the error) is
   // expecting a different NTSTATUS value.
+  r = abs(r);
+
   switch(r) {
     case 0: return 0;
     case EPERM: return STATUS_ACCESS_DENIED;

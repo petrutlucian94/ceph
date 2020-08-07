@@ -167,8 +167,12 @@ accordingly.
         keyring = C:/ProgramData/ceph/keyring
         ; log file = C:/ProgramData/ceph/out/$name.$pid.log
         admin socket = C:/ProgramData/ceph/out/$name.$pid.asok
+
+        ; client_permissions = true
+        ; client_mount_uid = 1000
+        ; client_mount_gid = 1000
     [global]
-        mon host =  [v2:xx.xx.xx.xx:40623,v1:xx.xx.xx.xx:40624] [v2:xx.xx.xx.xx:40625,v1:xx.xx.xx.xx:40626] [v2:xx.xx.xx.xx:40627,v1:xx.xx.xx.xx:40628]
+        mon host = <ceph_monitor_addresses>
 
 Assuming that you're going to use this config sample, don't forget to
 also copy your keyring file to the specified location and make sure
@@ -228,19 +232,29 @@ is ``%ProgramData%\ceph\ceph.conf``, then this argument becomes optional.
 The ``-l`` argument also allows using an empty folder as a mountpoint
 instead of a drive letter.
 
-The uid and gid used for mounting the filesystem defaults to 0 and may be
-changed using the ``-u`` and ``-g`` arguments. ``-n`` can be used in order
-to skip enforcing permissions on client side. Be aware that Windows ACLs
-are ignored. Posix ACLs are supported but cannot be modified using the
-current CLI. In the future, we may add some command actions to change
-file ownership or permissions.
+The uid and gid used for mounting the filesystem default to 0 and may be
+changed using the following ``ceph.conf`` options:
 
-For debugging purposes, ``-d`` and ``s`` might be used. The first one will
-enable debug output and the latter will enable stderr logging. By default,
-debug messages are sent to a connected debugger.
+.. code:: ini
 
-You may use ``--help`` to get the full list of available options. The
-current syntax is up for discussion and might change.
+    [client]
+    keyring = C:/ProgramData/ceph/keyring
+    log file = C:/ProgramData/ceph/out/$name.$pid.log
+
+    # client_permissions = true
+    client_mount_uid = 1000
+    client_mount_gid = 1000
+
+Be aware that Windows ACLs are ignored. Posix ACLs are supported but cannot be
+modified using the current CLI. In the future, we may add some command actions
+to change file ownership or permissions.
+
+``ceph-dokan`` uses the ``client`` ceph logging subsystem. For debugging
+purposes, the ``--dokan-stderr`` or ``--debug`` parameters may also be used.
+
+Note that unlike ``rbd-wnbd``, ``ceph-dokan`` doesn't currently provide a
+``service`` command. In order for the cephfs mount to survive host reboots,
+consider using ``NSSM``.
 
 RBD
 ===
