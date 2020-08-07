@@ -42,6 +42,11 @@ wnbdTag="master"
 wnbdSrcDir="${depsSrcDir}/wnbd"
 wnbdLibDir="${depsToolsetDir}/wnbd/lib"
 
+dokanUrl="https://github.com/dokan-dev/dokany"
+dokanTag="v1.3.1.1000"
+dokanSrcDir="${depsSrcDir}/dokany"
+dokanLibDir="${depsToolsetDir}/dokany/lib"
+
 function _make() {
   make -j $NUM_WORKERS $@
 }
@@ -329,3 +334,19 @@ EOF
 
 x86_64-w64-mingw32-dlltool -d $winLibDir/mswsock.def \
                            -l $winLibDir/libmswsock.a
+
+cd $depsSrcDir
+if [[ ! -d $dokanSrcDir ]]; then
+    git clone $dokanUrl
+fi
+cd $dokanSrcDir
+git checkout $dokanTag
+
+mkdir -p $dokanLibDir
+x86_64-w64-mingw32-dlltool -d $dokanSrcDir/dokan/dokan.def \
+                           -l $dokanLibDir/libdokan.a
+
+# That's probably the easiest way to deal with the dokan imports.
+# dokan.h is defined in both ./dokan and ./sys while both are using
+# sys/public.h without the "sys" prefix.
+cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokan
