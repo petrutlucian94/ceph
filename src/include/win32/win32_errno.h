@@ -18,6 +18,8 @@
 
 #include <errno.h>
 
+#include "include/int_types.h"
+
 #ifndef EBADMSG
 #define EBADMSG 104
 #endif
@@ -125,3 +127,13 @@
 #endif
 
 #define ESHUTDOWN 312
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+__u32 errno_to_ntstatus(__u32 r);
+
+#ifdef __cplusplus
+}
+#endif
