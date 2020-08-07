@@ -20,6 +20,10 @@
 #include "UserPerm.h"
 #include "Delegation.h"
 
+#ifdef _WIN32
+#define S_IFLNK   0120000
+#endif
+
 class Client;
 class Dentry;
 class Dir;

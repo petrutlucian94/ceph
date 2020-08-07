@@ -16,6 +16,7 @@
 #include "common/DecayCounter.h"
 #include "common/entity_name.h"
 
+#include "include/compat.h"
 #include "include/Context.h"
 #include "include/frag.h"
 #include "include/xlist.h"
