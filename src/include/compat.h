@@ -218,6 +218,7 @@ ssize_t get_self_exe_path(char* path, int buff_length);
 #include "include/win32/winsock_compat.h"
 
 #include <windows.h>
+#include <time.h>
 
 #include "include/win32/win32_errno.h"
 

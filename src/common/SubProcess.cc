@@ -286,6 +286,7 @@ static bool timedout = false; // only used after fork
 void timeout_sighandler(int sig) {
   timedout = true;
 }
+
 static void dummy_sighandler(int sig) {}
 
 void SubProcessTimed::exec() {
