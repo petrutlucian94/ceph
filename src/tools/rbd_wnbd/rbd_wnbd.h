@@ -10,8 +10,8 @@
  *
  */
 
-#ifndef RBD_WVBD_H
-#define RBD_WVBD_H
+#ifndef RBD_WNBD_H
+#define RBD_WNBD_H
 
 #include <string.h>
 #include <iostream>
@@ -20,20 +20,20 @@
 #include "include/compat.h"
 #include "common/win32/registry.h"
 
-#include "wvbd_handler.h"
+#include "wnbd_handler.h"
 
-#define SERVICE_REG_KEY "SYSTEM\\CurrentControlSet\\Services\\rbd-wvbd"
+#define SERVICE_REG_KEY "SYSTEM\\CurrentControlSet\\Services\\rbd-wnbd"
 
-#define RBD_WVBD_BLKSIZE 512UL
+#define RBD_WNBD_BLKSIZE 512UL
 
 #define HELP_INFO 1
 #define VERSION_INFO 2
 
-#define WVBD_STATUS_ACTIVE "active"
-#define WVBD_STATUS_INACTIVE "inactive"
+#define WNBD_STATUS_ACTIVE "active"
+#define WNBD_STATUS_INACTIVE "inactive"
 
-static WvbdHandler* handler = nullptr;
-ceph::mutex shutdown_lock = ceph::make_mutex("RbdWvbd::ShutdownLock");
+static WnbdHandler* handler = nullptr;
+ceph::mutex shutdown_lock = ceph::make_mutex("RbdWnbd::ShutdownLock");
 
 struct Config {
   int nbds_max = 0;
@@ -67,8 +67,8 @@ struct Config {
   std::string command_line;
   std::string admin_sock_path;
 
-  WvbdLogLevel wvbd_log_level = WvbdLogLevelInfo;
-  int wvbd_thread_count = 8;
+  WnbdLogLevel wnbd_log_level = WnbdLogLevelInfo;
+  int wnbd_thread_count = 8;
 };
 
 enum Command {
@@ -117,17 +117,17 @@ class BaseIterator {
 };
 
 // Iterate over mapped devices, retrieving info from the driver.
-class WVBDActiveDiskIterator : public BaseIterator {
+class WNBDActiveDiskIterator : public BaseIterator {
   public:
-    WVBDActiveDiskIterator();
-    ~WVBDActiveDiskIterator();
+    WNBDActiveDiskIterator();
+    ~WNBDActiveDiskIterator();
 
     bool get(Config *cfg);
 
   private:
-    PWVBD_CONNECTION_LIST conn_list = NULL;
+    PWNBD_CONNECTION_LIST conn_list = NULL;
 
-    static DWORD fetch_list(PWVBD_CONNECTION_LIST* conn_list);
+    static DWORD fetch_list(PWNBD_CONNECTION_LIST* conn_list);
 };
 
 
@@ -148,7 +148,7 @@ class RegistryDiskIterator : public BaseIterator {
 };
 
 // Iterate over all RBD mappings, getting info from the registry and driver.
-class WVBDDiskIterator : public BaseIterator {
+class WNBDDiskIterator : public BaseIterator {
   public:
     bool get(Config *cfg);
 
@@ -156,8 +156,8 @@ class WVBDDiskIterator : public BaseIterator {
     // We'll keep track of the active devices.
     std::set<std::string> active_devices;
 
-    WVBDActiveDiskIterator active_iterator;
+    WNBDActiveDiskIterator active_iterator;
     RegistryDiskIterator registry_iterator;
 };
 
-#endif // RBD_WVBD_H
+#endif // RBD_WNBD_H

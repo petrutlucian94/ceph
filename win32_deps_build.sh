@@ -42,10 +42,10 @@ dokanTag="v1.3.1.1000"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
 
-wvbdUrl="https://github.com/petrutlucian94/wnbd"
-wvbdTag="wvbd"
-wvbdSrcDir="${depsSrcDir}/wnbd"
-wvbdLibDir="${depsToolsetDir}/wnbd/lib"
+wnbdUrl="https://github.com/petrutlucian94/wnbd"
+wnbdTag="wvbd_wip"
+wnbdSrcDir="${depsSrcDir}/wnbd"
+wnbdLibDir="${depsToolsetDir}/wnbd/lib"
 
 # Allow for OS specific customizations through the OS flag (normally
 # passed through from win32_build).
@@ -362,15 +362,15 @@ $MINGW_DLLTOOL -d $dokanSrcDir/dokan/dokan.def \
 cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokan
 
 cd $depsSrcDir
-if [[ ! -d $wvbdSrcDir ]]; then
-    git clone $wvbdUrl
-    cd $wvbdSrcDir && git checkout $wvbdTag
+if [[ ! -d $wnbdSrcDir ]]; then
+    git clone $wnbdUrl
+    cd $wnbdSrcDir && git checkout $wnbdTag
 fi
-cd $wvbdSrcDir
-mkdir -p $wvbdLibDir
-$MINGW_DLLTOOL -d $wvbdSrcDir/wvbd.dll/wvbd.def \
-               -D wvbd.dll \
-               -l $wvbdLibDir/wvbd.a
+cd $wnbdSrcDir
+mkdir -p $wnbdLibDir
+$MINGW_DLLTOOL -d $wnbdSrcDir/libwnbd/wnbd.def \
+               -D wnbd.dll \
+               -l $wnbdLibDir/wnbd.a
 
 
 touch $depsToolsetDir/completed

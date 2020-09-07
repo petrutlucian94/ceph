@@ -2,7 +2,7 @@
 // vim: ts=8 sw=2 smarttab
 
 /*
- * rbd-wvbd - RBD in userspace
+ * rbd-wnbd - RBD in userspace
  *
  * Copyright (C) 2015 - 2016 Kylin Corporation
  * Copyright (C) 2020 SUSE LINUX GmbH
@@ -32,8 +32,8 @@
 
 #include <boost/locale/encoding_utf.hpp>
 
-#include "wvbd_handler.h"
-#include "rbd_wvbd.h"
+#include "wnbd_handler.h"
+#include "rbd_wnbd.h"
 
 #include <fstream>
 #include <memory>
@@ -63,7 +63,7 @@
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rbd
 #undef dout_prefix
-#define dout_prefix *_dout << "rbd-wvbd: "
+#define dout_prefix *_dout << "rbd-wnbd: "
 
 using boost::locale::conv::utf_to_utf;
 
@@ -81,13 +81,13 @@ bool is_process_running(DWORD pid)
   return ret == WAIT_TIMEOUT;
 }
 
-DWORD WVBDActiveDiskIterator::fetch_list(
-  PWVBD_CONNECTION_LIST* conn_list)
+DWORD WNBDActiveDiskIterator::fetch_list(
+  PWNBD_CONNECTION_LIST* conn_list)
 {
   DWORD curr_buff_sz = 0;
   DWORD buff_sz = 0;
   DWORD err = ERROR_INSUFFICIENT_BUFFER;
-  PWVBD_CONNECTION_LIST tmp_list = NULL;
+  PWNBD_CONNECTION_LIST tmp_list = NULL;
 
   // We're using a loop because other connections may show up by the time
   // we retry.
@@ -96,7 +96,7 @@ DWORD WVBDActiveDiskIterator::fetch_list(
       free(tmp_list);
 
     if (buff_sz) {
-      tmp_list = (PWVBD_CONNECTION_LIST) calloc(1, buff_sz);
+      tmp_list = (PWNBD_CONNECTION_LIST) calloc(1, buff_sz);
       if (!tmp_list) {
         derr << "Could not allocate " << buff_sz << " bytes." << dendl;
         err = ERROR_NOT_ENOUGH_MEMORY;
@@ -108,7 +108,7 @@ DWORD WVBDActiveDiskIterator::fetch_list(
     // If the buffer is too small, the return value is 0 and "BufferSize"
     // will contain the required size. This is counterintuitive, but
     // Windows drivers can't return a buffer as well as a non-zero status.
-    err = WvbdList(tmp_list, &buff_sz);
+    err = WnbdList(tmp_list, &buff_sz);
     if (err)
       break;
   } while (curr_buff_sz < buff_sz);
@@ -131,16 +131,16 @@ DWORD WVBDActiveDiskIterator::fetch_list(
   return err;
 }
 
-WVBDActiveDiskIterator::WVBDActiveDiskIterator()
+WNBDActiveDiskIterator::WNBDActiveDiskIterator()
 {
-  DWORD status = WVBDActiveDiskIterator::fetch_list(&conn_list);
+  DWORD status = WNBDActiveDiskIterator::fetch_list(&conn_list);
 
   if (status) {
     error = EINVAL;
   }
 }
 
-WVBDActiveDiskIterator::~WVBDActiveDiskIterator()
+WNBDActiveDiskIterator::~WNBDActiveDiskIterator()
 {
   if (conn_list) {
     free(conn_list);
@@ -148,7 +148,7 @@ WVBDActiveDiskIterator::~WVBDActiveDiskIterator()
   }
 }
 
-bool WVBDActiveDiskIterator::get(Config *cfg)
+bool WNBDActiveDiskIterator::get(Config *cfg)
 {
   index += 1;
   *cfg = Config();
@@ -157,9 +157,9 @@ bool WVBDActiveDiskIterator::get(Config *cfg)
     return false;
   }
 
-  WVBD_PROPERTIES conn_props = conn_list->Connections[index].Properties;
+  WNBD_PROPERTIES conn_props = conn_list->Connections[index].Properties;
 
-  if (strncmp(conn_props.Owner, RBD_WVBD_OWNER_NAME, WVBD_MAX_OWNER_LENGTH)) {
+  if (strncmp(conn_props.Owner, RBD_WNBD_OWNER_NAME, WNBD_MAX_OWNER_LENGTH)) {
     dout(10) << "Ignoring disk: " << conn_props.InstanceName
              << ". Owner: " << conn_props.Owner << dendl;
     return this->get(cfg);
@@ -173,7 +173,7 @@ bool WVBDActiveDiskIterator::get(Config *cfg)
   }
 
   int disk_number = -1;
-  HRESULT hres = WvbdGetDiskNumberBySerialNumber(
+  HRESULT hres = WnbdGetDiskNumberBySerialNumber(
     to_wstring(conn_props.SerialNumber).c_str(), (PDWORD)&disk_number);
 
   if (disk_number < 0) {
@@ -238,7 +238,7 @@ bool RegistryDiskIterator::get(Config *cfg)
 }
 
 // Iterate over all RBD mappings, getting info from the registry and the driver.
-bool WVBDDiskIterator::get(Config *cfg)
+bool WNBDDiskIterator::get(Config *cfg)
 {
   *cfg = Config();
 
@@ -270,7 +270,7 @@ bool WVBDDiskIterator::get(Config *cfg)
 }
 
 /* Spawn a subprocess using the specified command line, which is expected
-   to be a "rbd-wvbd map" command. A pipe is passed to the child process,
+   to be a "rbd-wnbd map" command. A pipe is passed to the child process,
    which will allow it to communicate the mapping status */
 bool map_device_using_suprocess(std::string command_line)
 {
@@ -426,7 +426,7 @@ int load_mapping_config_from_registry(char* devpath, Config* cfg)
 int restart_registered_mappings()
 {
   Config cfg;
-  WVBDDiskIterator iterator;
+  WNBDDiskIterator iterator;
   int err = 0, r;
 
   while (iterator.get(&cfg)) {
@@ -461,7 +461,7 @@ int restart_registered_mappings()
 int disconnect_all_mappings(bool unregister)
 {
   Config cfg;
-  WVBDActiveDiskIterator iterator;
+  WNBDActiveDiskIterator iterator;
   int err = 0, r;
 
   while (iterator.get(&cfg)) {
@@ -496,10 +496,10 @@ class RBDService : public ServiceBase {
 
 static void usage()
 {
-  std::cout << "Usage: rbd-wvbd [options] map <image-or-snap-spec>                   Map an image to wvbd device\n"
-            << "                unmap <device|image-or-snap-spec>                    Unmap wvbd device\n"
-            << "                [options] <list|list-mapped>                         List mapped wvbd devices\n"
-            << "                [options] <show|show-mapped> <image-or-snap-spec>    Show mapped wvbd device\n"
+  std::cout << "Usage: rbd-wnbd [options] map <image-or-snap-spec>                   Map an image to wnbd device\n"
+            << "                unmap <device|image-or-snap-spec>                    Unmap wnbd device\n"
+            << "                [options] <list|list-mapped>                         List mapped wnbd devices\n"
+            << "                [options] <show|show-mapped> <image-or-snap-spec>    Show mapped wnbd device\n"
             << "                <stats> <image-or-snap-spec>                         Show IO counters\n"
             << "Map options:\n"
             << "  --device <device path>  Optional mapping unique identifier\n"
@@ -519,7 +519,7 @@ static Command cmd = None;
 int construct_devpath_if_missing(Config* cfg)
 {
   // Windows doesn't allow us to request specific disk paths when mapping an
-  // image. This will just be used by rbd-wvbd and wvbd as an identifier.
+  // image. This will just be used by rbd-wnbd and wnbd as an identifier.
   if (cfg->devpath.empty()) {
     if (cfg->imgname.empty()) {
       derr << "Missing image name." << dendl;
@@ -623,7 +623,7 @@ static int do_map(Config *cfg)
   if (cfg->exclusive) {
     r = image.lock_acquire(RBD_LOCK_MODE_EXCLUSIVE);
     if (r < 0) {
-      derr << "rbd-wvbd: failed to acquire exclusive lock: " << cpp_strerror(r)
+      derr << "rbd-wnbd: failed to acquire exclusive lock: " << cpp_strerror(r)
            << dendl;
       goto close_ret;
     }
@@ -641,7 +641,7 @@ static int do_map(Config *cfg)
 
   if (info.size > _UI64_MAX) {
     r = -EFBIG;
-    derr << "rbd-wvbd: image is too large (" << byte_u_t(info.size)
+    derr << "rbd-wnbd: image is too large (" << byte_u_t(info.size)
          << ", max is " << byte_u_t(_UI64_MAX) << ")" << dendl;
     goto close_ret;
   }
@@ -650,12 +650,12 @@ static int do_map(Config *cfg)
   if (r < 0)
     goto close_ret;
 
-  handler = new WvbdHandler(image, cfg->devpath,
-                            info.size / RBD_WVBD_BLKSIZE,
-                            RBD_WVBD_BLKSIZE,
+  handler = new WnbdHandler(image, cfg->devpath,
+                            info.size / RBD_WNBD_BLKSIZE,
+                            RBD_WNBD_BLKSIZE,
                             cfg->readonly,
-                            cfg->wvbd_thread_count,
-                            cfg->wvbd_log_level);
+                            cfg->wnbd_thread_count,
+                            cfg->wnbd_log_level);
 
   cout << cfg->devpath << std::endl;
 
@@ -696,9 +696,9 @@ close_ret:
 
 static int do_unmap(Config *cfg, bool unregister)
 {
-  int err = WvbdRemoveEx(cfg->devpath.c_str());
+  int err = WnbdRemoveEx(cfg->devpath.c_str());
   if (err && err != ERROR_FILE_NOT_FOUND) {
-    derr << "rbd-wvbd: could not disconnect image '" << cfg->devpath
+    derr << "rbd-wnbd: could not disconnect image '" << cfg->devpath
          << "'. Error: " << err << dendl;
     return -EINVAL;
   }
@@ -720,7 +720,7 @@ static int parse_imgpath(const std::string &imgpath, Config *cfg,
   std::regex pattern("^(?:([^/]+)/(?:([^/@]+)/)?)?([^@]+)(?:@([^/@]+))?$");
   std::smatch match;
   if (!std::regex_match(imgpath, match, pattern)) {
-    derr << "rbd-wvbd: invalid spec '" << imgpath << "'" << dendl;
+    derr << "rbd-wnbd: invalid spec '" << imgpath << "'" << dendl;
     return -EINVAL;
   }
 
@@ -772,17 +772,17 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
   }
 
   Config cfg;
-  WVBDDiskIterator wvbd_disk_iterator;
+  WNBDDiskIterator wnbd_disk_iterator;
   bool found = false;
 
-  while(wvbd_disk_iterator.get(&cfg)) {
+  while(wnbd_disk_iterator.get(&cfg)) {
     if(!search_devpath.empty()) {
       if(cfg.devpath != search_devpath)
         continue;
       found = true;
     }
     const char* status = cfg.active ?
-      WVBD_STATUS_ACTIVE : WVBD_STATUS_INACTIVE;
+      WNBD_STATUS_ACTIVE : WNBD_STATUS_INACTIVE;
 
     if (f) {
       f->open_object_section("device");
@@ -805,7 +805,7 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
         << cfg.disk_number << status << TextTable::endrow;
     }
   }
-  int error = wvbd_disk_iterator.get_error();
+  int error = wnbd_disk_iterator.get_error();
   if(error) {
     derr << "Could not get disk list: " << error << dendl;
     return -error;
@@ -832,15 +832,15 @@ static int do_list_mapped_devices(const std::string &format, bool pretty_format,
 static int do_stats(std::string search_devpath)
 {
   Config cfg;
-  WVBDDiskIterator wvbd_disk_iterator;
+  WNBDDiskIterator wnbd_disk_iterator;
 
-  while (wvbd_disk_iterator.get(&cfg)) {
+  while (wnbd_disk_iterator.get(&cfg)) {
     if (cfg.devpath != search_devpath)
       continue;
 
     AdminSocketClient client = AdminSocketClient(cfg.admin_sock_path);
     std::string output;
-    std::string result = client.do_request("{\"prefix\":\"wvbd stats\"}",
+    std::string result = client.do_request("{\"prefix\":\"wnbd stats\"}",
                                            &output);
     if (!result.empty()) {
       std::cerr << "Admin socket error: " << result << std::endl;
@@ -850,7 +850,7 @@ static int do_stats(std::string search_devpath)
     std::cout << output << std::endl;
     return 0;
   }
-  int error = wvbd_disk_iterator.get_error();
+  int error = wnbd_disk_iterator.get_error();
   if (!error) {
     error = -ENOENT;
   }
@@ -900,31 +900,31 @@ static int parse_args(std::vector<const char*>& args,
       cfg->pretty_format = true;
     } else if (ceph_argparse_witharg(args, i, &cfg->parent_pipe, err, "--pipe-handle", (char *)NULL)) {
       if (!err.str().empty()) {
-        *err_msg << "rbd-wvbd: " << err.str();
+        *err_msg << "rbd-wnbd: " << err.str();
         return -EINVAL;
       }
       if (cfg->parent_pipe < 0) {
-        *err_msg << "rbd-wvbd: Invalid argument for pipe-handle!";
+        *err_msg << "rbd-wnbd: Invalid argument for pipe-handle!";
         return -EINVAL;
       }
-    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->wvbd_log_level,
-                                     err, "--wvbd_log_level", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->wnbd_log_level,
+                                     err, "--wnbd_log_level", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "rbd-nbd: " << err.str();
         return -EINVAL;
       }
-      if (cfg->wvbd_log_level < 0) {
-        *err_msg << "rbd-nbd: Invalid argument for wvbd_log_level";
+      if (cfg->wnbd_log_level < 0) {
+        *err_msg << "rbd-nbd: Invalid argument for wnbd_log_level";
         return -EINVAL;
       }
-    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->wvbd_thread_count,
-                                     err, "--wvbd_thread_count", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->wnbd_thread_count,
+                                     err, "--wnbd_thread_count", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "rbd-nbd: " << err.str();
         return -EINVAL;
       }
-      if (cfg->wvbd_thread_count < 0) {
-        *err_msg << "rbd-nbd: Invalid argument for wvbd_thread_count";
+      if (cfg->wnbd_thread_count < 0) {
+        *err_msg << "rbd-nbd: Invalid argument for wnbd_thread_count";
         return -EINVAL;
       }
     } else {
@@ -951,14 +951,14 @@ static int parse_args(std::vector<const char*>& args,
     } else if (strcmp(*args.begin(), "stats") == 0) {
       cmd = Stats;
     } else {
-      *err_msg << "rbd-wvbd: unknown command: " <<  *args.begin();
+      *err_msg << "rbd-wnbd: unknown command: " <<  *args.begin();
       return -EINVAL;
     }
     args.erase(args.begin());
   }
 
   if (cmd == None) {
-    *err_msg << "rbd-wvbd: must specify command";
+    *err_msg << "rbd-wnbd: must specify command";
     return -EINVAL;
   }
 
@@ -968,7 +968,7 @@ static int parse_args(std::vector<const char*>& args,
     case Show:
     case Stats:
       if (args.begin() == args.end()) {
-        *err_msg << "rbd-wvbd: must specify wvbd device or image-or-snap-spec";
+        *err_msg << "rbd-wnbd: must specify wnbd device or image-or-snap-spec";
         return -EINVAL;
       }
       if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
@@ -982,7 +982,7 @@ static int parse_args(std::vector<const char*>& args,
   }
 
   if (args.begin() != args.end()) {
-    *err_msg << "rbd-wvbd: unknown args: " << *args.begin();
+    *err_msg << "rbd-wnbd: unknown args: " << *args.begin();
     return -EINVAL;
   }
 
@@ -990,7 +990,7 @@ static int parse_args(std::vector<const char*>& args,
   return 0;
 }
 
-static int rbd_wvbd(int argc, const char *argv[])
+static int rbd_wnbd(int argc, const char *argv[])
 {
   int r;
   Config cfg;
@@ -1076,8 +1076,8 @@ int main(int argc, const char *argv[])
   // Avoid the Windows Error Reporting dialog.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
   // Initialize COM.
-  WvbdCoInitializeBasic();
-  int r = rbd_wvbd(argc, argv);
+  WnbdCoInitializeBasic();
+  int r = rbd_wnbd(argc, argv);
   if (r < 0) {
     return r;
   }

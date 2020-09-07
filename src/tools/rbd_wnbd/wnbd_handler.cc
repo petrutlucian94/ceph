@@ -1,7 +1,7 @@
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rbd
 
-#include "wvbd_handler.h"
+#include "wnbd_handler.h"
 
 #define _NTSCSI_USER_MODE_
 #include <rpc.h>
@@ -15,26 +15,26 @@
 
 #include "global/global_context.h"
 
-WvbdHandler::~WvbdHandler()
+WnbdHandler::~WnbdHandler()
 {
-  if (started && wvbd_device) {
+  if (started && wnbd_device) {
     dout(10) << __func__ << ": terminating" << dendl;
 
     shutdown();
 
-    WvbdClose(wvbd_device);
+    WnbdClose(wnbd_device);
 
     started = false;
   }
 }
 
-int WvbdHandler::wait()
+int WnbdHandler::wait()
 {
   int err = 0;
-  if (started && wvbd_device) {
+  if (started && wnbd_device) {
     dout(10) << __func__ << ": waiting" << dendl;
 
-    err = WvbdWaitDispatcher(wvbd_device);
+    err = WnbdWaitDispatcher(wnbd_device);
     if (err) {
       derr << __func__ << " failed waiting for dispatcher to stop: "
            << err << dendl;
@@ -44,26 +44,26 @@ int WvbdHandler::wait()
   return err;
 }
 
-int WvbdAdminHook::call (std::string_view command, const cmdmap_t& cmdmap,
+int WnbdAdminHook::call (std::string_view command, const cmdmap_t& cmdmap,
      Formatter *f,
      std::ostream& errss,
      bufferlist& out) {
-    if (command == "wvbd stats") {
+    if (command == "wnbd stats") {
       return m_handler->dump_stats(f);
     }
     return -ENOSYS;
   }
 
-int WvbdHandler::dump_stats(Formatter *f)
+int WnbdHandler::dump_stats(Formatter *f)
 {
   if (!f) {
     return -EINVAL;
   }
 
-  WVBD_USR_STATS stats = { 0 };
+  WNBD_USR_STATS stats = { 0 };
   DWORD buff_sz = sizeof(stats);
-  DWORD err = WvbdGetUserspaceStats(
-    wvbd_device, &stats, &buff_sz);
+  DWORD err = WnbdGetUserspaceStats(
+    wnbd_device, &stats, &buff_sz);
   if (err) {
     derr << "Failed to retrieve WNBD userspace stats. Error: " << err << dendl;
     return -EINVAL;
@@ -88,25 +88,25 @@ int WvbdHandler::dump_stats(Formatter *f)
   return 0;
 }
 
-void WvbdHandler::shutdown()
+void WnbdHandler::shutdown()
 {
   std::unique_lock l{shutdown_lock};
-  if (!terminated && wvbd_device) {
+  if (!terminated && wnbd_device) {
     // We're requesting the device to be removed but continue serving IO
     // requests until the driver sends us the "Disconnect" event.
-    WvbdRemove(wvbd_device);
+    WnbdRemove(wnbd_device);
     wait();
     terminated = true;
   }
 }
 
-void WvbdHandler::aio_callback(librbd::completion_t cb, void *arg)
+void WnbdHandler::aio_callback(librbd::completion_t cb, void *arg)
 {
   librbd::RBD::AioCompletion *aio_completion =
     reinterpret_cast<librbd::RBD::AioCompletion*>(cb);
 
-  std::unique_ptr<WvbdHandler::IOContext> ctx{
-    static_cast<WvbdHandler::IOContext*>(arg)};
+  std::unique_ptr<WnbdHandler::IOContext> ctx{
+    static_cast<WnbdHandler::IOContext*>(arg)};
   int ret = aio_completion->get_return_value();
 
   dout(20) << __func__ << ": " << *ctx << dendl;
@@ -124,7 +124,7 @@ void WvbdHandler::aio_callback(librbd::completion_t cb, void *arg)
     // TODO: check the actual error.
     ctx->set_sense(SCSI_SENSE_MEDIUM_ERROR,
                    SCSI_ADSENSE_UNRECOVERED_ERROR);
-  } else if ((ctx->req_type == WvbdReqTypeRead) &&
+  } else if ((ctx->req_type == WnbdReqTypeRead) &&
               ret < static_cast<int>(ctx->req_size)) {
     int pad_byte_count = static_cast<int> (ctx->req_size) - ret;
     ctx->data.append_zero(pad_byte_count);
@@ -140,52 +140,52 @@ void WvbdHandler::aio_callback(librbd::completion_t cb, void *arg)
   aio_completion->release();
 }
 
-void WvbdHandler::send_io_response(WvbdHandler::IOContext *ctx) {
-  WVBD_IO_RESPONSE wvbd_rsp = {0};
-  wvbd_rsp.RequestHandle = ctx->req_handle;
-  wvbd_rsp.RequestType = ctx->req_type;
-  wvbd_rsp.Status = ctx->wvbd_status;
+void WnbdHandler::send_io_response(WnbdHandler::IOContext *ctx) {
+  WNBD_IO_RESPONSE wnbd_rsp = {0};
+  wnbd_rsp.RequestHandle = ctx->req_handle;
+  wnbd_rsp.RequestType = ctx->req_type;
+  wnbd_rsp.Status = ctx->wnbd_status;
 
   ceph_assert(
-    wvbd_device->Properties.MaxTransferLength >= ctx->data.length());
+    wnbd_device->Properties.MaxTransferLength >= ctx->data.length());
 
-  WvbdSendResponse(
-    ctx->handler->wvbd_device,
-    &wvbd_rsp,
+  WnbdSendResponse(
+    ctx->handler->wnbd_device,
+    &wnbd_rsp,
     ctx->data.c_str(),
     ctx->data.length());
 }
 
-void WvbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc, uint64_t info)
+void WnbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc, uint64_t info)
 {
-  WvbdSetSenseEx(&wvbd_status, sense_key, asc, info);
+  WnbdSetSenseEx(&wnbd_status, sense_key, asc, info);
 }
 
-void WvbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc)
+void WnbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc)
 {
-  WvbdSetSense(&wvbd_status, sense_key, asc);
+  WnbdSetSense(&wnbd_status, sense_key, asc);
 }
 
-void WvbdHandler::Read(
-  PWVBD_DEVICE Device,
+void WnbdHandler::Read(
+  PWNBD_DEVICE Device,
   UINT64 RequestHandle,
   PVOID Buffer,
   UINT64 BlockAddress,
   UINT32 BlockCount,
   BOOLEAN ForceUnitAccess)
 {
-  WvbdHandler* handler = (WvbdHandler*)Device->Context;
+  WnbdHandler* handler = (WnbdHandler*)Device->Context;
 
   UINT32 BlockSize = Device->Properties.BlockSize;
 
-  WvbdHandler::IOContext* ctx = new WvbdHandler::IOContext();
+  WnbdHandler::IOContext* ctx = new WnbdHandler::IOContext();
   ctx->handler = handler;
   ctx->req_handle = RequestHandle;
   ctx->req_size = BlockCount * BlockSize;
-  ctx->req_type = WvbdReqTypeRead;
+  ctx->req_type = WnbdReqTypeRead;
   ctx->req_from = BlockAddress * BlockSize;
 
-  ceph_assert(ctx->req_size <= RBD_WVBD_MAX_TRANSFER);
+  ceph_assert(ctx->req_size <= RBD_WNBD_MAX_TRANSFER);
   dout(20) << *ctx << ": start" << dendl;
 
   librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(ctx, aio_callback);
@@ -194,23 +194,23 @@ void WvbdHandler::Read(
   dout(20) << *ctx << ": submitted" << dendl;
 }
 
-void WvbdHandler::Write(
-  PWVBD_DEVICE Device,
+void WnbdHandler::Write(
+  PWNBD_DEVICE Device,
   UINT64 RequestHandle,
   PVOID Buffer,
   UINT64 BlockAddress,
   UINT32 BlockCount,
   BOOLEAN ForceUnitAccess)
 {
-  WvbdHandler* handler = (WvbdHandler*)Device->Context;
+  WnbdHandler* handler = (WnbdHandler*)Device->Context;
 
   UINT32 BlockSize = Device->Properties.BlockSize;
 
-  WvbdHandler::IOContext* ctx = new WvbdHandler::IOContext();
+  WnbdHandler::IOContext* ctx = new WnbdHandler::IOContext();
   ctx->handler = handler;
   ctx->req_handle = RequestHandle;
   ctx->req_size = BlockCount * BlockSize;
-  ctx->req_type = WvbdReqTypeWrite;
+  ctx->req_type = WnbdReqTypeWrite;
   ctx->req_from = BlockAddress * BlockSize;
 
   bufferptr ptr((char*)Buffer, ctx->req_size);
@@ -224,70 +224,70 @@ void WvbdHandler::Write(
   dout(20) << *ctx << ": submitted" << dendl;
 }
 
-void WvbdHandler::LogMessage(
-    PWVBD_DEVICE Device,
-    WvbdLogLevel LogLevel,
+void WnbdHandler::LogMessage(
+    PWNBD_DEVICE Device,
+    WnbdLogLevel LogLevel,
     const char* Message,
     const char* FileName,
     UINT32 Line,
     const char* FunctionName)
 {
-  // We're already passing the log level to WVBD, so we'll use the highest
+  // We're already passing the log level to WNBD, so we'll use the highest
   // log level here.
-  dout(0) << "wvbd.dll!" << FunctionName << " "
-          << WvbdLogLevelToStr(LogLevel) << " " << Message << dendl;
+  dout(0) << "wnbd.dll!" << FunctionName << " "
+          << WnbdLogLevelToStr(LogLevel) << " " << Message << dendl;
 }
 
 
-int WvbdHandler::start()
+int WnbdHandler::start()
 {
   int err = 0;
-  WVBD_PROPERTIES wvbd_props = {0};
+  WNBD_PROPERTIES wnbd_props = {0};
 
-  instance_name.copy(wvbd_props.InstanceName, sizeof(wvbd_props.InstanceName));
-  ceph_assert(strlen(RBD_WVBD_OWNER_NAME) < WVBD_MAX_OWNER_LENGTH);
-  strncpy(wvbd_props.Owner, RBD_WVBD_OWNER_NAME, WVBD_MAX_OWNER_LENGTH);
+  instance_name.copy(wnbd_props.InstanceName, sizeof(wnbd_props.InstanceName));
+  ceph_assert(strlen(RBD_WNBD_OWNER_NAME) < WNBD_MAX_OWNER_LENGTH);
+  strncpy(wnbd_props.Owner, RBD_WNBD_OWNER_NAME, WNBD_MAX_OWNER_LENGTH);
 
-  wvbd_props.BlockCount = block_count;
-  wvbd_props.BlockSize = block_size;
-  wvbd_props.MaxTransferLength = RBD_WVBD_MAX_TRANSFER;
+  wnbd_props.BlockCount = block_count;
+  wnbd_props.BlockSize = block_size;
+  wnbd_props.MaxTransferLength = RBD_WNBD_MAX_TRANSFER;
   // TODO: flush/unmap
-  wvbd_props.Flags.ReadOnly = readonly;
-  wvbd_props.Flags.FlushSupported = 0;
-  wvbd_props.Flags.UnmapSupported = 0;
+  wnbd_props.Flags.ReadOnly = readonly;
+  wnbd_props.Flags.FlushSupported = 0;
+  wnbd_props.Flags.UnmapSupported = 0;
 
-  err = WvbdCreate(&wvbd_props, &RbdWvbdInterface, this,
-                   wvbd_log_level, &wvbd_device);
+  err = WnbdCreate(&wnbd_props, &RbdWnbdInterface, this,
+                   wnbd_log_level, &wnbd_device);
   if (err)
     goto exit;
 
   started = true;
 
-  err = WvbdStartDispatcher(wvbd_device, thread_count);
+  err = WnbdStartDispatcher(wnbd_device, thread_count);
   if (err) {
-      derr << "Could not start WVBD dispatcher. Error: " << err << dendl;
+      derr << "Could not start WNBD dispatcher. Error: " << err << dendl;
   }
 
 exit:
   return err;
 }
 
-std::ostream &operator<<(std::ostream &os, const WvbdHandler::IOContext &ctx) {
+std::ostream &operator<<(std::ostream &os, const WnbdHandler::IOContext &ctx) {
 
   os << "[" << std::hex << ctx.req_handle;
 
   switch (ctx.req_type)
   {
-  case WvbdReqTypeRead:
+  case WnbdReqTypeRead:
     os << " READ ";
     break;
-  case WvbdReqTypeWrite:
+  case WnbdReqTypeWrite:
     os << " WRITE ";
     break;
-  case WvbdReqTypeFlush:
+  case WnbdReqTypeFlush:
     os << " FLUSH ";
     break;
-  case WvbdReqTypeUnmap:
+  case WnbdReqTypeUnmap:
     os << " TRIM ";
     break;
   default:
