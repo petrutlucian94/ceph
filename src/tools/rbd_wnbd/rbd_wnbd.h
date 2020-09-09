@@ -63,6 +63,7 @@ struct Config {
 
   WnbdLogLevel wnbd_log_level = WnbdLogLevelInfo;
   int wnbd_thread_count = 8;
+  int wnbd_max_xfer_len = RBD_WNBD_MAX_TRANSFER_DEFAULT;
 };
 
 enum Command {

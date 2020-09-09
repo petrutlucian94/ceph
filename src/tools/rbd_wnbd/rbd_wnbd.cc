@@ -659,7 +659,8 @@ static int do_map(Config *cfg)
                             RBD_WNBD_BLKSIZE,
                             cfg->readonly,
                             cfg->wnbd_thread_count,
-                            cfg->wnbd_log_level);
+                            cfg->wnbd_log_level,
+                            cfg->wnbd_max_xfer_len);
 
   cout << cfg->devpath << std::endl;
 
@@ -930,6 +931,17 @@ static int parse_args(std::vector<const char*>& args,
       }
       if (cfg->wnbd_thread_count < 0) {
         *err_msg << "rbd-nbd: Invalid argument for wnbd_thread_count";
+        return -EINVAL;
+      }
+    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->wnbd_max_xfer_len,
+                                     err, "--wnbd_max_xfer_len", (char *)NULL)) {
+      if (!err.str().empty()) {
+        *err_msg << "rbd-nbd: " << err.str();
+        return -EINVAL;
+      }
+      if (cfg->wnbd_max_xfer_len < 0 ||
+          cfg->wnbd_max_xfer_len > RBD_WNBD_MAX_TRANSFER_LIMIT) {
+        *err_msg << "rbd-nbd: Invalid argument for wnbd_max_xfer_len";
         return -EINVAL;
       }
     } else {

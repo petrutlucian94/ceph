@@ -12,8 +12,10 @@
 
 #include "global/global_context.h"
 
-// TODO: make this configurable.
-#define RBD_WNBD_MAX_TRANSFER 2 * 1024 * 1024
+// The maximum allowed value for the configurable transfer limit.
+// Transfers larger than 16MB may not be handled properly by Storport.
+#define RBD_WNBD_MAX_TRANSFER_DEFAULT 2 * 1024 * 1024
+#define RBD_WNBD_MAX_TRANSFER_LIMIT 16 * 1024 * 1024
 
 // Not defined by mingw.
 #ifndef SCSI_ADSENSE_UNRECOVERED_ERROR
@@ -56,13 +58,15 @@ private:
   uint32_t thread_count;
   WnbdAdminHook* admin_hook;
   WnbdLogLevel wnbd_log_level;
+  uint32_t wnbd_max_xfer_len;
 
 public:
   WnbdHandler(librbd::Image& _image, std::string _instance_name,
               uint32_t _block_count, uint32_t _block_size,
               bool _readonly,
               uint32_t _thread_count,
-              WnbdLogLevel _wnbd_log_level)
+              WnbdLogLevel _wnbd_log_level,
+              uint32_t _wnbd_max_xfer_len)
     : image(_image)
     , instance_name(_instance_name)
     , block_count(_block_count)
@@ -70,6 +74,7 @@ public:
     , readonly(_readonly)
     , thread_count(_thread_count)
     , wnbd_log_level(_wnbd_log_level)
+    , wnbd_max_xfer_len(_wnbd_max_xfer_len)
   {
     admin_hook = new WnbdAdminHook(this);
   }

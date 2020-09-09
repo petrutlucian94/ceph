@@ -185,7 +185,7 @@ void WnbdHandler::Read(
   ctx->req_type = WnbdReqTypeRead;
   ctx->req_from = BlockAddress * BlockSize;
 
-  ceph_assert(ctx->req_size <= RBD_WNBD_MAX_TRANSFER);
+  ceph_assert(ctx->req_size <= handler->wnbd_max_xfer_len);
   dout(20) << *ctx << ": start" << dendl;
 
   librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(ctx, aio_callback);
@@ -250,7 +250,7 @@ int WnbdHandler::start()
 
   wnbd_props.BlockCount = block_count;
   wnbd_props.BlockSize = block_size;
-  wnbd_props.MaxTransferLength = RBD_WNBD_MAX_TRANSFER;
+  wnbd_props.MaxTransferLength = wnbd_max_xfer_len;
   // TODO: flush/unmap
   wnbd_props.Flags.ReadOnly = readonly;
   wnbd_props.Flags.FlushSupported = 0;
