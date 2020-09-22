@@ -213,6 +213,7 @@ if [[ -n $BUILD_ZIP ]]; then
     # Include the README file in the archive
     ln -s $CEPH_DIR/README.windows.rst $ZIP_TMPDIR/ceph/README.windows.rst
     cd $ZIP_TMPDIR
+    [[ -f $ZIP_DEST ]] && rm $ZIP_DEST
     zip -r $ZIP_DEST ceph
     cd -
     rm -rf $ZIP_TMPDIR/ceph/README.windows.rst $ZIP_TMPDIR
