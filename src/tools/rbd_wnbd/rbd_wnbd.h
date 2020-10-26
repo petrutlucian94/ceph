@@ -55,6 +55,7 @@ struct Config {
   bool hard_disconnect = false;
   int soft_disconnect_timeout = DEFAULT_SOFT_REMOVE_TIMEOUT;
   bool hard_disconnect_fallback = true;
+  bool skip_disabling_adapter = false;
 
   // TODO: consider moving those fields to a separate structure. Those
   // provide connection information without actually being configurable.

@@ -536,23 +536,47 @@ class RBDService : public ServiceBase {
     bool hard_disconnect;
     int soft_disconnect_timeout;
     int thread_count;
+    bool skip_disabling_adapter;
 
   public:
     RBDService(bool _hard_disconnect,
                int _soft_disconnect_timeout,
-               int _thread_count)
+               int _thread_count,
+               bool _skip_disabling_adapter)
       : ServiceBase(g_ceph_context)
       , hard_disconnect(_hard_disconnect)
       , soft_disconnect_timeout(_soft_disconnect_timeout)
       , thread_count(_thread_count)
+      , skip_disabling_adapter(_skip_disabling_adapter)
     {
     }
 
     int run_hook() override {
+      if (!skip_disabling_adapter) {
+        DWORD err = WnbdSetOption(
+          "NewMappingsAllowed",
+          {.Type = WnbdOptBool, .Data.AsBool = TRUE }, FALSE);
+        if (err) {
+          derr << "Couldn't enable WNBD 'NewMappingsAllowed' setting. "
+               << "Error: " << err << dendl;
+          return err;
+        }
+      }
+
       return restart_registered_mappings(thread_count);
     }
     // Invoked when the service is requested to stop.
     int stop_hook() override {
+      if (!skip_disabling_adapter) {
+        DWORD err = WnbdSetOption(
+          "NewMappingsAllowed",
+          {.Type = WnbdOptBool, .Data.AsBool = FALSE }, FALSE);
+        if (err) {
+          derr << "Couldn't disable WNBD 'NewMappingsAllowed' setting. "
+               << "Error: " << err << dendl;
+        }
+      }
+
       return disconnect_all_mappings(
         false, hard_disconnect, soft_disconnect_timeout, thread_count);
     }
@@ -599,6 +623,10 @@ Service options:
                               disconnect will be issuedwhen hitting the timeout.
   --service-thread-count      The number of workers used when mapping or
                               unmapping images. Default: 8
+  --skip-disabling-adapter    By default, the WNBD driver is configured to
+                              reject new mappings when the rbd-wnbd service
+                              stops. This parameter allows bypassing this
+                              behavior.
 
 Show|List options:
   --format plain|json|xml Output format (default: plain)
@@ -1063,6 +1091,9 @@ static int parse_args(std::vector<const char*>& args,
         *err_msg << "rbd-nbd: Invalid argument for soft-disconnect-timeout";
         return -EINVAL;
       }
+    } else if (ceph_argparse_flag(args, i,
+                                  "--skip-disabling-adapter", (char *)NULL)) {
+      cfg->skip_disabling_adapter = true;
     } else {
       ++i;
     }
