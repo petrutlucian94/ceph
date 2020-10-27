@@ -19,6 +19,8 @@
 #include <rpc.h>
 #include <ddk/scsi.h>
 
+#include <boost/thread/tss.hpp>
+
 #include "common/debug.h"
 #include "common/errno.h"
 #include "common/safe_io.h"
@@ -33,10 +35,14 @@ WnbdHandler::~WnbdHandler()
     dout(10) << __func__ << ": terminating" << dendl;
 
     shutdown();
+    reply_tpool->join();
 
     WnbdClose(wnbd_disk);
 
     started = false;
+
+    delete reply_tpool;
+    delete admin_hook;
   }
 }
 
@@ -117,8 +123,7 @@ void WnbdHandler::aio_callback(librbd::completion_t cb, void *arg)
   librbd::RBD::AioCompletion *aio_completion =
     reinterpret_cast<librbd::RBD::AioCompletion*>(cb);
 
-  std::unique_ptr<WnbdHandler::IOContext> ctx{
-    static_cast<WnbdHandler::IOContext*>(arg)};
+  WnbdHandler::IOContext* ctx = static_cast<WnbdHandler::IOContext*>(arg);
   int ret = aio_completion->get_return_value();
 
   dout(20) << __func__ << ": " << *ctx << dendl;
@@ -147,24 +152,75 @@ void WnbdHandler::aio_callback(librbd::completion_t cb, void *arg)
     ctx->err_code = 0;
   }
 
-  ctx->handler->send_io_response(ctx.get());
+  boost::asio::post(
+    *ctx->handler->reply_tpool,
+    [&, ctx]()
+    {
+      ctx->handler->send_io_response(ctx);
+    });
 
   aio_completion->release();
 }
 
 void WnbdHandler::send_io_response(WnbdHandler::IOContext *ctx) {
+  std::unique_ptr<WnbdHandler::IOContext> pctx{ctx};
+  ceph_assert(WNBD_DEFAULT_MAX_TRANSFER_LENGTH >= pctx->data.length());
+
   WNBD_IO_RESPONSE wnbd_rsp = {0};
-  wnbd_rsp.RequestHandle = ctx->req_handle;
-  wnbd_rsp.RequestType = ctx->req_type;
-  wnbd_rsp.Status = ctx->wnbd_status;
+  wnbd_rsp.RequestHandle = pctx->req_handle;
+  wnbd_rsp.RequestType = pctx->req_type;
+  wnbd_rsp.Status = pctx->wnbd_status;
+  int err = 0;
 
-  ceph_assert(WNBD_DEFAULT_MAX_TRANSFER_LENGTH >= ctx->data.length());
+  // Use TLS to store an overlapped structure so that we avoid
+  // recreating one each time we send a reply.
+  static boost::thread_specific_ptr<OVERLAPPED> overlapped_tls(
+    // Cleanup routine
+    [](LPOVERLAPPED p_overlapped)
+    {
+      if (p_overlapped->hEvent) {
+        CloseHandle(p_overlapped->hEvent);
+      }
+      delete p_overlapped;
+    });
 
-  WnbdSendResponse(
-    ctx->handler->wnbd_disk,
+  LPOVERLAPPED overlapped = overlapped_tls.get();
+  if (!overlapped)
+  {
+    overlapped = new OVERLAPPED{0};
+    HANDLE overlapped_evt = CreateEventA(0, TRUE, TRUE, NULL);
+    if (!overlapped_evt) {
+      err = GetLastError();
+      derr << "Could not create event. Error: " << err << dendl;
+      return;
+    }
+
+    overlapped->hEvent = overlapped_evt;
+    overlapped_tls.reset(overlapped);
+  }
+
+  if (!ResetEvent(overlapped->hEvent)) {
+    err = GetLastError();
+    derr << "Could not reset event. Error: " << err << dendl;
+    return;
+  }
+
+  err = WnbdSendResponseEx(
+    pctx->handler->wnbd_disk,
     &wnbd_rsp,
-    ctx->data.c_str(),
-    ctx->data.length());
+    pctx->data.c_str(),
+    pctx->data.length(),
+    overlapped);
+  if (err == ERROR_IO_PENDING) {
+    DWORD returned_bytes = 0;
+    err = 0;
+    if (!GetOverlappedResult(pctx->handler->wnbd_disk, overlapped,
+                             &returned_bytes, TRUE)) {
+      err = GetLastError();
+      derr << "Could not send response. Request id: " << wnbd_rsp.RequestHandle
+           << ". Error: " << err << dendl;
+    }
+  }
 }
 
 void WnbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc, uint64_t info)

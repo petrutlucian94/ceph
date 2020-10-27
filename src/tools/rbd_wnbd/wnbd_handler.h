@@ -71,6 +71,7 @@ private:
   bool rbd_cache_enabled;
   uint32_t thread_count;
   WnbdAdminHook* admin_hook;
+  boost::asio::thread_pool* reply_tpool;
 
 public:
   WnbdHandler(librbd::Image& _image, std::string _instance_name,
@@ -86,6 +87,7 @@ public:
     , thread_count(_thread_count)
   {
     admin_hook = new WnbdAdminHook(this);
+    reply_tpool = new boost::asio::thread_pool(_thread_count);
   }
 
   int start();
