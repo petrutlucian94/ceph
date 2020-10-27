@@ -388,7 +388,7 @@ int WnbdHandler::start()
 
   started = true;
 
-  err = WnbdStartDispatcher(wnbd_disk, thread_count);
+  err = WnbdStartDispatcher(wnbd_disk, io_req_workers);
   if (err) {
       derr << "Could not start WNBD dispatcher. Error: " << err << dendl;
   }

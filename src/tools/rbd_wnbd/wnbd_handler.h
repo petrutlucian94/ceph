@@ -28,7 +28,7 @@
 #define RBD_WNBD_MAX_TRANSFER 2 * 1024 * 1024
 #define SOFT_REMOVE_RETRY_INTERVAL 2
 #define DEFAULT_SOFT_REMOVE_TIMEOUT 15
-#define DEFAULT_WNBD_THREAD_COUNT 4
+#define DEFAULT_IO_WORKER_COUNT 4
 
 // Not defined by mingw.
 #ifndef SCSI_ADSENSE_UNRECOVERED_ERROR
@@ -69,7 +69,8 @@ private:
   uint32_t block_size;
   bool readonly;
   bool rbd_cache_enabled;
-  uint32_t thread_count;
+  uint32_t io_req_workers;
+  uint32_t io_reply_workers;
   WnbdAdminHook* admin_hook;
   boost::asio::thread_pool* reply_tpool;
 
@@ -77,17 +78,19 @@ public:
   WnbdHandler(librbd::Image& _image, std::string _instance_name,
               uint32_t _block_count, uint32_t _block_size,
               bool _readonly, bool _rbd_cache_enabled,
-              uint32_t _thread_count)
+              uint32_t _io_req_workers,
+              uint32_t _io_reply_workers)
     : image(_image)
     , instance_name(_instance_name)
     , block_count(_block_count)
     , block_size(_block_size)
     , readonly(_readonly)
     , rbd_cache_enabled(_rbd_cache_enabled)
-    , thread_count(_thread_count)
+    , io_req_workers(_io_req_workers)
+    , io_reply_workers(_io_reply_workers)
   {
     admin_hook = new WnbdAdminHook(this);
-    reply_tpool = new boost::asio::thread_pool(_thread_count);
+    reply_tpool = new boost::asio::thread_pool(_io_reply_workers);
   }
 
   int start();

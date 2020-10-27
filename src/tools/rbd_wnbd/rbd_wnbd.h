@@ -68,7 +68,8 @@ struct Config {
   std::string admin_sock_path;
 
   WnbdLogLevel wnbd_log_level = WnbdLogLevelInfo;
-  int wnbd_thread_count = DEFAULT_WNBD_THREAD_COUNT;
+  int io_req_workers = DEFAULT_IO_WORKER_COUNT;
+  int io_reply_workers = DEFAULT_IO_WORKER_COUNT;
   int service_thread_count = DEFAULT_SERVICE_THREAD_COUNT;
 };
 

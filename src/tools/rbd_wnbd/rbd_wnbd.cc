@@ -565,7 +565,9 @@ Map options:
   --device <device path>  Optional mapping unique identifier
   --exclusive             Forbid writes by other clients
   --read-only             Map read-only
-  --wnbd-thread-count     The number of WNBD workers that dispatch IO operations
+  --io-req-workers        The number of workers that dispatch IO requests.
+                          Default: 4
+  --io-reply-workers      The number of workers that dispatch IO replies.
                           Default: 4
 
 Unmap options:
@@ -743,7 +745,8 @@ static int do_map(Config *cfg)
                             RBD_WNBD_BLKSIZE,
                             !cfg->snapname.empty() || cfg->readonly,
                             g_conf().get_val<bool>("rbd_cache"),
-                            cfg->wnbd_thread_count);
+                            cfg->io_req_workers,
+                            cfg->io_reply_workers);
 
   cout << cfg->devpath << std::endl;
 
@@ -1052,14 +1055,24 @@ static int parse_args(std::vector<const char*>& args,
         *err_msg << "rbd-nbd: Invalid argument for wnbd-log-level";
         return -EINVAL;
       }
-    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->wnbd_thread_count,
-                                     err, "--wnbd-thread-count", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->io_req_workers,
+                                     err, "--io-req-workers", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "rbd-nbd: " << err.str();
         return -EINVAL;
       }
-      if (cfg->wnbd_thread_count <= 0) {
-        *err_msg << "rbd-nbd: Invalid argument for wnbd-thread-count";
+      if (cfg->io_req_workers <= 0) {
+        *err_msg << "rbd-nbd: Invalid argument for io-req-workers";
+        return -EINVAL;
+      }
+    }  else if (ceph_argparse_witharg(args, i, (int*)&cfg->io_reply_workers,
+                                     err, "--io-reply-workers", (char *)NULL)) {
+      if (!err.str().empty()) {
+        *err_msg << "rbd-nbd: " << err.str();
+        return -EINVAL;
+      }
+      if (cfg->io_reply_workers <= 0) {
+        *err_msg << "rbd-nbd: Invalid argument for io-reply-workers";
         return -EINVAL;
       }
     } else if (ceph_argparse_witharg(args, i, (int*)&cfg->service_thread_count,
