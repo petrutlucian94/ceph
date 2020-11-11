@@ -166,7 +166,6 @@ if [[ -z $SKIP_BUILD ]]; then
     make_targets["src/tools"]="ceph-conf ceph_radosacl ceph_scratchtool rados"
     make_targets["src/tools/immutable_object_cache"]="all"
     make_targets["src/tools/rbd"]="all"
-    make_targets["src/tools/rbd_mirror"]="all"
     make_targets["src/tools/rbd_wnbd"]="all"
     make_targets["src/compressor"]="all"
     if [[ -z $SKIP_TESTS ]]; then
