@@ -2924,7 +2924,7 @@ extern "C" int LIBRADOS_C_API_BASE_DEFAULT_F(rados_notify2)(rados_ioctx_t io, co
 }
 LIBRADOS_C_API_BASE_DEFAULT(rados_notify2);
 
-extern "C" int _rados_decode_notify_response(char *reply_buffer, size_t reply_buffer_len,
+extern "C" int LIBRADOS_C_API_BASE_DEFAULT_F(rados_decode_notify_response)(char *reply_buffer, size_t reply_buffer_len,
                                              struct notify_ack_t **acks, size_t *nr_acks,
                                              struct notify_timeout_t **timeouts, size_t *nr_timeouts) {
   if (!reply_buffer || !reply_buffer_len) {
@@ -2976,8 +2976,9 @@ extern "C" int _rados_decode_notify_response(char *reply_buffer, size_t reply_bu
 LIBRADOS_C_API_BASE_DEFAULT(rados_decode_notify_response);
 
 
-extern "C" void _rados_free_notify_response(struct notify_ack_t *acks, size_t nr_acks,
-                                            struct notify_timeout_t *timeouts) {
+extern "C" void LIBRADOS_C_API_BASE_DEFAULT_F(rados_free_notify_response)(
+    struct notify_ack_t *acks, size_t nr_acks,
+    struct notify_timeout_t *timeouts) {
   for (uint64_t n = 0; n < nr_acks; ++n) {
     assert(acks);
     if (acks[n].payload) {
