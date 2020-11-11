@@ -24,8 +24,8 @@ curlSrcDir="${depsSrcDir}/curl"
 curlDir="${depsToolsetDir}/curl"
 
 # For now, we'll keep the version number within the file path when not using git.
-boostUrl="https://dl.bintray.com/boostorg/release/1.70.0/source/boost_1_70_0.tar.gz"
-boostSrcDir="${depsSrcDir}/boost_1_70_0"
+boostUrl="https://dl.bintray.com/boostorg/release/1.73.0/source/boost_1_73_0.tar.gz"
+boostSrcDir="${depsSrcDir}/boost_1_73_0"
 boostDir="${depsToolsetDir}/boost"
 zlibDir="${depsToolsetDir}/zlib"
 zlibSrcDir="${depsSrcDir}/zlib"
