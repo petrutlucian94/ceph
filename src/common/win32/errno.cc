@@ -575,14 +575,17 @@ std::string win32_strerror(int err)
     (LPSTR) &msg,
     0,
     NULL);
+
+  std::ostringstream msg_stream;
+  msg_stream << "(" << err << ") ";
   if (!msg_len) {
-    std::ostringstream msg_stream;
-    msg_stream << "Unknown error (" << err << ").";
-    return msg_stream.str();
+    msg_stream << "Unknown error";
   }
-  std::string msg_s(msg);
-  ::LocalFree(msg);
-  return msg_s;
+  else {
+    msg_stream << msg;
+    ::LocalFree(msg);
+  }
+  return msg_stream.str();
 }
 
 std::string win32_lasterror_str()
