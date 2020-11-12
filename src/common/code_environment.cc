@@ -79,6 +79,35 @@ int get_process_name(char *buf, int len)
   return 0;
 }
 
+#elif defined(_WIN32)
+
+int get_process_name(char *buf, int len)
+{
+  if (len <= 0) {
+    return -EINVAL;
+  }
+
+  char location[MAX_PATH + 1];
+  int length = GetModuleFileNameA(nullptr, location, sizeof(location) - 1);
+  if (length <= 0)
+    return -ENOSYS;
+  if (length == sizeof(location) - 1)
+    location[length] = '\0';
+
+  char* start = strrchr(location, '\\');
+  if (!start)
+    return -ENOSYS;
+  start++;
+  char* end = strstr(start, ".exe");
+  if (!end)
+    return -ENOSYS;
+  *end = '\0';
+
+  strncpy(buf, start, len - 1);
+  buf[len - 1] = '\0';
+  return 0;
+}
+
 #else
 
 int get_process_name(char *buf, int len)
