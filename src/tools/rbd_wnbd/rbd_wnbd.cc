@@ -248,7 +248,7 @@ bool WNBDDiskIterator::get(Config *cfg)
 // Spawn a subprocess using the specified command line, which is expected
 // to be a "rbd-wnbd map" command. A pipe is passed to the child process,
 // which will allow it to communicate the mapping status
-bool map_device_using_suprocess(std::string command_line)
+int map_device_using_suprocess(std::string command_line)
 {
   SECURITY_ATTRIBUTES sa;
   STARTUPINFO si;
@@ -256,7 +256,8 @@ bool map_device_using_suprocess(std::string command_line)
   HANDLE read_pipe = NULL, write_pipe = NULL;
   char buffer[4096];
   char ch;
-  DWORD exit_code = 0, err = 0, ret = 0;
+  DWORD err = 0, ret = 0;
+  int exit_code = 0;
 
   dout(5) << __func__ << ": command_line: " << command_line << dendl;
 
@@ -275,7 +276,7 @@ bool map_device_using_suprocess(std::string command_line)
   if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
     err = GetLastError();
     derr << "CreatePipe failed: " << win32_strerror(err) << dendl;
-    exit_code = -1;
+    exit_code = -ECHILD;
     goto finally;
   }
 
@@ -289,7 +290,7 @@ bool map_device_using_suprocess(std::string command_line)
   if ((uint64_t) ret > sizeof(buffer))
   {
     derr << "Command too long: " << command_line.c_str() << dendl;
-    exit_code = -1;
+    exit_code = -EINVAL;
     goto finally;
   }
 
@@ -298,7 +299,7 @@ bool map_device_using_suprocess(std::string command_line)
                      NULL, NULL, &si, &pi)) {
     err = GetLastError();
     derr << "CreateProcess failed: " << win32_strerror(err) << dendl;
-    exit_code = -1;
+    exit_code = -ECHILD;
     goto finally;
   }
 
@@ -310,16 +311,22 @@ bool map_device_using_suprocess(std::string command_line)
   dout(5) << __func__ << ": waiting for child notification." << dendl;
   if (!ReadFile(read_pipe, &ch, 1, NULL, NULL)) {
     err = GetLastError();
-    derr << "Failed to read from child: " << win32_strerror(err) << dendl;
+    derr << "Could not start RBD daemon. Receiving child process reply "
+            "failed with: " << win32_strerror(err) << dendl;
+
+    // Give the child process a chance to exit so that we can retrieve the
+    // exit code.
+    WaitForSingleObject(pi.hProcess, 5000);
     if (!is_process_running(pi.dwProcessId)) {
-        GetExitCodeProcess(pi.hProcess, &exit_code);
-        derr << "Child failed with exit code: " << exit_code << dendl;
+        GetExitCodeProcess(pi.hProcess, (PDWORD)&exit_code);
+        derr << "Daemon failed with: " << cpp_strerror(exit_code) << dendl;
     }
     // The process closed the pipe without notifying us or exiting.
     // This is quite unlikely, but we'll terminate the process.
     else {
       dout(5) << "Terminating unresponsive process." << dendl;
       TerminateProcess(pi.hProcess, 1);
+      exit_code = -EINVAL;
     }
   }
   else {
@@ -1220,7 +1227,7 @@ static int rbd_wnbd(int argc, const char *argv[])
       }
       r = do_map(&cfg);
       if (r < 0)
-        return -EINVAL;
+        return r;
       break;
     case Disconnect:
       if (construct_devpath_if_missing(&cfg)) {
@@ -1233,15 +1240,15 @@ static int rbd_wnbd(int argc, const char *argv[])
     case List:
       r = do_list_mapped_devices(cfg.format, cfg.pretty_format);
       if (r < 0)
-        return -EINVAL;
+        return r;
       break;
     case Show:
       if (construct_devpath_if_missing(&cfg)) {
-        return -EINVAL;
+        return r;
       }
       r = do_show_mapped_device(cfg.format, cfg.pretty_format, cfg.devpath);
       if (r < 0)
-        return -EINVAL;
+        return r;
       break;
     case Service:
     {
@@ -1250,7 +1257,7 @@ static int rbd_wnbd(int argc, const char *argv[])
       // This call will block until the service stops.
       r = RBDService::initialize(&service);
       if (r < 0)
-        return -EINVAL;
+        return r;
       break;
     }
     case Stats:

@@ -94,7 +94,7 @@ int disconnect_all_mappings(
   int soft_disconnect_timeout,
   int worker_count);
 int restart_registered_mappings(int worker_count);
-bool map_device_using_suprocess(std::string command_line);
+int map_device_using_suprocess(std::string command_line);
 
 int construct_devpath_if_missing(Config* cfg);
 int save_config_to_registry(Config* cfg);
