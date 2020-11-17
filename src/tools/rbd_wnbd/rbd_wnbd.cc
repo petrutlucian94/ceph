@@ -771,6 +771,7 @@ static int do_map(Config *cfg)
                             g_conf().get_val<bool>("rbd_cache"),
                             cfg->io_req_workers,
                             cfg->io_reply_workers);
+  handler->start();
 
   cout << cfg->devpath << std::endl;
 
@@ -791,7 +792,6 @@ static int do_map(Config *cfg)
     global_init_postfork_finish(g_ceph_context);
   }
 
-  handler->start();
   handler->wait();
   handler->shutdown();
 
