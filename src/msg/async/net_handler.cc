@@ -171,7 +171,8 @@ void NetHandler::set_priority(int sd, int prio, int domain)
 int NetHandler::generic_connect(const entity_addr_t& addr, const entity_addr_t &bind_addr, bool nonblock)
 {
   int ret;
-  int s = create_socket(addr.get_family());
+  int s = create_socket(addr.get_family(),
+                        cct->_conf.get_val<bool>("ms_connect_reuseaddr"));
   if (s < 0)
     return s;
 

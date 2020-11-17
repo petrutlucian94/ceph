@@ -1050,6 +1050,10 @@ std::vector<Option> get_global_options() {
   #endif
     .set_description("Number of attempts to make while bind(2)ing to a port"),
 
+    Option("ms_connect_reuseaddr", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Use SO_REAUSEADDR when establishing connections."),
+
     Option("ms_bind_retry_delay", Option::TYPE_INT, Option::LEVEL_ADVANCED)
   #if !defined(__FreeBSD__)
     .set_default(5)
