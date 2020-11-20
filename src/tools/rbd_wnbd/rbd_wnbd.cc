@@ -1152,6 +1152,8 @@ static int parse_args(std::vector<const char*>& args,
       cmd = Service;
     } else if (strcmp(*args.begin(), "stats") == 0) {
       cmd = Stats;
+    } else if (strcmp(*args.begin(), "help") == 0) {
+      return HELP_INFO;
     } else {
       *err_msg << "rbd-wnbd: unknown command: " <<  *args.begin();
       return -EINVAL;
