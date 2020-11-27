@@ -42,6 +42,11 @@ wnbdTag="master"
 wnbdSrcDir="${depsSrcDir}/wnbd"
 wnbdLibDir="${depsToolsetDir}/wnbd/lib"
 
+dokanUrl="https://github.com/dokan-dev/dokany"
+dokanTag="v1.3.1.1000"
+dokanSrcDir="${depsSrcDir}/dokany"
+dokanLibDir="${depsToolsetDir}/dokany/lib"
+
 # Allow for OS specific customizations through the OS flag (normally
 # passed through from win32_build).
 # Valid options are currently "ubuntu" and "suse".
@@ -381,3 +386,19 @@ $MINGW_DLLTOOL -d $winLibDir/mswsock.def \
                -l $winLibDir/libmswsock.a
 
 touch $depsToolsetDir/completed
+
+cd $depsSrcDir
+if [[ ! -d $dokanSrcDir ]]; then
+    git clone $dokanUrl
+fi
+cd $dokanSrcDir
+git checkout $dokanTag
+
+mkdir -p $dokanLibDir
+$MINGW_DLLTOO -d $dokanSrcDir/dokan/dokan.def \
+              -l $dokanLibDir/libdokan.a
+
+# That's probably the easiest way to deal with the dokan imports.
+# dokan.h is defined in both ./dokan and ./sys while both are using
+# sys/public.h without the "sys" prefix.
+cp $dokanSrcDir/sys/public.h $dokanSrcDir/dokan
