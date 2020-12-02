@@ -465,7 +465,7 @@ LIBRADOS_C_API_BASE_DEFAULT(rados_blocklist_add);
 extern "C" int LIBRADOS_C_API_BASE_DEFAULT_F(rados_blacklist_add)(rados_t cluster, char *client_address,
 				    uint32_t expire_seconds)
 {
-  return _rados_blocklist_add(cluster, client_address, expire_seconds);
+  return LIBRADOS_C_API_BASE_DEFAULT_F(rados_blocklist_add)(cluster, client_address, expire_seconds);
 }
 LIBRADOS_C_API_BASE_DEFAULT(rados_blacklist_add);
 
