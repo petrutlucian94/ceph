@@ -67,7 +67,7 @@ mkdir -p $depsSrcDir
 
 case "$OS" in
     ubuntu)
-        sudo apt-get update
+        sudo apt-get update --allow-unauthenticated
         sudo apt-get -y install mingw-w64 cmake pkg-config python3-dev python3-pip \
                 autoconf libtool ninja-build zip
         sudo python3 -m pip install cython
@@ -397,6 +397,17 @@ git checkout $dokanTag
 mkdir -p $dokanLibDir
 $MINGW_DLLTOOL -d $dokanSrcDir/dokan/dokan.def \
                -l $dokanLibDir/libdokan.a
+
+cd $depsSrcDir
+if [[ ! -d $wnbdSrcDir ]]; then
+    git clone $wnbdUrl
+    cd $wnbdSrcDir && git checkout $wnbdTag
+fi
+cd $wnbdSrcDir
+mkdir -p $wnbdLibDir
+$MINGW_DLLTOOL -d $wnbdSrcDir/libwnbd/libwnbd.def \
+               -D libwnbd.dll \
+               -l $wnbdLibDir/libwnbd.a
 
 # That's probably the easiest way to deal with the dokan imports.
 # dokan.h is defined in both ./dokan and ./sys while both are using
