@@ -395,8 +395,8 @@ cd $dokanSrcDir
 git checkout $dokanTag
 
 mkdir -p $dokanLibDir
-$MINGW_DLLTOO -d $dokanSrcDir/dokan/dokan.def \
-              -l $dokanLibDir/libdokan.a
+$MINGW_DLLTOOL -d $dokanSrcDir/dokan/dokan.def \
+               -l $dokanLibDir/libdokan.a
 
 # That's probably the easiest way to deal with the dokan imports.
 # dokan.h is defined in both ./dokan and ./sys while both are using
