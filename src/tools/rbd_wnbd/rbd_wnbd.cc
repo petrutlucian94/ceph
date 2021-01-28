@@ -309,8 +309,7 @@ int send_map_request(std::string arguments) {
 // which will allow it to communicate the mapping status
 int map_device_using_suprocess(std::string arguments)
 {
-  SECURITY_ATTRIBUTES sa;
-  STARTUPINFO si;
+  STARTUPINFOEX si = { 0 };
   PROCESS_INFORMATION pi;
   HANDLE read_pipe = NULL, write_pipe = NULL;
   char ch;
@@ -321,13 +320,16 @@ int map_device_using_suprocess(std::string arguments)
   // We may get a command line containing an old pipe handle when
   // recreating mappings, so we'll have to replace it.
   std::regex pipe_pattern("([\'\"]?--pipe-handle[\'\"]? [\'\"]?\\d+[\'\"]?)");
+  SIZE_T attr_list_sz = 0;
+  LPPROC_THREAD_ATTRIBUTE_LIST attr_list = NULL;
+  bool attr_list_initialized = false;
 
   // Set the security attribute such that a process created will
   // inherit the pipe handles.
+  SECURITY_ATTRIBUTES sa;
   sa.nLength = sizeof(sa);
   sa.lpSecurityDescriptor = NULL;
   sa.bInheritHandle = TRUE;
-
   // Create an anonymous pipe to communicate with the child. */
   if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
     err = GetLastError();
@@ -350,11 +352,47 @@ int map_device_using_suprocess(std::string arguments)
 
   dout(5) << __func__ << ": command line: " << command_line.str() << dendl;
 
-  GetStartupInfo(&si);
+  // Get the buffer size required by the attribute list used
+  // for filtering the handles that the child process will inherit.
+  // If we don't filter them, the same handles can be inherited by
+  // multiple child processes and reading from the pipe can hang when
+  // the daemon exits before writing back.
+  InitializeProcThreadAttributeList(NULL, 1, 0, &attr_list_sz);
+  err = GetLastError();
+  if (err != ERROR_INSUFFICIENT_BUFFER) {
+    derr << "InitializeProcThreadAttributeList failed: "
+         << win32_strerror(err) << dendl;
+    exit_code = -ECHILD;
+    goto finally;
+  }
+  attr_list = (LPPROC_THREAD_ATTRIBUTE_LIST) malloc(attr_list_sz);
+  if (!InitializeProcThreadAttributeList(attr_list, 1, 0, &attr_list_sz)) {
+    err = GetLastError();
+    derr << "InitializeProcThreadAttributeList failed: "
+         << win32_strerror(err) << dendl;
+    exit_code = -ECHILD;
+    goto finally;
+  }
+  attr_list_initialized = true;
+
+  if (!UpdateProcThreadAttribute(attr_list,
+        0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+        &write_pipe, sizeof(HANDLE), NULL, NULL)) {
+    err = GetLastError();
+    derr << "UpdateProcThreadAttribute failed: "
+         << win32_strerror(err) << dendl;
+    exit_code = -ECHILD;
+    goto finally;
+  }
+
+  GetStartupInfo(&si.StartupInfo);
+  si.StartupInfo.cb = sizeof(si);
+  si.lpAttributeList = attr_list;
   // Create a detached child
   if (!CreateProcess(NULL, (char*)command_line.str().c_str(),
-                     NULL, NULL, TRUE, DETACHED_PROCESS,
-                     NULL, NULL, &si, &pi)) {
+                     NULL, NULL, TRUE,
+                     DETACHED_PROCESS | EXTENDED_STARTUPINFO_PRESENT,
+                     NULL, NULL, &si.StartupInfo, &pi)) {
     err = GetLastError();
     derr << "CreateProcess failed: " << win32_strerror(err) << dendl;
     exit_code = -ECHILD;
@@ -394,6 +432,12 @@ int map_device_using_suprocess(std::string arguments)
       CloseHandle(write_pipe);
     if (read_pipe)
       CloseHandle(read_pipe);
+    if (attr_list_initialized) {
+      DeleteProcThreadAttributeList(attr_list);
+    }
+    if (attr_list) {
+      free(attr_list);
+    }
   return exit_code;
 }
 
