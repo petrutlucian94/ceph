@@ -148,12 +148,14 @@ int SubProcess::join() {
     if (!GetExitCodeProcess(proc_handle, &status)) {
       errstr << cmd << ": Could not get exit code: " << pid
              << ". Error code: " << GetLastError();
+      status = -ECHILD;
     } else if (status) {
       errstr << cmd << ": exit status: " << status;
     }
   } else {
     errstr << cmd << ": Waiting for child process failed: " << pid
            << ". Error code: " << GetLastError();
+    status = -ECHILD;
   }
 
   close_h(proc_handle);
