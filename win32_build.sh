@@ -93,14 +93,13 @@ curlDir="${depsToolsetDir}/curl"
 boostDir="${depsToolsetDir}/boost"
 zlibDir="${depsToolsetDir}/zlib"
 backtraceDir="${depsToolsetDir}/libbacktrace"
-snappyDir="${depsToolsetDir}/snappy"
 winLibDir="${depsToolsetDir}/windows/lib"
 wnbdSrcDir="${depsSrcDir}/wnbd"
 wnbdLibDir="${depsToolsetDir}/wnbd/lib"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
 
-depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir;$snappyDir"
+depsDirs="$lz4Dir;$curlDir;$sslDir;$boostDir;$zlibDir;$backtraceDir"
 depsDirs+=";$winLibDir"
 
 lz4Lib="${lz4Dir}/lib/dll/liblz4-1.dll"
@@ -193,7 +192,6 @@ if [[ -z $SKIP_BUILD ]]; then
       make_targets["src/tools/immutable_object_cache"]="all"
       make_targets["src/tools/rbd"]="all"
       make_targets["src/tools/rbd_wnbd"]="all"
-      make_targets["src/compressor"]="all"
       make_targets["src"]="cephfs"
       make_targets["src/dokan"]="all"
 
@@ -211,8 +209,6 @@ if [[ -z $SKIP_BUILD ]]; then
       ninja_targets="rados rbd rbd-wnbd "
       ninja_targets+=" ceph-conf ceph-immutable-object-cache"
       ninja_targets+=" cephfs ceph-dokan"
-      # TODO: do we actually need the ceph compression libs?
-      ninja_targets+=" compressor ceph_lz4 ceph_snappy ceph_zlib ceph_zstd"
       if [[ -z $SKIP_TESTS ]]; then
         ninja_targets+=" test ceph_radosacl ceph_scratchtool"
       fi

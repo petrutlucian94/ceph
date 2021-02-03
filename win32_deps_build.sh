@@ -12,9 +12,6 @@ DEPS_DIR="${DEPS_DIR:-$SCRIPT_DIR/build.deps}"
 depsSrcDir="$DEPS_DIR/src"
 depsToolsetDir="$DEPS_DIR/mingw"
 
-lz4SrcDir="${depsSrcDir}/lz4"
-lz4Dir="${depsToolsetDir}/lz4"
-lz4Tag="v1.9.2"
 sslTag="OpenSSL_1_1_1c"
 sslDir="${depsToolsetDir}/openssl"
 sslSrcDir="${depsSrcDir}/openssl"
@@ -31,9 +28,6 @@ zlibDir="${depsToolsetDir}/zlib"
 zlibSrcDir="${depsSrcDir}/zlib"
 backtraceDir="${depsToolsetDir}/libbacktrace"
 backtraceSrcDir="${depsSrcDir}/libbacktrace"
-snappySrcDir="${depsSrcDir}/snappy"
-snappyDir="${depsToolsetDir}/snappy"
-snappyTag="1.1.7"
 # Additional Windows libraries, which aren't provided by Mingw
 winLibDir="${depsToolsetDir}/windows/lib"
 
@@ -97,17 +91,6 @@ _make BINARY_PATH=$zlibDir \
      LIBRARY_PATH=$zlibDir/lib \
      SHARED_MODE=1 \
      -f win32/Makefile.gcc install
-
-cd $depsToolsetDir
-if [[ ! -d $lz4Dir ]]; then
-    git clone https://github.com/lz4/lz4
-    cd $lz4Dir; git checkout $lz4Tag
-fi
-cd $lz4Dir
-_make BUILD_STATIC=no CC=${MINGW_CC%-posix*} \
-      DLLTOOL=${MINGW_DLLTOOL} \
-      WINDRES=${MINGW_WINDRES} \
-      TARGET_OS=Windows_NT
 
 cd $depsSrcDir
 if [[ ! -d $sslSrcDir ]]; then
@@ -323,32 +306,6 @@ cd $backtraceSrcDir/build
              --host ${MINGW_BASE} --enable-host-shared \
              --libdir="$backtraceDir/lib"
 _make LDFLAGS="-no-undefined"
-_make install
-
-cd $depsSrcDir
-if [[ ! -d $snappySrcDir ]]; then
-    git clone https://github.com/google/snappy
-    cd $snappySrcDir && git checkout $snappyTag
-fi
-mkdir -p $snappySrcDir/build
-cd $snappySrcDir/build
-
-cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=ON \
-      -DSNAPPY_BUILD_TESTS=OFF \
-      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
-      ../
-_make
-_make install
-
-cmake -DCMAKE_INSTALL_PREFIX=$snappyDir \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DSNAPPY_BUILD_TESTS=OFF \
-      -DCMAKE_TOOLCHAIN_FILE=$MINGW_CMAKE_FILE \
-      ../
-_make
 _make install
 
 # mswsock.lib is not provided by mingw, so we'll have to generate

@@ -303,7 +303,9 @@ if(WITH_LEVELDB)
   find_file(HAVE_LEVELDB_FILTER_POLICY leveldb/filter_policy.h PATHS ${LEVELDB_INCLUDE_DIR})
 endif(WITH_LEVELDB)
 
-find_package(snappy REQUIRED)
+if (NOT WIN32)
+  find_package(snappy)
+endif()
 
 option(WITH_BROTLI "Brotli compression support" OFF)
 if(WITH_BROTLI)
