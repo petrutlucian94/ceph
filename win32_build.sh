@@ -8,6 +8,16 @@ SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 
 num_vcpus=$(nproc)
 
+USE_MAKE=${USE_MAKE:-}
+if [[ -n $USE_MAKE ]]; then
+  NUM_WORKERS_DEFAULT=$num_vcpus
+  cmakeGenerator="Unix Makefiles"
+else
+  # Use Ninja's default, it might be useful when having few cores.
+  NUM_WORKERS_DEFAULT=$(( $num_vcpus + 2 ))
+  cmakeGenerator="Ninja"
+fi
+
 CEPH_DIR="${CEPH_DIR:-$SCRIPT_DIR}"
 BUILD_DIR="${BUILD_DIR:-${CEPH_DIR}/build}"
 DEPS_DIR="${DEPS_DIR:-$CEPH_DIR/build.deps}"
@@ -20,7 +30,7 @@ SKIP_CMAKE=${SKIP_CMAKE:-}
 SKIP_DLL_COPY=${SKIP_DLL_COPY:-}
 SKIP_TESTS=${SKIP_TESTS:-}
 SKIP_BINDIR_CLEAN=${SKIP_BINDIR_CLEAN:-}
-NUM_WORKERS=${NUM_WORKERS:-$num_vcpus}
+NUM_WORKERS=${NUM_WORKERS:-$NUM_WORKERS_DEFAULT}
 DEV_BUILD=${DEV_BUILD:-}
 # Unless SKIP_ZIP is set, we're preparing an archive that contains the Ceph
 # binaries, debug symbols as well as the required DLLs.
@@ -77,7 +87,6 @@ dbgSymbolDir="$strippedBinDir/${dbgDirname}"
 depsSrcDir="$DEPS_DIR/src"
 depsToolsetDir="$DEPS_DIR/mingw"
 
-generatorUsed="Unix Makefiles"
 lz4Dir="${depsToolsetDir}/lz4"
 sslDir="${depsToolsetDir}/openssl"
 curlDir="${depsToolsetDir}/curl"
@@ -168,7 +177,7 @@ cmake -D CMAKE_PREFIX_PATH=$depsDirs \
       -D WITH_CEPH_DEBUG_MUTEX=$WITH_CEPH_DEBUG_MUTEX \
       -D DOKAN_INCLUDE_DIRS="$dokanSrcDir/dokan" \
       -D DOKAN_LIBRARIES="$dokanLibDir/libdokan.a" \
-      -G "$generatorUsed" \
+      -G "$cmakeGenerator" \
       $CEPH_DIR  2>&1 | tee "${BUILD_DIR}/cmake.log"
 fi # [[ -z $SKIP_CMAKE ]]
 
@@ -176,26 +185,40 @@ if [[ -z $SKIP_BUILD ]]; then
     echo "Building using $NUM_WORKERS workers. Log: ${BUILD_DIR}/build.log"
     echo "" > "${BUILD_DIR}/build.log"
 
-    # We're going to use an associative array having subdirectories as keys
-    # and targets as values.
-    declare -A make_targets
-    make_targets["src/tools"]="ceph-conf rados"
-    make_targets["src/tools/immutable_object_cache"]="all"
-    make_targets["src/tools/rbd"]="all"
-    make_targets["src/tools/rbd_wnbd"]="all"
-    make_targets["src/compressor"]="all"
-    make_targets["src"]="cephfs"
-    make_targets["src/dokan"]="all"
+    if [[ -n $USE_MAKE ]]; then
+      # We're going to use an associative array having subdirectories as keys
+      # and targets as values.
+      declare -A make_targets
+      make_targets["src/tools"]="ceph-conf rados"
+      make_targets["src/tools/immutable_object_cache"]="all"
+      make_targets["src/tools/rbd"]="all"
+      make_targets["src/tools/rbd_wnbd"]="all"
+      make_targets["src/compressor"]="all"
+      make_targets["src"]="cephfs"
+      make_targets["src/dokan"]="all"
 
-    if [[ -z $SKIP_TESTS ]]; then
-      make_targets["src/tools"]+=" ceph_radosacl ceph_scratchtool"
-      make_targets["src/test"]="all"
+      if [[ -z $SKIP_TESTS ]]; then
+        make_targets["src/tools"]+=" ceph_radosacl ceph_scratchtool"
+        make_targets["src/test"]="all"
+      fi
+
+      for target_subdir in "${!make_targets[@]}"; do
+        echo "Building $target_subdir: ${make_targets[$target_subdir]}" | tee -a "${BUILD_DIR}/build.log"
+        make -j $NUM_WORKERS -C $target_subdir ${make_targets[$target_subdir]} 2>&1 | tee -a "${BUILD_DIR}/build.log"
+      done
+    else
+      cd $BUILD_DIR
+      ninja_targets="rados rbd rbd-wnbd "
+      ninja_targets+=" ceph-conf ceph-immutable-object-cache"
+      ninja_targets+=" cephfs ceph-dokan"
+      # TODO: do we actually need the ceph compression libs?
+      ninja_targets+=" compressor ceph_lz4 ceph_snappy ceph_zlib ceph_zstd"
+      if [[ -z $SKIP_TESTS ]]; then
+        ninja_targets+=" test ceph_radosacl ceph_scratchtool"
+      fi
+
+      ninja -v $ninja_targets 2>&1 | tee "${BUILD_DIR}/build.log"
     fi
-
-    for target_subdir in "${!make_targets[@]}"; do
-      echo "Building $target_subdir: ${make_targets[$target_subdir]}" | tee -a "${BUILD_DIR}/build.log"
-      make -j $NUM_WORKERS -C $target_subdir ${make_targets[$target_subdir]} 2>&1 | tee -a "${BUILD_DIR}/build.log"
-    done
 fi
 
 if [[ -z $SKIP_DLL_COPY ]]; then
