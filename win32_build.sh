@@ -21,6 +21,7 @@ SKIP_DLL_COPY=${SKIP_DLL_COPY:-}
 SKIP_TESTS=${SKIP_TESTS:-}
 SKIP_BINDIR_CLEAN=${SKIP_BINDIR_CLEAN:-}
 NUM_WORKERS=${NUM_WORKERS:-$num_vcpus}
+NINJA_BUILD=${NINJA_BUILD:-}
 DEV_BUILD=${DEV_BUILD:-}
 # Unless SKIP_ZIP is set, we're preparing an archive that contains the Ceph
 # binaries, debug symbols as well as the required DLLs.
@@ -77,7 +78,11 @@ dbgSymbolDir="$strippedBinDir/${dbgDirname}"
 depsSrcDir="$DEPS_DIR/src"
 depsToolsetDir="$DEPS_DIR/mingw"
 
-generatorUsed="Unix Makefiles"
+if [[ -n $NINJA_BUILD ]]; then
+  generatorUsed="Ninja"
+else
+  generatorUsed="Unix Makefiles"
+fi
 lz4Dir="${depsToolsetDir}/lz4"
 sslDir="${depsToolsetDir}/openssl"
 curlDir="${depsToolsetDir}/curl"
@@ -171,24 +176,35 @@ if [[ -z $SKIP_BUILD ]]; then
     echo "Building using $NUM_WORKERS workers. Log: ${BUILD_DIR}/build.log"
     echo "" > "${BUILD_DIR}/build.log"
 
-    # We're going to use an associative array having subdirectories as keys
-    # and targets as values.
-    declare -A make_targets
-    make_targets["src/tools"]="ceph-conf rados"
-    make_targets["src/tools/immutable_object_cache"]="all"
-    make_targets["src/tools/rbd"]="all"
-    make_targets["src/tools/rbd_wnbd"]="all"
-    make_targets["src/compressor"]="all"
+    if [[ -n $NINJA_BUILD ]]; then
+      cd $BUILD_DIR
+      ninja_targets="rados rbd rbd-wnbd compressor"
+      ninja_targets+=" ceph-conf ceph-immutable-object-cache "
+      if [[ -z $SKIP_TESTS ]]; then
+        ninja_targets+=" test ceph_radosacl ceph_scratchtool"
+      fi
 
-    if [[ -z $SKIP_TESTS ]]; then
-      make_targets["src/tools"]+=" ceph_radosacl ceph_scratchtool"
-      make_targets["src/test"]="all"
+      ninja -v $ninja_targets 2>&1 | tee "${BUILD_DIR}/build.log"
+    else
+      # We're going to use an associative array having subdirectories as keys
+      # and targets as values.
+      declare -A make_targets
+      make_targets["src/tools"]="ceph-conf rados"
+      make_targets["src/tools/immutable_object_cache"]="all"
+      make_targets["src/tools/rbd"]="all"
+      make_targets["src/tools/rbd_wnbd"]="all"
+      make_targets["src/compressor"]="all"
+
+      if [[ -z $SKIP_TESTS ]]; then
+        make_targets["src/tools"]+=" ceph_radosacl ceph_scratchtool"
+        make_targets["src/test"]="all"
+      fi
+
+      for target_subdir in "${!make_targets[@]}"; do
+        echo "Building $target_subdir: ${make_targets[$target_subdir]}" | tee -a "${BUILD_DIR}/build.log"
+        make -j $NUM_WORKERS -C $target_subdir ${make_targets[$target_subdir]} 2>&1 | tee -a "${BUILD_DIR}/build.log"
+      done
     fi
-
-    for target_subdir in "${!make_targets[@]}"; do
-      echo "Building $target_subdir: ${make_targets[$target_subdir]}" | tee -a "${BUILD_DIR}/build.log"
-      make -j $NUM_WORKERS -C $target_subdir ${make_targets[$target_subdir]} 2>&1 | tee -a "${BUILD_DIR}/build.log"
-    done
 fi
 
 if [[ -z $SKIP_DLL_COPY ]]; then
