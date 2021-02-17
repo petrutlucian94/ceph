@@ -115,7 +115,7 @@ int get_process_name(char *buf, int len)
 
 std::string get_process_name_cpp()
 {
-  char buf[32];
+  char buf[PATH_MAX];
   if (get_process_name(buf, sizeof(buf))) {
     return "(unknown)";
   }
