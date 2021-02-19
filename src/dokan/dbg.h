@@ -2,7 +2,14 @@
 // logging certain flags. Since those can be rather verbose, it's
 // better if we keep them separate.
 
+#ifndef CEPH_DOKAN_DBG_H
+#define CEPH_DOKAN_DBG_H
+
 #include "include/compat.h"
+
+typedef DWORD NTSTATUS;
+// Avoid conflicting COM types, exposed when using C++.
+#define _OLE2_H_
 
 #include <dokan.h>
 
@@ -23,3 +30,5 @@ void PrintOpenParams(
   DWORD CreationDisposition,
   ULONG CreateOptions,
   PDOKAN_FILE_INFO DokanFileInfo);
+
+#endif // CEPH_DOKAN_DBG_H

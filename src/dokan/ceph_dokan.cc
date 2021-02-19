@@ -8,13 +8,14 @@
 #include "include/compat.h"
 #include "include/cephfs/libcephfs.h"
 
+#include "dbg.h"
+#include <ntstatus.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <dokan.h>
 #include <fileinfo.h>
 
-#include "dbg.h"
 #include "posix_acl.h"
 #include "utils.h"
 
@@ -30,15 +31,15 @@
 #define CEPH_DOKAN_IO_DEFAULT_TIMEOUT 1000 * 60 * 5
 
 #define READ_ACCESS_REQUESTED(access_mode) \
-    access_mode & GENERIC_READ || \
-    access_mode & FILE_SHARE_READ || \
-    access_mode & STANDARD_RIGHTS_READ || \
-    access_mode & FILE_SHARE_READ
+    (access_mode & GENERIC_READ || \
+     access_mode & FILE_SHARE_READ || \
+     access_mode & STANDARD_RIGHTS_READ || \
+     access_mode & FILE_SHARE_READ)
 #define WRITE_ACCESS_REQUESTED(access_mode) \
-    access_mode & GENERIC_WRITE || \
-    access_mode & FILE_SHARE_WRITE || \
-    access_mode & STANDARD_RIGHTS_WRITE || \
-    access_mode & FILE_SHARE_WRITE
+    (access_mode & GENERIC_WRITE || \
+     access_mode & FILE_SHARE_WRITE || \
+     access_mode & STANDARD_RIGHTS_WRITE || \
+     access_mode & FILE_SHARE_WRITE)
 
 BOOL g_UseStdErr;
 BOOL g_DebugMode;
@@ -1275,6 +1276,10 @@ main(int argc, char* argv[])
       (PDOKAN_OPERATIONS)malloc(sizeof(DOKAN_OPERATIONS));
   PDOKAN_OPTIONS dokanOptions =
       (PDOKAN_OPTIONS)malloc(sizeof(DOKAN_OPTIONS));
+
+  fprintf(stderr,
+          "WARNING: This is a preview version of ceph-dokan. "
+          "The CLI might change in subsequent versions.\n");
 
   if(argc==2)
   {
