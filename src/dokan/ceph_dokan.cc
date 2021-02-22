@@ -97,10 +97,11 @@ WinCephCreateDirectory(
       return STATUS_ACCESS_DENIED;
   }
 
-  struct stat st_buf;
-  int ret = ceph_stat(cmount, file_name, &st_buf);
+  struct ceph_statx stbuf;
+  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
+  int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
   if(ret==0){
-    if(S_ISDIR(st_buf.st_mode)){
+    if(S_ISDIR(stbuf.stx_mode)){
       fwprintf(stderr, L"CreateDirectory ceph_mkdir EXISTS [%ls][ret=%d]\n", FileName, ret);
       return STATUS_OBJECT_NAME_COLLISION;
     }
@@ -131,8 +132,9 @@ WinCephOpenDirectory(
   wchar_to_char(file_name, filePath, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  struct stat st_buf;
-  int ret = ceph_stat(cmount, file_name, &st_buf);
+  struct ceph_statx stbuf;
+  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
+  int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
   if(ret){
     fwprintf(stderr, L"OpenDirectory ceph_stat ERROR [%ls][ret=%d]\n", FileName, ret);
     return errno_to_ntstatus(ret);
@@ -147,7 +149,7 @@ WinCephOpenDirectory(
       return STATUS_ACCESS_DENIED;
   }
 
-  if(!S_ISDIR(st_buf.st_mode)) {
+  if(!S_ISDIR(stbuf.stx_mode)) {
     DbgPrintW(L"OpenDirectory error: not a directory: %ls\n", FileName);
     return STATUS_NOT_A_DIRECTORY;
   }
@@ -207,11 +209,12 @@ WinCephCreateFile(
   memset(&fdc, 0, sizeof(struct fd_context));
 
   int fd = 0;
-  struct stat st_buf;
-  int ret = ceph_stat(cmount, file_name, &st_buf);
+  struct ceph_statx stbuf;
+  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
+  int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
   if(ret==0) /*File Exists*/
   {
-    if(S_ISREG(st_buf.st_mode))
+    if(S_ISREG(stbuf.stx_mode))
     {
       switch (CreationDisposition) {
         case CREATE_NEW:
@@ -343,7 +346,7 @@ WinCephCreateFile(
           return STATUS_OBJECT_NAME_COLLISION;
       }
     }
-    else if(S_ISDIR(st_buf.st_mode))
+    else if(S_ISDIR(stbuf.stx_mode))
     {
       DokanFileInfo->IsDirectory = TRUE;
 
@@ -360,7 +363,7 @@ WinCephCreateFile(
       }
     }else {
       DbgPrintW(L"CreateFile error. unsupported st_mode: %d [%ls]\n",
-                st_buf.st_mode, FileName);
+                stbuf.stx_mode, FileName);
       return STATUS_BAD_FILE_TYPE;
     }
   }
@@ -716,17 +719,18 @@ WinCephGetFileInformation(
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  struct stat stbuf;
+  struct ceph_statx stbuf;
+  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
   if (fdc.fd==0) {
-    int ret = ceph_stat(cmount, file_name, &stbuf);
+    int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
     if(ret){
       DbgPrintW(L"GetFileInformation ceph_stat error [%ls]\n", FileName);
       return errno_to_ntstatus(ret);
     }
   }else{
-    int ret = ceph_fstat(cmount, fdc.fd, &stbuf);
+    int ret = ceph_fstatx(cmount, fdc.fd, &stbuf, requested_attrs, 0);
     if(ret){
       fwprintf(stderr, L"GetFileInformation ceph_fstat error [%ls][ret=%d]\n",
                FileName, ret);
@@ -735,35 +739,35 @@ WinCephGetFileInformation(
   }
 
   DbgPrintW(L"GetFileInformation1 [%ls][size:%lld][time:%lld]\n",
-    FileName, stbuf.st_size, stbuf.st_mtime);
-  //fill stbuf.st_size
-  HandleFileInformation->nFileSizeLow = (stbuf.st_size << 32)>>32;
-  HandleFileInformation->nFileSizeHigh = stbuf.st_size >> 32;
+    FileName, stbuf.stx_size, stbuf.stx_mtime);
+  //fill stbuf.stx_size
+  HandleFileInformation->nFileSizeLow = (stbuf.stx_size << 32)>>32;
+  HandleFileInformation->nFileSizeHigh = stbuf.stx_size >> 32;
 
-  //fill stbuf.st_mtim
-  UnixTimeToFileTime(stbuf.st_ctime, &HandleFileInformation->ftCreationTime);
-  UnixTimeToFileTime(stbuf.st_atime, &HandleFileInformation->ftLastAccessTime);
-  UnixTimeToFileTime(stbuf.st_mtime, &HandleFileInformation->ftLastWriteTime);
+  //fill stbuf.stx_mtim
+  UnixTimeToFileTime(stbuf.stx_ctime.tv_sec, &HandleFileInformation->ftCreationTime);
+  UnixTimeToFileTime(stbuf.stx_atime.tv_sec, &HandleFileInformation->ftLastAccessTime);
+  UnixTimeToFileTime(stbuf.stx_mtime.tv_sec, &HandleFileInformation->ftLastWriteTime);
 
   DbgPrintW(L"GetFileInformation6 [%ls][size:%lld][time a:%lld m:%lld c:%lld]\n",
-    FileName, stbuf.st_size, stbuf.st_atime, stbuf.st_mtime, stbuf.st_ctime);
+    FileName, stbuf.stx_size, stbuf.stx_atime, stbuf.stx_mtime, stbuf.stx_ctime.tv_sec);
 
-  //fill stbuf.st_mode
-  if(S_ISDIR(stbuf.st_mode)){
+  //fill stbuf.stx_mode
+  if(S_ISDIR(stbuf.stx_mode)){
     DbgPrintW(L"[%ls] is a Directory.............\n", FileName);
     HandleFileInformation->dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
   }
-  else if(S_ISREG(stbuf.st_mode)){
+  else if(S_ISREG(stbuf.stx_mode)){
     DbgPrintW(L"[%ls] is a Regular File.............\n", FileName);
     HandleFileInformation->dwFileAttributes |= FILE_ATTRIBUTE_NORMAL;
   }
 
-  //fill stbuf.st_ino
-  HandleFileInformation->nFileIndexLow = (stbuf.st_ino << 32)>>32;
-  HandleFileInformation->nFileIndexHigh = stbuf.st_ino >> 32;
+  //fill stbuf.stx_ino
+  HandleFileInformation->nFileIndexLow = (stbuf.stx_ino << 32)>>32;
+  HandleFileInformation->nFileIndexHigh = stbuf.stx_ino >> 32;
 
-  //fill stbuf.st_nlink
-  HandleFileInformation->nNumberOfLinks = stbuf.st_nlink;
+  //fill stbuf.stx_nlink
+  HandleFileInformation->nNumberOfLinks = stbuf.stx_nlink;
 
   return 0;
 }
@@ -1047,14 +1051,15 @@ WinCephSetAllocationSize(
 
   fwprintf(stderr, L"SetAllocationSize [%ls][%d][AllocSize:%lld]\n", FileName, fdc.fd, AllocSize);
 
-  struct stat stbuf;
-  int ret = ceph_fstat(cmount, fdc.fd, &stbuf);
+  struct ceph_statx stbuf;
+  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
+  int ret = ceph_fstatx(cmount, fdc.fd, &stbuf, requested_attrs, 0);
   if(ret){
     fwprintf(stderr, L"SetAllocationSize ceph_stat error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
     return errno_to_ntstatus(ret);
   }
 
-  if(AllocSize < stbuf.st_size){
+  if(AllocSize < stbuf.stx_size){
     int ret = ceph_ftruncate(cmount, fdc.fd, AllocSize);
     if(ret){
       fwprintf(stderr, L"SetAllocationSize ceph_ftruncate error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
