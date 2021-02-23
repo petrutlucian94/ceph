@@ -11,24 +11,27 @@
 #include "dbg.h"
 #include <ntstatus.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <fileinfo.h>
-
 #include "posix_acl.h"
 #include "utils.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <fileinfo.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sddl.h>
-
 #include <accctrl.h>
 #include <aclapi.h>
 
+#include "common/ceph_argparse.h"
+#include "common/config.h"
+#include "common/debug.h"
+#include "common/dout.h"
+#include "common/errno.h"
+#include "common/version.h"
+
 #define MAX_PATH_CEPH 8192
-#define CEPH_DOKAN_IO_DEFAULT_TIMEOUT 1000 * 60 * 5
 
 #define READ_ACCESS_REQUESTED(access_mode) \
     (access_mode & GENERIC_READ || \
@@ -41,12 +44,6 @@
      access_mode & STANDARD_RIGHTS_WRITE || \
      access_mode & FILE_SHARE_WRITE)
 
-BOOL g_UseStdErr;
-BOOL g_DebugMode;
-
-int g_UID = 0;
-int g_GID = 0;
-BOOL g_UseACL = TRUE;
 struct ceph_mount_info *cmount;
 long timeout_ms = CEPH_DOKAN_IO_DEFAULT_TIMEOUT;
 
@@ -1248,6 +1245,127 @@ void ceph_show_version() {
     fprintf(stderr, "%s\n", char_version);
 }
 
+static int parse_args(std::vector<const char*>& args,
+                      std::ostream *err_msg,
+                      Command *command, Config *cfg) {
+  std::string conf_file_list;
+  std::string cluster;
+  CephInitParameters iparams = ceph_argparse_early_args(
+          args, CEPH_ENTITY_TYPE_CLIENT, &cluster, &conf_file_list);
+
+  ConfigProxy config{false};
+  config->name = iparams.name;
+  config->cluster = cluster;
+  if (!conf_file_list.empty()) {
+    config.parse_config_files(conf_file_list.c_str(), nullptr, 0);
+  } else {
+    config.parse_config_files(nullptr, nullptr, 0);
+  }
+  config.parse_env(CEPH_ENTITY_TYPE_CLIENT);
+  config.parse_argv(args);
+
+  std::vector<const char*>::iterator i;
+  std::ostringstream err;
+
+  for (i = args.begin(); i != args.end(); ) {
+    if (ceph_argparse_flag(args, i, "-h", "--help", (char*)NULL)) {
+      return HELP_INFO;
+    } else if (ceph_argparse_flag(args, i, "-v", "--version", (char*)NULL)) {
+      return VERSION_INFO;
+    } else if (ceph_argparse_witharg(args, i, &cfg->devpath, "l", "--mountpoint", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &cfg->mount_subdir, "x", "--subdir", (char *)NULL)) {
+    } else if (ceph_argparse_flag(args, i, "w", "--read-only", (char *)NULL)) {
+      cfg->readonly = true;
+    } else if (ceph_argparse_flag(args, i, "m", "--removable", (char *)NULL)) {
+      cfg->removable = true;
+    } else if (ceph_argparse_flag(args, i, "o", "--win-mount-mgr", (char *)NULL)) {
+      cfg->use_win_mount_mgr = true;
+    } else if (ceph_argparse_flag(args, i, "p", "--current-session-only", (char *)NULL)) {
+      cfg->current_session_only = true;
+    } else if (ceph_argparse_flag(args, i, "n", "--no-acl", (char *)NULL)) {
+      cfg->use_acl = false;
+    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->uid,
+                                     err, "u", "--uid", (char *)NULL)) {
+      if (!err.str().empty()) {
+        *err_msg << "rbd-nbd: " << err.str();
+        return -EINVAL;
+      }
+      if (cfg->uid < 0) {
+        *err_msg << "rbd-nbd: Invalid argument for uid";
+        return -EINVAL;
+      }
+    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->gid,
+                                     err, "g", "--gid", (char *)NULL)) {
+      if (!err.str().empty()) {
+        *err_msg << "rbd-nbd: " << err.str();
+        return -EINVAL;
+      }
+      if (cfg->gid < 0) {
+        *err_msg << "rbd-nbd: Invalid argument for gid";
+        return -EINVAL;
+      }
+    } else {
+      ++i;
+    }
+  }
+
+  Command cmd = None;
+  if (args.begin() != args.end()) {
+    if (strcmp(*args.begin(), "map") == 0) {
+      cmd = Connect;
+    } else if (strcmp(*args.begin(), "unmap") == 0) {
+      cmd = Disconnect;
+    } else if (strcmp(*args.begin(), "list") == 0) {
+      cmd = List;
+    } else if (strcmp(*args.begin(), "show") == 0) {
+      cmd = Show;
+    } else if (strcmp(*args.begin(), "service") == 0) {
+      cmd = Service;
+    } else if (strcmp(*args.begin(), "stats") == 0) {
+      cmd = Stats;
+    } else if (strcmp(*args.begin(), "help") == 0) {
+      return HELP_INFO;
+    } else {
+      *err_msg << "rbd-wnbd: unknown command: " <<  *args.begin();
+      return -EINVAL;
+    }
+    args.erase(args.begin());
+  }
+
+  if (cmd == None) {
+    *err_msg << "rbd-wnbd: must specify command";
+    return -EINVAL;
+  }
+
+  switch (cmd) {
+    case Connect:
+    case Disconnect:
+    case Show:
+    case Stats:
+      if (args.begin() == args.end()) {
+        *err_msg << "rbd-wnbd: must specify wnbd device or image-or-snap-spec";
+        return -EINVAL;
+      }
+      if (parse_imgpath(*args.begin(), cfg, err_msg) < 0) {
+        return -EINVAL;
+      }
+      args.erase(args.begin());
+      break;
+    default:
+      //shut up gcc;
+      break;
+  }
+
+  if (args.begin() != args.end()) {
+    *err_msg << "rbd-wnbd: unknown args: " << *args.begin();
+    return -EINVAL;
+  }
+
+  *command = cmd;
+  return 0;
+
+}
+
 static void print_usage() {
   fprintf(stderr, "ceph-dokan.exe\n"
     "  -c CephConfFile  (ex. /r c:\\ceph.conf)\n"
@@ -1428,14 +1546,6 @@ main(int argc, char* argv[])
   dokanOperations->GetDiskFreeSpace = WinCephGetDiskFreeSpace;
   dokanOperations->GetVolumeInformation = WinCephGetVolumeInformation;
   dokanOperations->Unmounted = WinCephUnmount;
-
-  //init socket
-  WORD VerNum = MAKEWORD(2, 2);
-  WSADATA VerData;
-  if (WSAStartup(VerNum, &VerData) != 0) {
-    fprintf(stderr, "FAILED to init winsock!!!\n");
-    return ERROR_INVALID_FUNCTION;
-  }
 
   //ceph_mount
   int ret = 0;
