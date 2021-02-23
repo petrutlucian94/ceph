@@ -7,14 +7,7 @@
 
 #include "include/compat.h"
 
-typedef DWORD NTSTATUS;
-// Avoid conflicting COM types, exposed when using C++.
-#define _OLE2_H_
-
-#include <dokan.h>
-
-extern BOOL g_UseStdErr;
-extern BOOL g_DebugMode;
+#include "ceph_dokan.h"
 
 void DbgPrint(char* format, ...);
 void DbgPrintW(LPCWSTR format, ...);

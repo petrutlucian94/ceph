@@ -1,3 +1,14 @@
+/*
+ * Copyright (C) 2021 SUSE LINUX GmbH
+ *
+ * This is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License version 2.1, as published by the Free Software
+ * Foundation.  See file COPYING.
+ *
+*/
+
+#include "ceph_dokan.h"
 #include "dbg.h"
 
 #include <stdio.h>
@@ -5,13 +16,13 @@
 
 void DbgPrintW(LPCWSTR format, ...)
 {
-  if (g_DebugMode) {
+  if (g_cfg->debug) {
     WCHAR buffer[512];
     va_list argp;
     va_start(argp, format);
     vswprintf(buffer, 512, format, argp);
     va_end(argp);
-    if (g_UseStdErr) {
+    if (g_cfg->dokan_stderr) {
       fwprintf(stderr, buffer);
     } else {
       OutputDebugStringW(buffer);
@@ -21,13 +32,13 @@ void DbgPrintW(LPCWSTR format, ...)
 
 void DbgPrint(char* format, ...)
 {
-  if (g_DebugMode) {
+  if (g_cfg->debug) {
     char buffer[512];
     va_list argp;
     va_start(argp, format);
     vsprintf(buffer, format, argp);
     va_end(argp);
-    if (g_UseStdErr) {
+    if (g_cfg->dokan_stderr) {
       fprintf(stderr, "%s", buffer);
     } else {
       OutputDebugString(buffer);
@@ -85,9 +96,9 @@ void PrintOpenParams(
 {
   DbgPrintW(L"CreateFile : %ls\n", FilePath);
 
-  if (g_DebugMode) {
-    PrintUserName(DokanFileInfo);
-  }
+  // if (g_cfg->debug) {
+    // PrintUserName(DokanFileInfo);
+  // }
 
   if (CreationDisposition == CREATE_NEW)
     DbgPrintW(L"\tCREATE_NEW\n");

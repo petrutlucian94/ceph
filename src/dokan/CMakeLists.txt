@@ -2,7 +2,8 @@ set(ceph_dokan_srcs
   ceph_dokan.cc
   posix_acl.cc
   dbg.cc
-  utils.cc)
+  utils.cc
+  options.cc)
 add_executable(ceph-dokan ${ceph_dokan_srcs})
 target_link_libraries(ceph-dokan ${DOKAN_LIBRARIES}
   ${GSSAPI_LIBRARIES}

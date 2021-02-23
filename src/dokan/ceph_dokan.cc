@@ -1,5 +1,13 @@
 /*
-  A CephFS Client on Win32 (based on Dokan)
+ * ceph-dokan - Win32 CephFS client based on Dokan
+ *
+ * Copyright (C) 2021 SUSE LINUX GmbH
+ *
+ * This is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License version 2.1, as published by the Free Software
+ * Foundation.  See file COPYING.
+ *
 */
 
 #define UNICODE
@@ -8,27 +16,38 @@
 #include "include/compat.h"
 #include "include/cephfs/libcephfs.h"
 
-#include "dbg.h"
-#include <ntstatus.h>
+#include "ceph_dokan.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <fileinfo.h>
-
-#include "posix_acl.h"
-#include "utils.h"
-
 #include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sddl.h>
-
 #include <accctrl.h>
 #include <aclapi.h>
+#include <ntstatus.h>
+
+#include "common/ceph_argparse.h"
+#include "common/config.h"
+#include "common/debug.h"
+#include "common/dout.h"
+#include "common/errno.h"
+#include "common/version.h"
+
+#include "global/global_init.h"
+
+#include "dbg.h"
+#include "posix_acl.h"
+#include "utils.h"
+
+#define dout_context g_ceph_context
+#define dout_subsys ceph_subsys_rbd
+#undef dout_prefix
+#define dout_prefix *_dout << "ceph-dokan: "
 
 #define MAX_PATH_CEPH 8192
-#define CEPH_DOKAN_IO_DEFAULT_TIMEOUT 1000 * 60 * 5
 
 #define READ_ACCESS_REQUESTED(access_mode) \
     (access_mode & GENERIC_READ || \
@@ -41,24 +60,13 @@
      access_mode & STANDARD_RIGHTS_WRITE || \
      access_mode & FILE_SHARE_WRITE)
 
-BOOL g_UseStdErr;
-BOOL g_DebugMode;
-
-int g_UID = 0;
-int g_GID = 0;
-BOOL g_UseACL = TRUE;
 struct ceph_mount_info *cmount;
-long timeout_ms = CEPH_DOKAN_IO_DEFAULT_TIMEOUT;
+Config *g_cfg;
 
 struct fd_context{
   int   fd;
   short read_only;
 };
-
-static WCHAR MountPoint[MAX_PATH_CEPH] = L"";
-static char ceph_conf_file[MAX_PATH_CEPH] = "";
-static WCHAR Wceph_conf_file[MAX_PATH_CEPH] = L"";
-static WCHAR Wargv0[MAX_PATH_CEPH];
 
 static void
 GetFilePath(
@@ -78,43 +86,44 @@ WinCephCreateDirectory(
   WCHAR filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
+  derr << "CreateDirectory: " << filePath << dendl;
   DbgPrintW(L"CreateDirectory : %ls\n", filePath);
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  if(strcmp(file_name, "/")==0)
+  if (strcmp(file_name, "/")==0)
   {
     return 0;
   }
 
-  if(g_UseACL)
+  if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if(st)
+    if (st)
       return STATUS_ACCESS_DENIED;
   }
 
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-  if(ret==0){
-    if(S_ISDIR(stbuf.stx_mode)){
+  if (ret==0){
+    if (S_ISDIR(stbuf.stx_mode)){
       fwprintf(stderr, L"CreateDirectory ceph_mkdir EXISTS [%ls][ret=%d]\n", FileName, ret);
       return STATUS_OBJECT_NAME_COLLISION;
     }
   }
 
   ret = ceph_mkdir(cmount, file_name, 0755);
-  if(ret<0)
+  if (ret<0)
   {
     fwprintf(stderr, L"CreateDirectory ceph_mkdir ERROR [%ls][ret=%d]\n", FileName, ret);
     return errno_to_ntstatus(ret);
   }
 
-  ceph_chown(cmount, file_name, g_UID, g_GID);
+  ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
   fuse_init_acl(cmount, file_name, 0040777); //S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
   return 0;
 }
@@ -135,27 +144,27 @@ WinCephOpenDirectory(
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-  if(ret){
+  if (ret){
     fwprintf(stderr, L"OpenDirectory ceph_stat ERROR [%ls][ret=%d]\n", FileName, ret);
     return errno_to_ntstatus(ret);
   }
 
-  if(g_UseACL)
+  if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk(cmount, file_name, g_UID, g_GID,
+    int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
-    if(st)
+    if (st)
       return STATUS_ACCESS_DENIED;
   }
 
-  if(!S_ISDIR(stbuf.stx_mode)) {
+  if (!S_ISDIR(stbuf.stx_mode)) {
     DbgPrintW(L"OpenDirectory error: not a directory: %ls\n", FileName);
     return STATUS_NOT_A_DIRECTORY;
   }
 
   int fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
-  if(fd <= 0){
+  if (fd <= 0){
     fwprintf(stderr, L"OpenDirectory ceph_opendir error : %ls [fd:%d]\n", FileName, fd);
     return errno_to_ntstatus(fd);
   }
@@ -212,25 +221,25 @@ WinCephCreateFile(
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-  if(ret==0) /*File Exists*/
+  if (ret==0) /*File Exists*/
   {
-    if(S_ISREG(stbuf.stx_mode))
+    if (S_ISREG(stbuf.stx_mode))
     {
       switch (CreationDisposition) {
         case CREATE_NEW:
           return STATUS_OBJECT_NAME_COLLISION;
         case TRUNCATE_EXISTING:
           //open O_TRUNC & return 0
-          if(g_UseACL)
+          if (g_cfg->enforce_perm)
           {
             /* permission check*/
-            int st = permission_walk(cmount, file_name, g_UID, g_GID,
+            int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                             PERM_WALK_CHECK_WRITE);
-            if(st)
+            if (st)
               return STATUS_ACCESS_DENIED;
           }
           fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
-          if(fd<0){
+          if (fd<0){
             fwprintf(stderr, L"CreateFile REG TRUNCATE_EXISTING ceph_open error [%ls][ret=%d]\n", FileName, fd);
             return errno_to_ntstatus(fd);
           }
@@ -243,34 +252,34 @@ WinCephCreateFile(
           return 0;
         case OPEN_ALWAYS:
           //open & return STATUS_OBJECT_NAME_COLLISION
-          if(READ_ACCESS_REQUESTED(AccessMode))
+          if (READ_ACCESS_REQUESTED(AccessMode))
           {
-            if(g_UseACL)
+            if (g_cfg->enforce_perm)
             {
               /* permission check*/
-              int st = permission_walk(cmount, file_name, g_UID, g_GID,
+              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                               PERM_WALK_CHECK_READ);
-              if(st)
+              if (st)
                 return STATUS_ACCESS_DENIED;
             }
           }
 
-          if(WRITE_ACCESS_REQUESTED(AccessMode))
+          if (WRITE_ACCESS_REQUESTED(AccessMode))
           {
-            if(g_UseACL)
+            if (g_cfg->enforce_perm)
             {
               /* permission check*/
-              int st = permission_walk(cmount, file_name, g_UID, g_GID,
+              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                               PERM_WALK_CHECK_WRITE);
-              if(st) fdc.read_only = 1;
+              if (st) fdc.read_only = 1;
             }
           }
 
-          if(fdc.read_only == 1)
+          if (fdc.read_only == 1)
             fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
           else
             fd = ceph_open(cmount, file_name, O_RDWR, 0755);
-          if(fd<0){
+          if (fd<0){
             fwprintf(stderr, L"CreateFile REG OPEN_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
             return errno_to_ntstatus(fd);
           }
@@ -283,36 +292,36 @@ WinCephCreateFile(
           return STATUS_OBJECT_NAME_COLLISION;
         case OPEN_EXISTING:
           //open & return 0
-          if(READ_ACCESS_REQUESTED(AccessMode))
+          if (READ_ACCESS_REQUESTED(AccessMode))
           {
             DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL READ [%ls]\n", FileName);
-            if(g_UseACL)
+            if (g_cfg->enforce_perm)
             {
               /* permission check*/
-              int st = permission_walk(cmount, file_name, g_UID, g_GID,
+              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                               PERM_WALK_CHECK_READ);
-              if(st)
+              if (st)
                 return STATUS_ACCESS_DENIED;
             }
           }
 
-          if(WRITE_ACCESS_REQUESTED(AccessMode))
+          if (WRITE_ACCESS_REQUESTED(AccessMode))
           {
             DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL WRITE [%ls]\n", FileName);
-            if(g_UseACL)
+            if (g_cfg->enforce_perm)
             {
               /* permission check*/
-              int st = permission_walk(cmount, file_name, g_UID, g_GID,
+              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                               PERM_WALK_CHECK_WRITE);
-              if(st) fdc.read_only = 1;
+              if (st) fdc.read_only = 1;
             }
           }
 
-          if(fdc.read_only == 1)
+          if (fdc.read_only == 1)
             fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
           else
             fd = ceph_open(cmount, file_name, O_RDWR, 0755);
-          if(fd<0){
+          if (fd<0){
             fwprintf(stderr, L"CreateFile ceph_open REG OPEN_EXISTING error [%ls][ret=%d]\n", FileName, fd);
             return errno_to_ntstatus(fd);
           }
@@ -324,16 +333,16 @@ WinCephCreateFile(
           return 0;
         case CREATE_ALWAYS:
           //open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
-          if(g_UseACL)
+          if (g_cfg->enforce_perm)
           {
             /* permission check*/
-            int st = permission_walk(cmount, file_name, g_UID, g_GID,
+            int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                             PERM_WALK_CHECK_READ|PERM_WALK_CHECK_WRITE);
-            if(st)
+            if (st)
               return STATUS_ACCESS_DENIED;
           }
           fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
-          if(fd<0){
+          if (fd<0){
             fwprintf(stderr, L"CreateFile ceph_open error REG CREATE_ALWAYS [%ls][ret=%d]\n", FileName, fd);
             return errno_to_ntstatus(fd);
           }
@@ -346,7 +355,7 @@ WinCephCreateFile(
           return STATUS_OBJECT_NAME_COLLISION;
       }
     }
-    else if(S_ISDIR(stbuf.stx_mode))
+    else if (S_ISDIR(stbuf.stx_mode))
     {
       DokanFileInfo->IsDirectory = TRUE;
 
@@ -369,7 +378,7 @@ WinCephCreateFile(
   }
   else /*File Not Exists*/
   {
-    if(DokanFileInfo->IsDirectory)
+    if (DokanFileInfo->IsDirectory)
     {
       // TODO: check create disposition.
       return WinCephCreateDirectory(FileName, DokanFileInfo);
@@ -377,16 +386,16 @@ WinCephCreateFile(
     switch (CreationDisposition) {
       case CREATE_NEW:
         //create & return 0
-        if(g_UseACL)
+        if (g_cfg->enforce_perm)
         {
           /* permission check*/
-          int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+          int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                           PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-          if(st)
+          if (st)
             return STATUS_ACCESS_DENIED;
         }
         fd = ceph_open(cmount, file_name, O_CREAT|O_RDWR|O_EXCL, 0755);
-        if(fd<0){
+        if (fd<0){
           fwprintf(stderr, L"CreateFile NOF CREATE_NEW ceph_open error [%ls][ret=%d]\n", FileName, fd);
           return errno_to_ntstatus(fd);
         }
@@ -396,21 +405,21 @@ WinCephCreateFile(
         DbgPrintW(L"CreateFile ceph_open NOF CREATE_NEW OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           (int)DokanFileInfo->Context);
 
-        ceph_chown(cmount, file_name, g_UID, g_GID);
+        ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
         fuse_init_acl(cmount, file_name, 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case CREATE_ALWAYS:
         //create & return 0
-        if(g_UseACL)
+        if (g_cfg->enforce_perm)
         {
           /* permission check*/
-          int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+          int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                           PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-          if(st)
+          if (st)
             return STATUS_ACCESS_DENIED;
         }
         fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
-        if(fd<0){
+        if (fd<0){
           fwprintf(stderr, L"CreateFile NOF CREATE_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
           return errno_to_ntstatus(fd);
         }
@@ -420,20 +429,20 @@ WinCephCreateFile(
         DbgPrintW(L"CreateFile ceph_open NOF CREATE_ALWAYS_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           (int)DokanFileInfo->Context);
 
-        ceph_chown(cmount, file_name, g_UID, g_GID);
+        ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
         fuse_init_acl(cmount, file_name, 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case OPEN_ALWAYS:
-        if(g_UseACL)
+        if (g_cfg->enforce_perm)
         {
           /* permission check*/
-          int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+          int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                           PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-          if(st)
+          if (st)
             return STATUS_ACCESS_DENIED;
         }
         fd = ceph_open(cmount, file_name, O_CREAT|O_RDWR, 0755);
-        if(fd<=0){
+        if (fd<=0){
           fwprintf(stderr, L"CreateFile REG NOF OPEN_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
           return errno_to_ntstatus(fd);
         }
@@ -443,7 +452,7 @@ WinCephCreateFile(
         DbgPrintW(L"CreateFile ceph_open REG NOF OPEN_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           (int)DokanFileInfo->Context);
 
-        ceph_chown(cmount, file_name, g_UID, g_GID);
+        ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
         fuse_init_acl(cmount, file_name, 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case OPEN_EXISTING:
@@ -473,7 +482,7 @@ WinCephCloseFile(
   WCHAR filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  if(!DokanFileInfo->Context) {
+  if (!DokanFileInfo->Context) {
     DbgPrintW(L"Close: invalid handle %ls\n\n", filePath);
     return;
   }
@@ -484,7 +493,7 @@ WinCephCloseFile(
   DbgPrintW(L"CloseFile: %ls\n", filePath);
   DbgPrintW(L"ceph_close [%ls][fd=%d]\n", FileName, fdc.fd);
   int ret = ceph_close(cmount, fdc.fd);
-  if(ret){
+  if (ret){
     DbgPrint("\terror code = %d\n\n", ret);
   }
 
@@ -504,7 +513,7 @@ WinCephCleanup(
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  if(!DokanFileInfo->Context) {
+  if (!DokanFileInfo->Context) {
     DbgPrintW(L"Cleanup: invalid handle %ls\n\n", filePath);
     return;
   }
@@ -542,12 +551,12 @@ WinCephReadFile(
   PDOKAN_FILE_INFO   DokanFileInfo)
 {
   WCHAR  filePath[MAX_PATH_CEPH];
-  if(Offset > 1024*1024*1024*1024LL || Offset < 0 ||
+  if (Offset > 1024*1024*1024*1024LL || Offset < 0 ||
      BufferLength > 128*1024*1024){
-    fwprintf(stderr, L"File write too large [fn:%ls][Offset=%lld][BufferLength=%ld]\n",FileName, Offset, BufferLength);
+    fwprintf(stderr, L"File write too large [fn:%ls][Offset=%lld][BufferLength=%ld]\n", FileName, Offset, BufferLength);
     return STATUS_FILE_TOO_LARGE;
   }
-  if(BufferLength == 0)
+  if (BufferLength == 0)
   {
     *ReadLength = 0;
     return 0;
@@ -556,7 +565,7 @@ WinCephReadFile(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
   DbgPrintW(L"ReadFile : %ls\n", filePath);
 
-  if(BufferLength == 0)
+  if (BufferLength == 0)
   {
     fwprintf(stderr, L"ceph_read BufferLength==0 [fn:%ls][Offset=%ld]\n",FileName, Offset);
     *ReadLength = 0;
@@ -566,7 +575,7 @@ WinCephReadFile(
   DbgPrintW(L"ceph_read [Offset=%lld][BufferLength=%ld]\n", Offset, BufferLength);
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if(fdc.fd == 0){
+  if (fdc.fd == 0){
     char file_name[MAX_PATH_CEPH];
     wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
     ToLinuxFilePath(file_name);
@@ -574,14 +583,14 @@ WinCephReadFile(
     fwprintf(stderr, L"ceph_read reopen fd [fn:%ls][Offset=%ld]\n", FileName, Offset);
 
     int fd_new = ceph_open(cmount, file_name, O_RDONLY, 0);
-    if(fd_new < 0)
+    if (fd_new < 0)
     {
       fwprintf(stderr, L"ceph_read reopen fd [fn:%ls][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
       return errno_to_ntstatus(fd_new);
     }
 
     int ret = ceph_read(cmount, fd_new, Buffer, BufferLength, Offset);
-    if(ret<0)
+    if (ret<0)
     {
       fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
       ceph_close(cmount, fd_new);
@@ -593,7 +602,7 @@ WinCephReadFile(
   }
   else{
     int ret = ceph_read(cmount, fdc.fd, Buffer, BufferLength, Offset);
-    if(ret<0)
+    if (ret<0)
     {
       fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
       return errno_to_ntstatus(ret);
@@ -615,12 +624,12 @@ WinCephWriteFile(
   PDOKAN_FILE_INFO  DokanFileInfo)
 {
   WCHAR  filePath[MAX_PATH_CEPH];
-  if(Offset > 1024*1024*1024*1024LL || Offset < 0 ||
+  if (Offset > 1024*1024*1024*1024LL || Offset < 0 ||
       NumberOfBytesToWrite > 128*1024*1024){
     fwprintf(stderr, L"FILE WIRTE TOO LARGE [fn:%ls][Offset=%lld][NumberOfBytesToWrite=%ld]\n", FileName, Offset, NumberOfBytesToWrite);
     return STATUS_FILE_TOO_LARGE;
   }
-  if(NumberOfBytesToWrite == 0)
+  if (NumberOfBytesToWrite == 0)
   {
     *NumberOfBytesWritten = 0;
     return 0;
@@ -629,10 +638,10 @@ WinCephWriteFile(
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
 
-  if(fdc.read_only == 1)
+  if (fdc.read_only == 1)
     return STATUS_ACCESS_DENIED;
 
-  if(fdc.fd==0){
+  if (fdc.fd==0){
     char file_name[MAX_PATH_CEPH];
     wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
     ToLinuxFilePath(file_name);
@@ -640,14 +649,14 @@ WinCephWriteFile(
     fwprintf(stderr, L"ceph_write reopen fd [fn:%ls][Offset=%ld]\n",FileName, Offset);
 
     int fd_new = ceph_open(cmount, file_name, O_RDONLY, 0);
-    if(fd_new < 0)
+    if (fd_new < 0)
     {
       fwprintf(stderr, L"ceph_write reopen fd [fn:%ls][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
       return errno_to_ntstatus(fd_new);
     }
 
     int ret = ceph_write(cmount, fd_new, Buffer, NumberOfBytesToWrite, Offset);
-    if(ret<0)
+    if (ret<0)
     {
       fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
                FileName, ret, fd_new, Offset, NumberOfBytesToWrite);
@@ -661,7 +670,7 @@ WinCephWriteFile(
   }
   else{
     int ret = ceph_write(cmount, fdc.fd, Buffer, NumberOfBytesToWrite, Offset);
-    if(ret<0)
+    if (ret<0)
     {
       fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
                FileName, ret, fdc.fd, Offset, NumberOfBytesToWrite);
@@ -687,13 +696,13 @@ WinCephFlushFileBuffers(
 
   struct fd_context fdc;
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if(fdc.fd==0){
+  if (fdc.fd==0){
     fwprintf(stderr, L"ceph_sync FD error [%ls] fdc is NULL\n", FileName);
     return STATUS_INVALID_HANDLE;
   }
 
   int ret = ceph_fsync(cmount, fdc.fd, 0);
-  if(ret){
+  if (ret){
     fwprintf(stderr, L"ceph_sync error [%ls][%df][ret=%d]\n",
              FileName, fdc.fd, ret);
     return errno_to_ntstatus(ret);
@@ -725,13 +734,13 @@ WinCephGetFileInformation(
   memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
   if (fdc.fd==0) {
     int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-    if(ret){
+    if (ret){
       DbgPrintW(L"GetFileInformation ceph_stat error [%ls]\n", FileName);
       return errno_to_ntstatus(ret);
     }
   }else{
     int ret = ceph_fstatx(cmount, fdc.fd, &stbuf, requested_attrs, 0);
-    if(ret){
+    if (ret){
       fwprintf(stderr, L"GetFileInformation ceph_fstat error [%ls][ret=%d]\n",
                FileName, ret);
       return errno_to_ntstatus(ret);
@@ -753,11 +762,11 @@ WinCephGetFileInformation(
     FileName, stbuf.stx_size, stbuf.stx_atime, stbuf.stx_mtime, stbuf.stx_ctime.tv_sec);
 
   //fill stbuf.stx_mode
-  if(S_ISDIR(stbuf.stx_mode)){
+  if (S_ISDIR(stbuf.stx_mode)){
     DbgPrintW(L"[%ls] is a Directory.............\n", FileName);
     HandleFileInformation->dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
   }
-  else if(S_ISREG(stbuf.stx_mode)){
+  else if (S_ISREG(stbuf.stx_mode)){
     DbgPrintW(L"[%ls] is a Regular File.............\n", FileName);
     HandleFileInformation->dwFileAttributes |= FILE_ATTRIBUTE_NORMAL;
   }
@@ -795,18 +804,18 @@ WinCephFindFiles(
 
   DbgPrintW(L"FindFiles ceph_opendir : [%ls]\n", FileName);
 
-  if(g_UseACL)
+  if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk(cmount, file_name, g_UID, g_GID,
+    int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
-    if(st)
+    if (st)
       return STATUS_ACCESS_DENIED;
   }
 
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
-  if(ret != 0){
+  if (ret != 0){
     fwprintf(stderr, L"ceph_opendir error : %ls [ret=%d]\n", FileName, ret);
     return errno_to_ntstatus(ret);
   }
@@ -824,15 +833,15 @@ WinCephFindFiles(
                              requested_attrs,
                              0,     // no special flags used when filling attrs
                              NULL); // we're not using inodes.
-    if(ret==0)
+    if (ret==0)
       break;
-    if(ret<0){
+    if (ret<0){
       fprintf(stderr, "FindFiles ceph_readdirplus_r error [%ls][ret=%d]\n", FileName, ret);
       return errno_to_ntstatus(ret);
     }
 
     // TODO: check if "." or ".." need any special handling.
-    if(strcmp(result.d_name, ".")==0 || strcmp(result.d_name, "..")==0){
+    if (strcmp(result.d_name, ".")==0 || strcmp(result.d_name, "..")==0){
     //   continue;
     }
 
@@ -852,11 +861,11 @@ WinCephFindFiles(
     UnixTimeToFileTime(stbuf.stx_mtime.tv_sec, &findData.ftLastWriteTime);
 
     //stx_mode
-    if(S_ISDIR(stbuf.stx_mode)){
+    if (S_ISDIR(stbuf.stx_mode)){
       //printf("[%s] is a Directory.............\n", result.d_name);
       findData.dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
     }
-    else if(S_ISREG(stbuf.stx_mode)){
+    else if (S_ISREG(stbuf.stx_mode)){
       //printf("[%s] is a Regular File.............\n", result.d_name);
       findData.dwFileAttributes |= FILE_ATTRIBUTE_NORMAL;
     }
@@ -891,12 +900,12 @@ WinCephDeleteFile(
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  if(g_UseACL)
+  if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if(st)
+    if (st)
       return STATUS_ACCESS_DENIED;
   }
 
@@ -922,18 +931,18 @@ WinCephDeleteDirectory(
 
   DbgPrintW(L"DeleteDirectory ceph_rmdir [%ls]\n", FileName);
 
-  if(g_UseACL)
+  if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if(st)
+    if (st)
       return STATUS_ACCESS_DENIED;
   }
 
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
-  if(ret != 0){
+  if (ret != 0){
     fwprintf(stderr, L"ceph_opendir error : %ls [%d]\n", FileName, ret);
     return errno_to_ntstatus(ret);
   }
@@ -944,9 +953,9 @@ WinCephDeleteDirectory(
   {
     memset(&findData, 0, sizeof(findData));
     struct dirent *result = ceph_readdir(cmount, dirp);
-    if(result!=NULL)
+    if (result!=NULL)
     {
-      if(strcmp(result->d_name, ".")!=0
+      if (strcmp(result->d_name, ".")!=0
         && strcmp(result->d_name, "..")!=0)
       {
         ceph_closedir(cmount, dirp);
@@ -985,17 +994,17 @@ WinCephMoveFile(
   ToLinuxFilePath(newfile_name);
 
   DbgPrintW(L"MoveFile ceph_rename [%ls][%ls]\n", FileName, NewFileName);
-  if(g_UseACL)
+  if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_UID, g_GID,
+    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if(st)
+    if (st)
       return STATUS_ACCESS_DENIED;
   }
 
   int ret = ceph_rename(cmount, file_name, newfile_name);
-  if(ret){
+  if (ret){
     DbgPrint("\terror code = %d\n\n", ret);
   }
 
@@ -1023,7 +1032,7 @@ WinCephSetEndOfFile(
   DbgPrintW(L"SetEndOfFile [%ls][%d][ByteOffset:%lld]\n", FileName, fdc.fd, ByteOffset);
 
   int ret = ceph_ftruncate(cmount, fdc.fd, ByteOffset);
-  if(ret){
+  if (ret){
     fwprintf(stderr, L"SetEndOfFile ceph_ftruncate error [%ls][%d][ByteOffset:%lld]\n", FileName, ret, ByteOffset);
     return errno_to_ntstatus(ret);
   }
@@ -1054,14 +1063,14 @@ WinCephSetAllocationSize(
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   int ret = ceph_fstatx(cmount, fdc.fd, &stbuf, requested_attrs, 0);
-  if(ret){
+  if (ret){
     fwprintf(stderr, L"SetAllocationSize ceph_stat error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
     return errno_to_ntstatus(ret);
   }
 
-  if(AllocSize < stbuf.stx_size){
+  if (AllocSize < stbuf.stx_size){
     int ret = ceph_ftruncate(cmount, fdc.fd, AllocSize);
-    if(ret){
+    if (ret){
       fwprintf(stderr, L"SetAllocationSize ceph_ftruncate error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
       return errno_to_ntstatus(ret);
     }
@@ -1115,7 +1124,7 @@ WinCephSetFileTime(
   memset(&stbuf, 0, sizeof(stbuf));
 
   int mask = 0;
-  if(CreationTime != NULL)
+  if (CreationTime != NULL)
   {
    mask |= CEPH_SETATTR_CTIME;
    // On Windows, st_ctime is the creation time while on Linux it's the time
@@ -1123,12 +1132,12 @@ WinCephSetFileTime(
    // semantics, although this might be overridden by Linux hosts.
    FileTimeToUnixTime(*CreationTime, &stbuf.stx_ctime.tv_sec);
   }
-  if(LastAccessTime != NULL)
+  if (LastAccessTime != NULL)
   {
    mask |= CEPH_SETATTR_ATIME;
    FileTimeToUnixTime(*LastAccessTime, &stbuf.stx_atime.tv_sec);
   }
-  if(LastWriteTime != NULL)
+  if (LastWriteTime != NULL)
   {
    mask |= CEPH_SETATTR_MTIME;
    FileTimeToUnixTime(*LastWriteTime, &stbuf.stx_mtime.tv_sec);
@@ -1138,7 +1147,7 @@ WinCephSetFileTime(
             FileName, stbuf.stx_atime, stbuf.stx_mtime);
 
   int ret = ceph_setattrx(cmount, file_name, &stbuf, mask, 0);
-  if(ret){
+  if (ret){
    fwprintf(stderr, L"SetFileTime ceph_setattrx error [%ls][ret=%d]\n",
             FileName, ret);
    return errno_to_ntstatus(ret);
@@ -1199,7 +1208,7 @@ WinCephGetDiskFreeSpace(
 {
   struct statvfs vfsbuf;
   int ret = ceph_statfs(cmount, "/", &vfsbuf);
-  if(ret){
+  if (ret){
     fwprintf(stderr, L"ceph_statfs error [%d]\n", ret);
     return errno_to_ntstatus(ret);;
   }
@@ -1242,229 +1251,57 @@ static void unmount_atexit(void)
   printf("umount FINISHED [%d]\n", ret);
 }
 
-void ceph_show_version() {
-    int major, minor, ppatch;
-    const char* char_version = ceph_version(&major, &minor, &ppatch);
-    fprintf(stderr, "%s\n", char_version);
-}
-
-static void print_usage() {
-  fprintf(stderr, "ceph-dokan.exe\n"
-    "  -c CephConfFile  (ex. /r c:\\ceph.conf)\n"
-    "  -l DriveLetter (ex. /l m)\n"
-    "  -t ThreadCount (ex. /t 5)\n"
-    "  -d (enable debug output)\n"
-    "  -s (use stderr for output)\n"
-    "  -m (use removable drive)\n"
-    "  -o (use Windows mount manager)\n"
-    "  -c (mount for the current session only)\n"
-    "  -w (write-protect drive - read only mount)\n"
-    "  -u Uid (use the specified uid when mounting, defaults to 0)\n"
-    "  -g Gid (use the specified gid when mounting, defaults to 0)\n"
-    "  -n (skip enforcing permissions on client side)\n"
-    "  -x sub_mount_path (mount a Ceph filesystem subdirectory)\n"
-    "  -h (show this help message)\n"
-    "  -i (operation timeout in seconds, defaults to 120)\n"
-    );
-}
-
-
-int __cdecl
-main(int argc, char* argv[])
-{
-  char sub_mount_path[4096];
-  strcpy(sub_mount_path, "/");
-
-  int status;
-  ULONG command;
-  PDOKAN_OPERATIONS dokanOperations =
-      (PDOKAN_OPERATIONS)malloc(sizeof(DOKAN_OPERATIONS));
-  PDOKAN_OPTIONS dokanOptions =
-      (PDOKAN_OPTIONS)malloc(sizeof(DOKAN_OPTIONS));
-
-  fprintf(stderr,
-          "WARNING: This is a preview version of ceph-dokan. "
-          "The CLI might change in subsequent versions.\n");
-
-  if(argc==2)
-  {
-    // TODO: argument parsing can be improved. We might consider
-    // switching to Ceph helpers.
-    // We'll soon start adding a bunch of options that should probably
-    // reside in a config file, ideally ceph.conf
-    if(strcmp(argv[1], "--version")==0 || strcmp(argv[1], "-v")==0)
-    {
-      ceph_show_version();
-      return 0;
-    }
-    if(strcmp(argv[1], "--help")==0 || strcmp(argv[1], "-h")==0)
-    {
-      ceph_show_version();
-      print_usage();
-      return 0;
-    }
+int do_map() {
+  PDOKAN_OPERATIONS dokan_operations =
+      (PDOKAN_OPERATIONS) malloc(sizeof(DOKAN_OPERATIONS));
+  PDOKAN_OPTIONS dokan_options =
+      (PDOKAN_OPTIONS) malloc(sizeof(DOKAN_OPTIONS));
+  if (!dokan_operations || !dokan_options) {
+    fprintf(stderr, "Not enough memory.");
+    return -ENOMEM;
   }
 
-  if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE)) {
-    fwprintf(stderr, L"Unable to install console handler!\n");
-    return EXIT_FAILURE;
+  int r = set_dokan_options(g_cfg, dokan_options);
+  if (r) {
+    return r;
   }
 
-  g_DebugMode = FALSE;
-  g_UseStdErr = FALSE;
+  ZeroMemory(dokan_operations, sizeof(DOKAN_OPERATIONS));
+  dokan_operations->ZwCreateFile = WinCephCreateFile;
+  dokan_operations->Cleanup = WinCephCleanup;
+  dokan_operations->CloseFile = WinCephCloseFile;
+  dokan_operations->ReadFile = WinCephReadFile;
+  dokan_operations->WriteFile = WinCephWriteFile;
+  dokan_operations->FlushFileBuffers = WinCephFlushFileBuffers;
+  dokan_operations->GetFileInformation = WinCephGetFileInformation;
+  dokan_operations->FindFiles = WinCephFindFiles;
+  dokan_operations->SetFileAttributes = WinCephSetFileAttributes;
+  dokan_operations->SetFileTime = WinCephSetFileTime;
+  dokan_operations->DeleteFile = WinCephDeleteFile;
+  dokan_operations->DeleteDirectory = WinCephDeleteDirectory;
+  dokan_operations->MoveFile = WinCephMoveFile;
+  dokan_operations->SetEndOfFile = WinCephSetEndOfFile;
+  dokan_operations->SetAllocationSize = WinCephSetAllocationSize;
+  dokan_operations->SetFileSecurity = WinCephSetFileSecurity;
+  dokan_operations->GetDiskFreeSpace = WinCephGetDiskFreeSpace;
+  dokan_operations->GetVolumeInformation = WinCephGetVolumeInformation;
+  dokan_operations->Unmounted = WinCephUnmount;
 
-  ZeroMemory(dokanOptions, sizeof(DOKAN_OPTIONS));
-  dokanOptions->Version = DOKAN_VERSION;
-  dokanOptions->ThreadCount = 10;
-
-  WCHAR wargv[32][512];
-  for (command = 0; command < argc; command++) {
-    MultiByteToWideChar(CP_UTF8, 0, (LPCTSTR)argv[command], -1, wargv[command], 512);
-    DbgPrintW(L"argv command:[%d] %ls\n", command, wargv[command]);
-  }
-
-  wcscpy(Wargv0, wargv[0]);
-
-  for (command = 1; command < argc; command++) {
-    switch (towlower(wargv[command][1])) {
-    case L'c':
-      command++;
-      strcpy(ceph_conf_file, argv[command]);
-      wcscpy(Wceph_conf_file, wargv[command]);
-      DbgPrintW(L"ceph_conf_file: %ls\n", ceph_conf_file);
-      break;
-    case L'l':
-      command++;
-      wcscpy(MountPoint, wargv[command]);
-      dokanOptions->MountPoint = MountPoint;
-      break;
-    case L't':
-      command++;
-      dokanOptions->ThreadCount = (USHORT)_wtoi(wargv[command]);
-      break;
-    case L'd':
-      g_DebugMode = TRUE;
-      fwprintf(stderr, L"g_DebugMode = TRUE\n");
-      break;
-    case L's':
-      g_UseStdErr = TRUE;
-      fwprintf(stderr, L"g_UseStdErr = TRUE\n");
-      break;
-    case L'u':
-      command++;
-      g_UID = (USHORT)_wtoi(wargv[command]);
-      break;
-    case L'g':
-      command++;
-      g_GID = (USHORT)_wtoi(wargv[command]);
-      break;
-    case L'a':
-      g_UseACL = TRUE;
-      break;
-    case L'x':
-      command++;
-      strcpy(sub_mount_path, argv[command]);
-      break;
-    case L'm':
-      dokanOptions->Options |= DOKAN_OPTION_REMOVABLE;
-      break;
-    case L'o':
-      dokanOptions->Options |= DOKAN_OPTION_MOUNT_MANAGER;
-      break;
-    case L'p':
-      dokanOptions->Options |= DOKAN_OPTION_CURRENT_SESSION;
-      break;
-    case L'w':
-      dokanOptions->Options |= DOKAN_OPTION_WRITE_PROTECT;
-      break;
-    case L'i':
-      command++;
-      timeout_ms = _wtol(wargv[command]) * 1000;
-      break;
-    default:
-      fwprintf(stderr, L"unknown command: %ls\n", wargv[command]);
-      return ERROR_INVALID_PARAMETER;
-    }
-  }
-
-  if (!wcslen(MountPoint)) {
-    fwprintf(stderr, L"No mountpoint was specified.\n");
-    return ERROR_INVALID_PARAMETER;
-  }
-
-  if (g_DebugMode) {
-    dokanOptions->Options |= DOKAN_OPTION_DEBUG;
-  }
-  if (g_UseStdErr) {
-    dokanOptions->Options |= DOKAN_OPTION_STDERR;
-  }
-
-  if ((dokanOptions->Options & DOKAN_OPTION_MOUNT_MANAGER) &&
-      (dokanOptions->Options & DOKAN_OPTION_CURRENT_SESSION)) {
-    fwprintf(stderr,
-             L"The mount manager always mounts the drive for all user sessions.\n");
-    return EXIT_FAILURE;
-  }
-
-  dokanOptions->Timeout = timeout_ms;
-
-  ZeroMemory(dokanOperations, sizeof(DOKAN_OPERATIONS));
-  dokanOperations->ZwCreateFile = WinCephCreateFile;
-  dokanOperations->Cleanup = WinCephCleanup;
-  dokanOperations->CloseFile = WinCephCloseFile;
-  dokanOperations->ReadFile = WinCephReadFile;
-  dokanOperations->WriteFile = WinCephWriteFile;
-  dokanOperations->FlushFileBuffers = WinCephFlushFileBuffers;
-  dokanOperations->GetFileInformation = WinCephGetFileInformation;
-  dokanOperations->FindFiles = WinCephFindFiles;
-  dokanOperations->SetFileAttributes = WinCephSetFileAttributes;
-  dokanOperations->SetFileTime = WinCephSetFileTime;
-  dokanOperations->DeleteFile = WinCephDeleteFile;
-  dokanOperations->DeleteDirectory = WinCephDeleteDirectory;
-  dokanOperations->MoveFile = WinCephMoveFile;
-  dokanOperations->SetEndOfFile = WinCephSetEndOfFile;
-  dokanOperations->SetAllocationSize = WinCephSetAllocationSize;
-  dokanOperations->SetFileSecurity = WinCephSetFileSecurity;
-  dokanOperations->GetDiskFreeSpace = WinCephGetDiskFreeSpace;
-  dokanOperations->GetVolumeInformation = WinCephGetVolumeInformation;
-  dokanOperations->Unmounted = WinCephUnmount;
-
-  //init socket
-  WORD VerNum = MAKEWORD(2, 2);
-  WSADATA VerData;
-  if (WSAStartup(VerNum, &VerData) != 0) {
-    fprintf(stderr, "FAILED to init winsock!!!\n");
-    return ERROR_INVALID_FUNCTION;
-  }
-
-  //ceph_mount
   int ret = 0;
   ceph_create(&cmount, NULL);
-  ret = ceph_conf_read_file(
-    cmount,
-    strlen(ceph_conf_file) ? ceph_conf_file : NULL);
 
-  if(ret)
-  {
-    fprintf(stderr, "ceph_conf_read_file error [%d]!\n", ret);
-    return errno_to_ntstatus(ret);
-  }
-  fprintf(stderr, "ceph_conf_read_file OK\n");
-
-  ret = ceph_mount(cmount, sub_mount_path);
-  if(ret)
-  {
+  ret = ceph_mount(cmount, g_cfg->root_path.c_str());
+  if (ret) {
     fprintf(stderr, "ceph_mount error [%d]!\n", ret);
     return errno_to_ntstatus(ret);
   }
-
   fprintf(stderr, "ceph_mount OK\n");
 
   atexit(unmount_atexit);
 
   fprintf(stderr, "ceph_getcwd [%s]\n", ceph_getcwd(cmount));
 
-  status = DokanMain(dokanOptions, dokanOperations);
+  DWORD status = DokanMain(dokan_options, dokan_operations);
   switch (status) {
   case DOKAN_SUCCESS:
     fprintf(stderr, "Dokan returned successfully.\n");
@@ -1492,8 +1329,95 @@ main(int argc, char* argv[])
     break;
   }
 
-  free(dokanOptions);
-  free(dokanOperations);
+  free(dokan_options);
+  free(dokan_operations);
+  return 0;
+}
+
+boost::intrusive_ptr<CephContext> do_global_init(
+  int argc, const char *argv[], Command cmd)
+{
+  std::vector<const char*> args;
+  argv_to_vec(argc, argv, args);
+
+  code_environment_t code_env;
+  int flags;
+
+  switch (cmd) {
+    case Command::Map:
+      code_env = CODE_ENVIRONMENT_DAEMON;
+      flags = CINIT_FLAG_UNPRIVILEGED_DAEMON_DEFAULTS;
+      break;
+    default:
+      code_env = CODE_ENVIRONMENT_UTILITY;
+      flags = CINIT_FLAG_NO_MON_CONFIG;
+      break;
+  }
+
+  global_pre_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, code_env, flags);
+  // Avoid cluttering the console when spawning a mapping that will run
+  // in the background.
+  if (g_conf()->daemonize) {
+    flags |= CINIT_FLAG_NO_DAEMON_ACTIONS;
+  }
+  auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
+                         code_env, flags, FALSE);
+
+  // There's no fork on Windows, we should be safe calling this anytime.
+  common_init_finish(g_ceph_context);
+  global_init_chdir(g_ceph_context);
+
+  return cct;
+}
+
+int main(int argc, char* argv[])
+{
+  fprintf(stderr,
+          "WARNING: This is a preview version of ceph-dokan. "
+          "The CLI might change in subsequent versions.\n");
+
+  PDOKAN_OPERATIONS dokan_operations =
+      (PDOKAN_OPERATIONS) malloc(sizeof(DOKAN_OPERATIONS));
+  PDOKAN_OPTIONS dokan_options =
+      (PDOKAN_OPTIONS) malloc(sizeof(DOKAN_OPTIONS));
+  g_cfg = malloc(sizeof(Config));
+  if (!dokan_operations || !dokan_options || !g_cfg) {
+    fprintf(stderr, "Not enough memory.");
+    return -ENOMEM;
+  }
+
+  if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE)) {
+    fwprintf(stderr, L"Unable to install console handler!\n");
+    return -EINVAL;
+  }
+
+  Command cmd = Command::None;
+  std::vector<const char*> args;
+  argv_to_vec(argc, argv, args);
+  std::ostringstream err_msg;
+  int r = parse_args(args, &err_msg, &cmd, g_cfg);
+  if (r) {
+    std::cerr << err_msg.str() << std::endl;
+    return r;
+  }
+
+  auto cct = do_global_init(argc, argv, cmd);
+
+  switch (cmd) {
+    case Command::Version:
+      std::cout << pretty_version_to_str() << std::endl;
+      return 0;
+    case Command::Help:
+      print_usage();
+      return 0;
+    case Command::Map:
+      return do_map();
+    default:
+      print_usage();
+      break;
+  }
+
+  free(g_cfg);
   return 0;
 }
 
