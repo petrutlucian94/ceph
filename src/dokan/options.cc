@@ -19,11 +19,6 @@
 
 #include "global/global_init.h"
 
-#define dout_context g_ceph_context
-#define dout_subsys ceph_subsys_rbd
-#undef dout_prefix
-#define dout_prefix *_dout << "rbd-wnbd: "
-
 void print_usage() {
   fprintf(stderr, "ceph-dokan.exe\n"
     "  -c CephConfFile  (ex. /r c:\\ceph.conf)\n"

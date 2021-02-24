@@ -187,9 +187,11 @@ WinCephCreateFile(
   else if (ShareMode == 0)
     ShareMode = FILE_SHARE_READ;
 
-  PrintOpenParams(
-    filePath, AccessMode, FlagsAndAttributes, ShareMode,
-    CreateDisposition, CreateOptions, DokanFileInfo);
+  if (g_cfg->debug) {
+    PrintOpenParams(
+      filePath, AccessMode, FlagsAndAttributes, ShareMode,
+      CreateDisposition, CreateOptions, DokanFileInfo);
+  }
 
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);

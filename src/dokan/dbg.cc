@@ -9,10 +9,21 @@
 */
 
 #include "ceph_dokan.h"
+#include "utils.h"
 #include "dbg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "common/debug.h"
+#include "common/dout.h"
+
+#define dout_context g_ceph_context
+#define dout_subsys ceph_subsys_rbd
+#undef dout_prefix
+#define dout_prefix *_dout << "rbd-wnbd: "
+
+#define check_flag(stream, val, flag) if (val&flag) { stream << "[" #flag "]"; }
 
 void DbgPrintW(LPCWSTR format, ...)
 {
@@ -46,43 +57,42 @@ void DbgPrint(char* format, ...)
   }
 }
 
-void PrintUserName(PDOKAN_FILE_INFO DokanFileInfo)
+void PrintUserName(ostringstream& Stream, PDOKAN_FILE_INFO DokanFileInfo)
 {
-  HANDLE handle;
   UCHAR buffer[1024];
   DWORD returnLength;
-  WCHAR accountName[256];
-  WCHAR domainName[256];
+  CHAR accountName[256];
+  CHAR domainName[256];
   DWORD accountLength = sizeof(accountName) / sizeof(WCHAR);
   DWORD domainLength = sizeof(domainName) / sizeof(WCHAR);
-  PTOKEN_USER tokenUser;
   SID_NAME_USE snu;
 
-  handle = DokanOpenRequestorToken(DokanFileInfo);
+  int err = 0;
+  HANDLE handle = DokanOpenRequestorToken(DokanFileInfo);
   if (handle == INVALID_HANDLE_VALUE) {
-    DbgPrintW(L"  DokanOpenRequestorToken failed\n");
-    fwprintf(stderr, L"DokanOpenRequestorToken err %d\n", GetLastError());
+    err = GetLastError();
+    derr << "DokanOpenRequestorToken failed. Error: " << err << dendl;
     return;
   }
 
   if (!GetTokenInformation(handle, TokenUser, buffer, sizeof(buffer), &returnLength)) {
-    DbgPrintW(L"  GetTokenInformaiton failed: %d\n", GetLastError());
+    err = GetLastError();
+    derr << "GetTokenInformation failed. Error: " << err << dendl;
     CloseHandle(handle);
-    fwprintf(stderr, L"GetTokenInformation err\n");
     return;
   }
 
   CloseHandle(handle);
 
-  tokenUser = (PTOKEN_USER)buffer;
-
-  if (!LookupAccountSidW(NULL, tokenUser->User.Sid, accountName,
+  PTOKEN_USER tokenUser = (PTOKEN_USER)buffer;
+  if (!LookupAccountSidA(NULL, tokenUser->User.Sid, accountName,
       &accountLength, domainName, &domainLength, &snu)) {
-    DbgPrintW(L"  LookupAccountSid failed: %d\n", GetLastError());
+    err = GetLastError();
+    derr << "LookupAccountSid failed. Error: " << err << dendl;
     return;
   }
 
-  DbgPrintW(L"  AccountName: %s, DomainName: %s\n", accountName, domainName);
+  Stream << "\n\tAccountName: " << accountName << ", DomainName: " << domainName;
 }
 
 void PrintOpenParams(
@@ -94,103 +104,99 @@ void PrintOpenParams(
   ULONG CreateOptions,
   PDOKAN_FILE_INFO DokanFileInfo)
 {
-  DbgPrintW(L"CreateFile : %ls\n", FilePath);
+  ostringstream o;
+  o << "CreateFile: " << to_string(FilePath) << ". ";
+  PrintUserName(o, DokanFileInfo);
 
-  // if (g_cfg->debug) {
-    // PrintUserName(DokanFileInfo);
-  // }
+  o << "\n\tCreateDisposition: " << hex << CreationDisposition << " ";
+  check_flag(o, CreationDisposition, CREATE_NEW);
+  check_flag(o, CreationDisposition, OPEN_ALWAYS);
+  check_flag(o, CreationDisposition, CREATE_ALWAYS);
+  check_flag(o, CreationDisposition, OPEN_EXISTING);
+  check_flag(o, CreationDisposition, TRUNCATE_EXISTING);
 
-  if (CreationDisposition == CREATE_NEW)
-    DbgPrintW(L"\tCREATE_NEW\n");
-  if (CreationDisposition == OPEN_ALWAYS)
-    DbgPrintW(L"\tOPEN_ALWAYS\n");
-  if (CreationDisposition == CREATE_ALWAYS)
-    DbgPrintW(L"\tCREATE_ALWAYS\n");
-  if (CreationDisposition == OPEN_EXISTING)
-    DbgPrintW(L"\tOPEN_EXISTING\n");
-  if (CreationDisposition == TRUNCATE_EXISTING)
-    DbgPrintW(L"\tTRUNCATE_EXISTING\n");
+  o << "\n\tShareMode: " << hex << ShareMode << " ";
+  check_flag(o, ShareMode, FILE_SHARE_READ);
+  check_flag(o, ShareMode, FILE_SHARE_WRITE);
+  check_flag(o, ShareMode, FILE_SHARE_DELETE);
 
-  DbgPrintW(L"\tShareMode = 0x%x\n", ShareMode);
+  o << "\n\tAccessMode: " << hex << AccessMode << " ";
+  check_flag(o, AccessMode, GENERIC_READ);
+  check_flag(o, AccessMode, GENERIC_WRITE);
+  check_flag(o, AccessMode, GENERIC_EXECUTE);
 
-  WinCephCheckFlag(ShareMode, FILE_SHARE_READ);
-  WinCephCheckFlag(ShareMode, FILE_SHARE_WRITE);
-  WinCephCheckFlag(ShareMode, FILE_SHARE_DELETE);
+  check_flag(o, AccessMode, WIN32_DELETE);
+  check_flag(o, AccessMode, FILE_READ_DATA);
+  check_flag(o, AccessMode, FILE_READ_ATTRIBUTES);
+  check_flag(o, AccessMode, FILE_READ_EA);
+  check_flag(o, AccessMode, READ_CONTROL);
+  check_flag(o, AccessMode, FILE_WRITE_DATA);
+  check_flag(o, AccessMode, FILE_WRITE_ATTRIBUTES);
+  check_flag(o, AccessMode, FILE_WRITE_EA);
+  check_flag(o, AccessMode, FILE_APPEND_DATA);
+  check_flag(o, AccessMode, WRITE_DAC);
+  check_flag(o, AccessMode, WRITE_OWNER);
+  check_flag(o, AccessMode, SYNCHRONIZE);
+  check_flag(o, AccessMode, FILE_EXECUTE);
+  check_flag(o, AccessMode, STANDARD_RIGHTS_READ);
+  check_flag(o, AccessMode, STANDARD_RIGHTS_WRITE);
+  check_flag(o, AccessMode, STANDARD_RIGHTS_EXECUTE);
 
-  DbgPrintW(L"\tAccessMode = 0x%x\n", AccessMode);
+  o << "\n\tFlagsAndAttributes: " << hex << FlagsAndAttributes << " ";
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_ARCHIVE);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_ENCRYPTED);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_HIDDEN);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_NORMAL);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_OFFLINE);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_READONLY);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_SYSTEM);
+  check_flag(o, FlagsAndAttributes, FILE_ATTRIBUTE_TEMPORARY);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_WRITE_THROUGH);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_OVERLAPPED);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_NO_BUFFERING);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_RANDOM_ACCESS);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_SEQUENTIAL_SCAN);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_DELETE_ON_CLOSE);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_BACKUP_SEMANTICS);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_POSIX_SEMANTICS);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_OPEN_REPARSE_POINT);
+  check_flag(o, FlagsAndAttributes, FILE_FLAG_OPEN_NO_RECALL);
+  check_flag(o, FlagsAndAttributes, SECURITY_ANONYMOUS);
+  check_flag(o, FlagsAndAttributes, SECURITY_IDENTIFICATION);
+  check_flag(o, FlagsAndAttributes, SECURITY_IMPERSONATION);
+  check_flag(o, FlagsAndAttributes, SECURITY_DELEGATION);
+  check_flag(o, FlagsAndAttributes, SECURITY_CONTEXT_TRACKING);
+  check_flag(o, FlagsAndAttributes, SECURITY_EFFECTIVE_ONLY);
+  check_flag(o, FlagsAndAttributes, SECURITY_SQOS_PRESENT);
 
-  WinCephCheckFlag(AccessMode, GENERIC_READ);
-  WinCephCheckFlag(AccessMode, GENERIC_WRITE);
-  WinCephCheckFlag(AccessMode, GENERIC_EXECUTE);
+  o << "\n\tIsDirectory: " << (DokanFileInfo->IsDirectory != NULL);
 
-  WinCephCheckFlag(AccessMode, WIN32_DELETE);
-  WinCephCheckFlag(AccessMode, FILE_READ_DATA);
-  WinCephCheckFlag(AccessMode, FILE_READ_ATTRIBUTES);
-  WinCephCheckFlag(AccessMode, FILE_READ_EA);
-  WinCephCheckFlag(AccessMode, READ_CONTROL);
-  WinCephCheckFlag(AccessMode, FILE_WRITE_DATA);
-  WinCephCheckFlag(AccessMode, FILE_WRITE_ATTRIBUTES);
-  WinCephCheckFlag(AccessMode, FILE_WRITE_EA);
-  WinCephCheckFlag(AccessMode, FILE_APPEND_DATA);
-  WinCephCheckFlag(AccessMode, WRITE_DAC);
-  WinCephCheckFlag(AccessMode, WRITE_OWNER);
-  WinCephCheckFlag(AccessMode, SYNCHRONIZE);
-  WinCephCheckFlag(AccessMode, FILE_EXECUTE);
-  WinCephCheckFlag(AccessMode, STANDARD_RIGHTS_READ);
-  WinCephCheckFlag(AccessMode, STANDARD_RIGHTS_WRITE);
-  WinCephCheckFlag(AccessMode, STANDARD_RIGHTS_EXECUTE);
+  o << "\n\tCreateOptions: " << hex << CreateOptions << " ";
+  check_flag(o, CreateOptions, FILE_DIRECTORY_FILE);
+  check_flag(o, CreateOptions, FILE_WRITE_THROUGH);
+  check_flag(o, CreateOptions, FILE_SEQUENTIAL_ONLY);
+  check_flag(o, CreateOptions, FILE_NO_INTERMEDIATE_BUFFERING);
+  check_flag(o, CreateOptions, FILE_SYNCHRONOUS_IO_ALERT);
+  check_flag(o, CreateOptions, FILE_SYNCHRONOUS_IO_NONALERT);
+  check_flag(o, CreateOptions, FILE_NON_DIRECTORY_FILE);
+  check_flag(o, CreateOptions, FILE_CREATE_TREE_CONNECTION);
+  check_flag(o, CreateOptions, FILE_COMPLETE_IF_OPLOCKED);
+  check_flag(o, CreateOptions, FILE_NO_EA_KNOWLEDGE);
+  check_flag(o, CreateOptions, FILE_OPEN_REMOTE_INSTANCE);
+  check_flag(o, CreateOptions, FILE_RANDOM_ACCESS);
+  check_flag(o, CreateOptions, FILE_DELETE_ON_CLOSE);
+  check_flag(o, CreateOptions, FILE_OPEN_BY_FILE_ID);
+  check_flag(o, CreateOptions, FILE_OPEN_FOR_BACKUP_INTENT);
+  check_flag(o, CreateOptions, FILE_NO_COMPRESSION);
+  check_flag(o, CreateOptions, FILE_OPEN_REQUIRING_OPLOCK);
+  check_flag(o, CreateOptions, FILE_DISALLOW_EXCLUSIVE);
+  check_flag(o, CreateOptions, FILE_RESERVE_OPFILTER);
+  check_flag(o, CreateOptions, FILE_OPEN_REPARSE_POINT);
+  check_flag(o, CreateOptions, FILE_OPEN_NO_RECALL);
+  check_flag(o, CreateOptions, FILE_OPEN_FOR_FREE_SPACE_QUERY);
 
-  DbgPrintW(L"\tFlagsAndAttributes = 0x%x\n", FlagsAndAttributes);
-
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_ARCHIVE);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_ENCRYPTED);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_HIDDEN);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_NORMAL);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_OFFLINE);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_READONLY);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_SYSTEM);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_ATTRIBUTE_TEMPORARY);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_WRITE_THROUGH);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_OVERLAPPED);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_NO_BUFFERING);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_RANDOM_ACCESS);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_SEQUENTIAL_SCAN);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_DELETE_ON_CLOSE);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_BACKUP_SEMANTICS);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_POSIX_SEMANTICS);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_OPEN_REPARSE_POINT);
-  WinCephCheckFlag(FlagsAndAttributes, FILE_FLAG_OPEN_NO_RECALL);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_ANONYMOUS);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_IDENTIFICATION);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_IMPERSONATION);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_DELEGATION);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_CONTEXT_TRACKING);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_EFFECTIVE_ONLY);
-  WinCephCheckFlag(FlagsAndAttributes, SECURITY_SQOS_PRESENT);
-
-  DbgPrintW(L"DokanFileInfo->IsDirectory = %d\n", DokanFileInfo->IsDirectory);
-  DbgPrintW(L"\tCreateOptions = 0x%x\n", CreateOptions);
-  WinCephCheckFlag(CreateOptions, FILE_DIRECTORY_FILE);
-  WinCephCheckFlag(CreateOptions, FILE_WRITE_THROUGH);
-  WinCephCheckFlag(CreateOptions, FILE_SEQUENTIAL_ONLY);
-  WinCephCheckFlag(CreateOptions, FILE_NO_INTERMEDIATE_BUFFERING);
-  WinCephCheckFlag(CreateOptions, FILE_SYNCHRONOUS_IO_ALERT);
-  WinCephCheckFlag(CreateOptions, FILE_SYNCHRONOUS_IO_NONALERT);
-  WinCephCheckFlag(CreateOptions, FILE_NON_DIRECTORY_FILE);
-  WinCephCheckFlag(CreateOptions, FILE_CREATE_TREE_CONNECTION);
-  WinCephCheckFlag(CreateOptions, FILE_COMPLETE_IF_OPLOCKED);
-  WinCephCheckFlag(CreateOptions, FILE_NO_EA_KNOWLEDGE);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_REMOTE_INSTANCE);
-  WinCephCheckFlag(CreateOptions, FILE_RANDOM_ACCESS);
-  WinCephCheckFlag(CreateOptions, FILE_DELETE_ON_CLOSE);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_BY_FILE_ID);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_FOR_BACKUP_INTENT);
-  WinCephCheckFlag(CreateOptions, FILE_NO_COMPRESSION);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_REQUIRING_OPLOCK);
-  WinCephCheckFlag(CreateOptions, FILE_DISALLOW_EXCLUSIVE);
-  WinCephCheckFlag(CreateOptions, FILE_RESERVE_OPFILTER);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_REPARSE_POINT);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_NO_RECALL);
-  WinCephCheckFlag(CreateOptions, FILE_OPEN_FOR_FREE_SPACE_QUERY);
+  // We're using a high log level since this will only be enabled with the
+  // explicit debug flag.
+  dout(0) << o.str() << dendl;
 }
