@@ -18,6 +18,7 @@
 
 #include "ceph_dokan.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fileinfo.h>
@@ -47,6 +48,8 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "ceph-dokan: "
 
+using namespace std;
+
 #define MAX_PATH_CEPH 8192
 
 #define READ_ACCESS_REQUESTED(access_mode) \
@@ -63,6 +66,7 @@
 struct ceph_mount_info *cmount;
 Config *g_cfg;
 
+// Used as part of DOKAN_FILE_INFO.Context, must fit within 64B.
 struct fd_context{
   int   fd;
   short read_only;
@@ -78,53 +82,38 @@ GetFilePath(
   wcsncat(filePath, FileName, wcslen(FileName));
 }
 
-static NTSTATUS
-WinCephCreateDirectory(
-  LPCWSTR          FileName,
-  PDOKAN_FILE_INFO    DokanFileInfo)
+string get_path(LPCWSTR path_w) {
+  string path = to_string(path_w);
+  replace(path.begin(), path.end(), '\\', '/');
+  return path;
+}
+
+static NTSTATUS WinCephCreateDirectory(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  // derr << "CreateDirectory: " << filePath << dendl;
-  DbgPrintW(L"CreateDirectory : %ls\n", filePath);
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
-
-  if (strcmp(file_name, "/")==0)
-  {
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
+  if (file_name == "/") {
     return 0;
   }
 
-  if (g_cfg->enforce_perm)
-  {
-    /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                    PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
+  if (g_cfg->enforce_perm) {
+    int st = permission_walk_parent(
+      cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+      PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
     if (st)
       return STATUS_ACCESS_DENIED;
   }
 
-  struct ceph_statx stbuf;
-  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
-  int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-  if (ret==0){
-    if (S_ISDIR(stbuf.stx_mode)){
-      fwprintf(stderr, L"CreateDirectory ceph_mkdir EXISTS [%ls][ret=%d]\n", FileName, ret);
-      return STATUS_OBJECT_NAME_COLLISION;
-    }
-  }
-
-  ret = ceph_mkdir(cmount, file_name, 0755);
-  if (ret<0)
-  {
-    fwprintf(stderr, L"CreateDirectory ceph_mkdir ERROR [%ls][ret=%d]\n", FileName, ret);
+  int ret = ceph_mkdir(cmount, file_name.c_str(), 0755);
+  if (ret < 0) {
+    dout(10) << __func__   << " " << file_name << " failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
-  ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
-  fuse_init_acl(cmount, file_name, 0040777); //S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
+  ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+  fuse_init_acl(cmount, file_name.c_str(), 0040777); // S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
   return 0;
 }
 
@@ -133,50 +122,42 @@ WinCephOpenDirectory(
   LPCWSTR          FileName,
   PDOKAN_FILE_INFO    DokanFileInfo)
 {
-  WCHAR filePath[MAX_PATH_CEPH];
-  wcscpy(filePath, FileName);
-
-  DbgPrintW(L"OpenDirectory : %ls\n", filePath);
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, filePath, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
 
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
-  int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-  if (ret){
-    fwprintf(stderr, L"OpenDirectory ceph_stat ERROR [%ls][ret=%d]\n", FileName, ret);
+  int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
+  if (ret) {
+    dout(10) << __func__ << " " << file_name << ": ceph_statx failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
   if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
+    int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
                     PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
     if (st)
       return STATUS_ACCESS_DENIED;
   }
 
   if (!S_ISDIR(stbuf.stx_mode)) {
-    DbgPrintW(L"OpenDirectory error: not a directory: %ls\n", FileName);
+    dout(10) << __func__ << " " << file_name << " failed. Not a directory. " << ret << dendl;
     return STATUS_NOT_A_DIRECTORY;
   }
 
-  int fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
-  if (fd <= 0){
-    fwprintf(stderr, L"OpenDirectory ceph_opendir error : %ls [fd:%d]\n", FileName, fd);
+  int fd = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0755);
+  if (fd <= 0) {
+    dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << ret << dendl;
     return errno_to_ntstatus(fd);
   }
 
-  struct fd_context fdc;
-  memset(&fdc, 0, sizeof(struct fd_context));
-
-  fdc.fd = fd;
+  struct fd_context fdc = { .fd = fd };
   memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
 
-  //DokanFileInfo->IsDirectory = TRUE;
-  DbgPrintW(L"OpenDirectory OK : %s [fd:%d]\n", FileName, fd);
+  // DokanFileInfo->IsDirectory = TRUE;
+  dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
   return 0;
 }
 
@@ -214,8 +195,7 @@ WinCephCreateFile(
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  struct fd_context fdc;
-  memset(&fdc, 0, sizeof(struct fd_context));
+  struct fd_context fdc = { 0 };
 
   int fd = 0;
   struct ceph_statx stbuf;
