@@ -231,7 +231,6 @@ WinCephCreateFile(
         // open & return STATUS_OBJECT_NAME_COLLISION
         if (READ_ACCESS_REQUESTED(AccessMode)) {
           if (g_cfg->enforce_perm) {
-            /* permission check*/
             int st = permission_walk(
               cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
               PERM_WALK_CHECK_READ);
@@ -266,21 +265,16 @@ WinCephCreateFile(
       case OPEN_EXISTING:
         // open & return 0
         if (READ_ACCESS_REQUESTED(AccessMode)) {
-          DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL READ [%ls]\n", FileName);
-          if (g_cfg->enforce_perm)
-          {
-            /* permission check*/
-            int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-                            PERM_WALK_CHECK_READ);
+          if (g_cfg->enforce_perm) {
+            int st = permission_walk(
+              cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+              PERM_WALK_CHECK_READ);
             if (st)
               return STATUS_ACCESS_DENIED;
           }
         }
-
         if (WRITE_ACCESS_REQUESTED(AccessMode)) {
-          DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL WRITE [%ls]\n", FileName);
-          if (g_cfg->enforce_perm)
-          {
+          if (g_cfg->enforce_perm) {
             /* permission check*/
             int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
                             PERM_WALK_CHECK_WRITE);
@@ -296,14 +290,14 @@ WinCephCreateFile(
         }
         fdc.fd = fd;
         memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        DbgPrintW(L"CreateFile ceph_open REG OPEN_EXISTING OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-          (int)DokanFileInfo->Context);
-
+        dout(20) << __func__ << " REG OPEN_EXISTING "
+                 << file_name << ": ceph_open OK. "
+                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
+                 << dendl;
         return 0;
       case CREATE_ALWAYS:
-        //open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
+        // open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
         if (g_cfg->enforce_perm) {
-          /* permission check*/
           int st = permission_walk(
             cmount, file_name.c_str(),
             g_cfg->uid, g_cfg->gid,
@@ -320,37 +314,33 @@ WinCephCreateFile(
 
         fdc.fd = fd;
         memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        DbgPrintW(L"CreateFile ceph_open REG CREATE_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-          (int)DokanFileInfo->Context);
-
+        dout(20) << __func__ << " REG CREATE_ALWAYS "
+                 << file_name << ": ceph_open OK. "
+                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
+                 << dendl;
         return STATUS_OBJECT_NAME_COLLISION;
       }
-    }
-    else if (S_ISDIR(stbuf.stx_mode))
-    {
+    } else if (S_ISDIR(stbuf.stx_mode)) {
       DokanFileInfo->IsDirectory = TRUE;
 
       switch (CreationDisposition) {
-        case CREATE_NEW:
-          return STATUS_OBJECT_NAME_COLLISION;
-        case TRUNCATE_EXISTING:
-          return 0;
-        case OPEN_ALWAYS:
-        case OPEN_EXISTING:
-          return WinCephOpenDirectory(FileName, DokanFileInfo);
-        case CREATE_ALWAYS:
-          return STATUS_OBJECT_NAME_COLLISION;
+      case CREATE_NEW:
+        return STATUS_OBJECT_NAME_COLLISION;
+      case TRUNCATE_EXISTING:
+        return 0;
+      case OPEN_ALWAYS:
+      case OPEN_EXISTING:
+        return WinCephOpenDirectory(FileName, DokanFileInfo);
+      case CREATE_ALWAYS:
+        return STATUS_OBJECT_NAME_COLLISION;
       }
-    }else {
+    } else {
       DbgPrintW(L"CreateFile error. unsupported st_mode: %d [%ls]\n",
                 stbuf.stx_mode, FileName);
       return STATUS_BAD_FILE_TYPE;
     }
-  }
-  else /*File Not Exists*/
-  {
-    if (DokanFileInfo->IsDirectory)
-    {
+  } else { /*File Not Exists*/
+    if (DokanFileInfo->IsDirectory) {
       // TODO: check create disposition.
       return WinCephCreateDirectory(FileName, DokanFileInfo);
     }
