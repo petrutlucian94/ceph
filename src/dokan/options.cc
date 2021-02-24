@@ -19,6 +19,11 @@
 
 #include "global/global_init.h"
 
+#define dout_context g_ceph_context
+#define dout_subsys ceph_subsys_rbd
+#undef dout_prefix
+#define dout_prefix *_dout << "rbd-wnbd: "
+
 void print_usage() {
   fprintf(stderr, "ceph-dokan.exe\n"
     "  -c CephConfFile  (ex. /r c:\\ceph.conf)\n"
@@ -52,7 +57,7 @@ int parse_args(
   std::string conf_file_list;
   std::string cluster;
   CephInitParameters iparams = ceph_argparse_early_args(
-          args, CEPH_ENTITY_TYPE_CLIENT, &cluster, &conf_file_list);
+    args, CEPH_ENTITY_TYPE_CLIENT, &cluster, &conf_file_list);
 
   ConfigProxy config{false};
   config->name = iparams.name;
@@ -75,25 +80,25 @@ int parse_args(
       return 0;
     } else if (ceph_argparse_flag(args, i, "-v", "--version", (char*)NULL)) {
       *command = Command::Version;
-    } else if (ceph_argparse_witharg(args, i, &mountpoint, "l", "--mountpoint", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &mountpoint, "--mountpoint", "-l", (char *)NULL)) {
       cfg->mountpoint = to_wstring(mountpoint);
-    } else if (ceph_argparse_witharg(args, i, &cfg->root_path, "x", "--root-path", (char *)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &cfg->root_path, "--root-path", "-x", (char *)NULL)) {
     } else if (ceph_argparse_flag(args, i, "--debug", (char *)NULL)) {
       cfg->debug = true;
     } else if (ceph_argparse_flag(args, i, "--dokan-stderr", (char *)NULL)) {
       cfg->dokan_stderr = true;
     } else if (ceph_argparse_flag(args, i, "--read-only", (char *)NULL)) {
       cfg->readonly = true;
-    } else if (ceph_argparse_flag(args, i, "m", "--removable", (char *)NULL)) {
+    } else if (ceph_argparse_flag(args, i, "--removable", "-m", (char *)NULL)) {
       cfg->removable = true;
-    } else if (ceph_argparse_flag(args, i, "o", "--win-mount-mgr", (char *)NULL)) {
+    } else if (ceph_argparse_flag(args, i, "--win-mount-mgr", "-o", (char *)NULL)) {
       cfg->use_win_mount_mgr = true;
     } else if (ceph_argparse_flag(args, i, "--current-session-only", (char *)NULL)) {
       cfg->current_session_only = true;
     } else if (ceph_argparse_flag(args, i, "--no-perm-enforcing", (char *)NULL)) {
       cfg->enforce_perm = false;
     } else if (ceph_argparse_witharg(args, i, (int*)&cfg->uid,
-                                     err, "u", "--uid", (char *)NULL)) {
+                                     err, "--uid", "-u", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "ceph-dokan: " << err.str();
         return -EINVAL;
@@ -103,7 +108,7 @@ int parse_args(
         return -EINVAL;
       }
     } else if (ceph_argparse_witharg(args, i, (int*)&cfg->gid,
-                                     err, "g", "--gid", (char *)NULL)) {
+                                     err, "--gid", "-g", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "ceph-dokan: " << err.str();
         return -EINVAL;
@@ -113,7 +118,7 @@ int parse_args(
         return -EINVAL;
       }
     } else if (ceph_argparse_witharg(args, i, (int*)&cfg->thread_count,
-                                     err, "t", "--thread-count", (char *)NULL)) {
+                                     err, "--thread-count", "-t", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "ceph-dokan: " << err.str();
         return -EINVAL;
@@ -157,14 +162,9 @@ int parse_args(
     }
     args.erase(args.begin());
   }
-
   if (cmd == Command::None) {
     // The default command.
     cmd = Command::Map;
-  }
-  else {
-    // Remove explicit command.
-    args.erase(args.begin());
   }
 
   switch (cmd) {

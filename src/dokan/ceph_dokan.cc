@@ -43,7 +43,7 @@
 #include "utils.h"
 
 #define dout_context g_ceph_context
-#define dout_subsys ceph_subsys_rbd
+#define dout_subsys ceph_subsys_client
 #undef dout_prefix
 #define dout_prefix *_dout << "ceph-dokan: "
 
@@ -86,7 +86,7 @@ WinCephCreateDirectory(
   WCHAR filePath[MAX_PATH_CEPH];
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
 
-  derr << "CreateDirectory: " << filePath << dendl;
+  // derr << "CreateDirectory: " << filePath << dendl;
   DbgPrintW(L"CreateDirectory : %ls\n", filePath);
   char file_name[MAX_PATH_CEPH];
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
@@ -1288,7 +1288,7 @@ int do_map() {
   dokan_operations->Unmounted = WinCephUnmount;
 
   int ret = 0;
-  ceph_create(&cmount, NULL);
+  ceph_create_with_context(&cmount, g_ceph_context);
 
   ret = ceph_mount(cmount, g_cfg->root_path.c_str());
   if (ret) {
@@ -1376,15 +1376,7 @@ int main(int argc, char* argv[])
           "WARNING: This is a preview version of ceph-dokan. "
           "The CLI might change in subsequent versions.\n");
 
-  PDOKAN_OPERATIONS dokan_operations =
-      (PDOKAN_OPERATIONS) malloc(sizeof(DOKAN_OPERATIONS));
-  PDOKAN_OPTIONS dokan_options =
-      (PDOKAN_OPTIONS) malloc(sizeof(DOKAN_OPTIONS));
-  g_cfg = malloc(sizeof(Config));
-  if (!dokan_operations || !dokan_options || !g_cfg) {
-    fprintf(stderr, "Not enough memory.");
-    return -ENOMEM;
-  }
+  g_cfg = new Config;
 
   if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE)) {
     fwprintf(stderr, L"Unable to install console handler!\n");
@@ -1401,8 +1393,6 @@ int main(int argc, char* argv[])
     return r;
   }
 
-  auto cct = do_global_init(argc, argv, cmd);
-
   switch (cmd) {
     case Command::Version:
       std::cout << pretty_version_to_str() << std::endl;
@@ -1410,6 +1400,11 @@ int main(int argc, char* argv[])
     case Command::Help:
       print_usage();
       return 0;
+  }
+
+  auto cct = do_global_init(argc, argv, cmd);
+
+  switch (cmd) {
     case Command::Map:
       return do_map();
     default:
@@ -1417,7 +1412,6 @@ int main(int argc, char* argv[])
       break;
   }
 
-  free(g_cfg);
   return 0;
 }
 
