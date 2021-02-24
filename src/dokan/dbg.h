@@ -7,16 +7,18 @@
 
 #include "include/compat.h"
 
+#include <sstream>
+
 #include "ceph_dokan.h"
 
 void DbgPrint(char* format, ...);
 void DbgPrintW(LPCWSTR format, ...);
 
-#define WinCephCheckFlag(val, flag) if (val&flag) { DbgPrintW(L"\t" #flag L"\n"); }
-
-void PrintUserName(PDOKAN_FILE_INFO DokanFileInfo);
+void PrintUserName(
+  std::ostringstream& Stream,
+  PDOKAN_FILE_INFO DokanFileInfo);
 void PrintOpenParams(
-  LPCWSTR FilePath,
+  LPCSTR FilePath,
   ACCESS_MASK AccessMode,
   DWORD FlagsAndAttributes,
   ULONG ShareMode,

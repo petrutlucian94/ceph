@@ -96,7 +96,7 @@ void PrintUserName(ostringstream& Stream, PDOKAN_FILE_INFO DokanFileInfo)
 }
 
 void PrintOpenParams(
-  LPCWSTR FilePath,
+  LPCSTR FilePath,
   ACCESS_MASK AccessMode,
   DWORD FlagsAndAttributes,
   ULONG ShareMode,
@@ -105,7 +105,7 @@ void PrintOpenParams(
   PDOKAN_FILE_INFO DokanFileInfo)
 {
   ostringstream o;
-  o << "CreateFile: " << to_string(FilePath) << ". ";
+  o << "CreateFile: " << FilePath << ". ";
   PrintUserName(o, DokanFileInfo);
 
   o << "\n\tCreateDisposition: " << hex << CreationDisposition << " ";

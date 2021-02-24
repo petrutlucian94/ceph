@@ -117,10 +117,9 @@ static NTSTATUS WinCephCreateDirectory(
   return 0;
 }
 
-static int
-WinCephOpenDirectory(
-  LPCWSTR          FileName,
-  PDOKAN_FILE_INFO    DokanFileInfo)
+static int WinCephOpenDirectory(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
@@ -136,20 +135,21 @@ WinCephOpenDirectory(
   if (g_cfg->enforce_perm)
   {
     /* permission check*/
-    int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-                    PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
+    int st = permission_walk(
+      cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+      PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
     if (st)
       return STATUS_ACCESS_DENIED;
   }
 
   if (!S_ISDIR(stbuf.stx_mode)) {
-    dout(10) << __func__ << " " << file_name << " failed. Not a directory. " << ret << dendl;
+    dout(10) << __func__ << " " << file_name << " failed. Not a directory." << dendl;
     return STATUS_NOT_A_DIRECTORY;
   }
 
   int fd = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0755);
   if (fd <= 0) {
-    dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << ret << dendl;
+    dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << fd << dendl;
     return errno_to_ntstatus(fd);
   }
 
@@ -179,8 +179,8 @@ WinCephCreateFile(
     DesiredAccess, FileAttributes, CreateOptions, CreateDisposition,
     &AccessMode, &FlagsAndAttributes, &CreationDisposition);
 
-  WCHAR filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
 
   if (ShareMode == 0 && AccessMode & FILE_WRITE_DATA)
     ShareMode = FILE_SHARE_WRITE;
@@ -189,152 +189,141 @@ WinCephCreateFile(
 
   if (g_cfg->debug) {
     PrintOpenParams(
-      filePath, AccessMode, FlagsAndAttributes, ShareMode,
+      file_name.c_str(), AccessMode, FlagsAndAttributes, ShareMode,
       CreateDisposition, CreateOptions, DokanFileInfo);
   }
 
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
-
   struct fd_context fdc = { 0 };
-
   int fd = 0;
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
-  int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-  if (ret==0) /*File Exists*/
-  {
-    if (S_ISREG(stbuf.stx_mode))
-    {
+  int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
+  if (!ret) { /* File Exists */
+    if (S_ISREG(stbuf.stx_mode)) {
       switch (CreationDisposition) {
-        case CREATE_NEW:
-          return STATUS_OBJECT_NAME_COLLISION;
-        case TRUNCATE_EXISTING:
-          //open O_TRUNC & return 0
+      case CREATE_NEW:
+        return STATUS_OBJECT_NAME_COLLISION;
+      case TRUNCATE_EXISTING:
+        // open O_TRUNC & return 0
+        if (g_cfg->enforce_perm) {
+          int st = permission_walk(
+            cmount, file_name.c_str(),
+            g_cfg->uid, g_cfg->gid,
+            PERM_WALK_CHECK_WRITE);
+          if (st)
+            return STATUS_ACCESS_DENIED;
+        }
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
+        if (fd < 0) {
+          dout(10) << __func__ << " " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
+          return errno_to_ntstatus(fd);
+        }
+
+        fdc.fd = fd;
+        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
+        dout(20) << __func__ << " REG TRUNCATE_EXISTING "
+                 << file_name << ": ceph_open OK. "
+                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
+                 << dendl;
+        return 0;
+      case OPEN_ALWAYS:
+        // open & return STATUS_OBJECT_NAME_COLLISION
+        if (READ_ACCESS_REQUESTED(AccessMode)) {
+          if (g_cfg->enforce_perm) {
+            /* permission check*/
+            int st = permission_walk(
+              cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+              PERM_WALK_CHECK_READ);
+            if (st)
+              return STATUS_ACCESS_DENIED;
+          }
+        }
+        if (WRITE_ACCESS_REQUESTED(AccessMode)) {
+          if (g_cfg->enforce_perm) {
+            /* permission check*/
+            int st = permission_walk(
+              cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+              PERM_WALK_CHECK_WRITE);
+            if (st) fdc.read_only = 1;
+          }
+        }
+
+        fd = ceph_open(cmount, file_name.c_str(), fdc.read_only ? O_RDONLY : O_RDWR, 0755);
+        if (fd < 0) {
+          dout(10) << __func__ << " REG OPEN_ALWAYS " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
+          return errno_to_ntstatus(fd);
+        }
+
+        fdc.fd = fd;
+        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
+        dout(20) << __func__ << " REG OPEN_ALWAYS "
+                 << file_name << ": ceph_open OK. "
+                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
+                 << dendl;
+        return STATUS_OBJECT_NAME_COLLISION;
+      case OPEN_EXISTING:
+        // open & return 0
+        if (READ_ACCESS_REQUESTED(AccessMode)) {
+          DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL READ [%ls]\n", FileName);
           if (g_cfg->enforce_perm)
           {
             /* permission check*/
-            int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
+            int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+                            PERM_WALK_CHECK_READ);
+            if (st)
+              return STATUS_ACCESS_DENIED;
+          }
+        }
+
+        if (WRITE_ACCESS_REQUESTED(AccessMode)) {
+          DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL WRITE [%ls]\n", FileName);
+          if (g_cfg->enforce_perm)
+          {
+            /* permission check*/
+            int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
                             PERM_WALK_CHECK_WRITE);
-            if (st)
-              return STATUS_ACCESS_DENIED;
+            if (st) fdc.read_only = 1;
           }
-          fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
-          if (fd<0){
-            fwprintf(stderr, L"CreateFile REG TRUNCATE_EXISTING ceph_open error [%ls][ret=%d]\n", FileName, fd);
-            return errno_to_ntstatus(fd);
-          }
+        }
 
-          fdc.fd = fd;
-          memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          DbgPrintW(L"CreateFile REG TRUNCATE_EXISTING ceph_open OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-            (int)DokanFileInfo->Context);
+        fd = ceph_open(cmount, file_name.c_str(), fdc.read_only ? O_RDONLY : O_RDWR, 0755);
+        if (fd < 0) {
+          dout(10) << __func__ << " REG OPEN_EXISTING " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
+          return errno_to_ntstatus(fd);
+        }
+        fdc.fd = fd;
+        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
+        DbgPrintW(L"CreateFile ceph_open REG OPEN_EXISTING OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
+          (int)DokanFileInfo->Context);
 
-          return 0;
-        case OPEN_ALWAYS:
-          //open & return STATUS_OBJECT_NAME_COLLISION
-          if (READ_ACCESS_REQUESTED(AccessMode))
-          {
-            if (g_cfg->enforce_perm)
-            {
-              /* permission check*/
-              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                              PERM_WALK_CHECK_READ);
-              if (st)
-                return STATUS_ACCESS_DENIED;
-            }
-          }
+        return 0;
+      case CREATE_ALWAYS:
+        //open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
+        if (g_cfg->enforce_perm) {
+          /* permission check*/
+          int st = permission_walk(
+            cmount, file_name.c_str(),
+            g_cfg->uid, g_cfg->gid,
+            PERM_WALK_CHECK_READ | PERM_WALK_CHECK_WRITE);
+          if (st)
+            return STATUS_ACCESS_DENIED;
+        }
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
+        if (fd < 0){
+          dout(10) << __func__ << " REG CREATE_ALWAYS " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
+          return errno_to_ntstatus(fd);
+        }
 
-          if (WRITE_ACCESS_REQUESTED(AccessMode))
-          {
-            if (g_cfg->enforce_perm)
-            {
-              /* permission check*/
-              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                              PERM_WALK_CHECK_WRITE);
-              if (st) fdc.read_only = 1;
-            }
-          }
+        fdc.fd = fd;
+        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
+        DbgPrintW(L"CreateFile ceph_open REG CREATE_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
+          (int)DokanFileInfo->Context);
 
-          if (fdc.read_only == 1)
-            fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
-          else
-            fd = ceph_open(cmount, file_name, O_RDWR, 0755);
-          if (fd<0){
-            fwprintf(stderr, L"CreateFile REG OPEN_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
-            return errno_to_ntstatus(fd);
-          }
-
-          fdc.fd = fd;
-          memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          DbgPrintW(L"CreateFile ceph_open REG OPEN_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-            (int)DokanFileInfo->Context);
-
-          return STATUS_OBJECT_NAME_COLLISION;
-        case OPEN_EXISTING:
-          //open & return 0
-          if (READ_ACCESS_REQUESTED(AccessMode))
-          {
-            DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL READ [%ls]\n", FileName);
-            if (g_cfg->enforce_perm)
-            {
-              /* permission check*/
-              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                              PERM_WALK_CHECK_READ);
-              if (st)
-                return STATUS_ACCESS_DENIED;
-            }
-          }
-
-          if (WRITE_ACCESS_REQUESTED(AccessMode))
-          {
-            DbgPrintW(L"CreateFile REG OPEN_EXISTING ceph_open ACL WRITE [%ls]\n", FileName);
-            if (g_cfg->enforce_perm)
-            {
-              /* permission check*/
-              int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                              PERM_WALK_CHECK_WRITE);
-              if (st) fdc.read_only = 1;
-            }
-          }
-
-          if (fdc.read_only == 1)
-            fd = ceph_open(cmount, file_name, O_RDONLY, 0755);
-          else
-            fd = ceph_open(cmount, file_name, O_RDWR, 0755);
-          if (fd<0){
-            fwprintf(stderr, L"CreateFile ceph_open REG OPEN_EXISTING error [%ls][ret=%d]\n", FileName, fd);
-            return errno_to_ntstatus(fd);
-          }
-          fdc.fd = fd;
-          memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          DbgPrintW(L"CreateFile ceph_open REG OPEN_EXISTING OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-            (int)DokanFileInfo->Context);
-
-          return 0;
-        case CREATE_ALWAYS:
-          //open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
-          if (g_cfg->enforce_perm)
-          {
-            /* permission check*/
-            int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                            PERM_WALK_CHECK_READ|PERM_WALK_CHECK_WRITE);
-            if (st)
-              return STATUS_ACCESS_DENIED;
-          }
-          fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
-          if (fd<0){
-            fwprintf(stderr, L"CreateFile ceph_open error REG CREATE_ALWAYS [%ls][ret=%d]\n", FileName, fd);
-            return errno_to_ntstatus(fd);
-          }
-
-          fdc.fd = fd;
-          memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-          DbgPrintW(L"CreateFile ceph_open REG CREATE_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-            (int)DokanFileInfo->Context);
-
-          return STATUS_OBJECT_NAME_COLLISION;
+        return STATUS_OBJECT_NAME_COLLISION;
       }
     }
     else if (S_ISDIR(stbuf.stx_mode))
@@ -367,18 +356,18 @@ WinCephCreateFile(
     }
     switch (CreationDisposition) {
       case CREATE_NEW:
-        //create & return 0
-        if (g_cfg->enforce_perm)
-        {
-          /* permission check*/
-          int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                          PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
+        // create & return 0
+        if (g_cfg->enforce_perm) {
+          int st = permission_walk_parent(
+            cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
           if (st)
             return STATUS_ACCESS_DENIED;
         }
-        fd = ceph_open(cmount, file_name, O_CREAT|O_RDWR|O_EXCL, 0755);
-        if (fd<0){
-          fwprintf(stderr, L"CreateFile NOF CREATE_NEW ceph_open error [%ls][ret=%d]\n", FileName, fd);
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT |O_RDWR |O_EXCL, 0755);
+        if (fd <0 ) {
+          dout(10) << __func__ << " NOF CREATE_NEW " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
           return errno_to_ntstatus(fd);
         }
 
@@ -387,22 +376,22 @@ WinCephCreateFile(
         DbgPrintW(L"CreateFile ceph_open NOF CREATE_NEW OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           (int)DokanFileInfo->Context);
 
-        ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
-        fuse_init_acl(cmount, file_name, 00777); //S_IRWXU|S_IRWXG|S_IRWXO
+        ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+        fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case CREATE_ALWAYS:
-        //create & return 0
-        if (g_cfg->enforce_perm)
-        {
-          /* permission check*/
-          int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                          PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
+        // create & return 0
+        if (g_cfg->enforce_perm) {
+          int st = permission_walk_parent(
+            cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
           if (st)
             return STATUS_ACCESS_DENIED;
         }
-        fd = ceph_open(cmount, file_name, O_CREAT|O_TRUNC|O_RDWR, 0755);
-        if (fd<0){
-          fwprintf(stderr, L"CreateFile NOF CREATE_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT|O_TRUNC|O_RDWR, 0755);
+        if (fd < 0){
+          dout(10) << __func__ << " NOF CREATE_ALWAYS " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
           return errno_to_ntstatus(fd);
         }
 
@@ -411,21 +400,21 @@ WinCephCreateFile(
         DbgPrintW(L"CreateFile ceph_open NOF CREATE_ALWAYS_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           (int)DokanFileInfo->Context);
 
-        ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
-        fuse_init_acl(cmount, file_name, 00777); //S_IRWXU|S_IRWXG|S_IRWXO
+        ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+        fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case OPEN_ALWAYS:
-        if (g_cfg->enforce_perm)
-        {
-          /* permission check*/
-          int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                          PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
+        if (g_cfg->enforce_perm) {
+          int st = permission_walk_parent(
+            cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
+            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
           if (st)
             return STATUS_ACCESS_DENIED;
         }
-        fd = ceph_open(cmount, file_name, O_CREAT|O_RDWR, 0755);
-        if (fd<=0){
-          fwprintf(stderr, L"CreateFile REG NOF OPEN_ALWAYS ceph_open error [%ls][ret=%d]\n", FileName, fd);
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_RDWR, 0755);
+        if (fd <= 0) {
+          dout(10) << __func__ << " NOF OPEN_ALWAYS " << file_name
+                   << ": ceph_open failed. Error: " << fd << dendl;
           return errno_to_ntstatus(fd);
         }
 
@@ -434,11 +423,11 @@ WinCephCreateFile(
         DbgPrintW(L"CreateFile ceph_open REG NOF OPEN_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
           (int)DokanFileInfo->Context);
 
-        ceph_chown(cmount, file_name, g_cfg->uid, g_cfg->gid);
-        fuse_init_acl(cmount, file_name, 00777); //S_IRWXU|S_IRWXG|S_IRWXO
+        ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+        fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case OPEN_EXISTING:
-        if (file_name[0] == '/')
+        if (file_name == "/")
           return STATUS_OBJECT_NAME_NOT_FOUND;
         else
           return 0;
