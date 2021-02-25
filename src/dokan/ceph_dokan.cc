@@ -66,12 +66,13 @@ using namespace std;
 struct ceph_mount_info *cmount;
 Config *g_cfg;
 
-// Used as part of DOKAN_FILE_INFO.Context, must fit within 64B.
+// Used as part of DOKAN_FILE_INFO.Context, must fit within 8B.
 typedef struct {
   int   fd;
   short read_only;
 } fd_context, *pfd_context;
-assert(sizeof(fd_context) <= sizeof(DOKAN_FILE_INFO.Context))
+static_assert(sizeof(fd_context) <= 8,
+              "fd_context exceeds DOKAN_FILE_INFO.Context size.");
 
 static void
 GetFilePath(
@@ -150,7 +151,7 @@ static int WinCephOpenDirectory(
   return 0;
 }
 
-static int check_perm(string file_name, int perm_chk)
+int check_perm(string file_name, int perm_chk)
 {
   if (g_cfg->enforce_perm) {
     return 0;
@@ -161,7 +162,7 @@ static int check_perm(string file_name, int perm_chk)
     perm_chk);
 }
 
-static int check_parent_perm(string file_name, int perm_chk)
+int check_parent_perm(string file_name, int perm_chk)
 {
   if (g_cfg->enforce_perm) {
     return 0;
@@ -180,7 +181,7 @@ static NTSTATUS do_open_file(
   bool init_perm = false,
   umode_t new_mode = 00777)
 {
-  fd = ceph_open(cmount, file_name.c_str(), flags, mode);
+  int fd = ceph_open(cmount, file_name.c_str(), flags, mode);
   if (fd < 0) {
     dout(10) << __func__ << " " << file_name
              << ": ceph_open failed. Error: " << fd << dendl;
@@ -228,7 +229,7 @@ WinCephCreateFile(
 
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
   *fdc = { 0 };
-  NTSTAUS st = 0;
+  NTSTATUS st = 0;
 
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
@@ -254,7 +255,7 @@ WinCephCreateFile(
             check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
           fdc->read_only = 1;
         }
-        if (st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc))
+        if ((st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc)))
           return st;
         return STATUS_OBJECT_NAME_COLLISION;
       case OPEN_EXISTING:
@@ -267,7 +268,7 @@ WinCephCreateFile(
             check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
           fdc->read_only = 1;
         }
-        if (st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc))
+        if ((st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc)))
           return st;
         return 0;
       case CREATE_ALWAYS:
@@ -277,7 +278,7 @@ WinCephCreateFile(
             PERM_WALK_CHECK_READ | PERM_WALK_CHECK_WRITE))
           return STATUS_ACCESS_DENIED;
 
-        if (st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc))
+        if ((st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc)))
           return st;
         return STATUS_OBJECT_NAME_COLLISION;
       }
@@ -300,7 +301,7 @@ WinCephCreateFile(
                 stbuf.stx_mode, FileName);
       return STATUS_BAD_FILE_TYPE;
     }
-  } else { /*File Not Exists*/
+  } else { // The file doens't exist.
     if (DokanFileInfo->IsDirectory) {
       // TODO: check create disposition.
       return WinCephCreateDirectory(FileName, DokanFileInfo);
@@ -312,7 +313,7 @@ WinCephCreateFile(
             file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
           return STATUS_ACCESS_DENIED;
 
-        if (st = do_open_file(file_name, O_CREAT | O_RDWR | O_EXCL, 0755, fdc, true))
+        if ((st = do_open_file(file_name, O_CREAT | O_RDWR | O_EXCL, 0755, fdc, true)))
           return st;
         return 0;
       case CREATE_ALWAYS:
@@ -321,7 +322,7 @@ WinCephCreateFile(
             file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
           return STATUS_ACCESS_DENIED;
 
-        if (st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc, true))
+        if ((st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc, true)))
           return st;
         return 0;
       case OPEN_ALWAYS:
@@ -330,7 +331,7 @@ WinCephCreateFile(
             PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
           return STATUS_ACCESS_DENIED;
 
-        if (st = do_open_file(file_name, O_CREAT | O_RDWR, 0755, fdc, true))
+        if ((st = do_open_file(file_name, O_CREAT | O_RDWR, 0755, fdc, true)))
           return st;
         return 0;
       case OPEN_EXISTING:
@@ -462,7 +463,7 @@ WinCephReadFile(
       return errno_to_ntstatus(fd_new);
     }
 
-    int ret = ceph_read(cmount, fd_new, Buffer, BufferLength, Offset);
+    int ret = ceph_read(cmount, fd_new, (char*) Buffer, BufferLength, Offset);
     if (ret<0)
     {
       fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
@@ -474,7 +475,7 @@ WinCephReadFile(
     return 0;
   }
   else{
-    int ret = ceph_read(cmount, fdc->fd, Buffer, BufferLength, Offset);
+    int ret = ceph_read(cmount, fdc->fd, (char*) Buffer, BufferLength, Offset);
     if (ret<0)
     {
       fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
@@ -527,7 +528,7 @@ WinCephWriteFile(
       return errno_to_ntstatus(fd_new);
     }
 
-    int ret = ceph_write(cmount, fd_new, Buffer, NumberOfBytesToWrite, Offset);
+    int ret = ceph_write(cmount, fd_new, (char*) Buffer, NumberOfBytesToWrite, Offset);
     if (ret<0)
     {
       fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
@@ -541,7 +542,7 @@ WinCephWriteFile(
     return 0;
   }
   else {
-    int ret = ceph_write(cmount, fdc->fd, Buffer, NumberOfBytesToWrite, Offset);
+    int ret = ceph_write(cmount, fdc->fd, (char*) Buffer, NumberOfBytesToWrite, Offset);
     if (ret<0)
     {
       fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
@@ -1244,6 +1245,8 @@ int main(int argc, char* argv[])
     case Command::Help:
       print_usage();
       return 0;
+    default:
+      break;
   }
 
   auto cct = do_global_init(argc, argv, cmd);
