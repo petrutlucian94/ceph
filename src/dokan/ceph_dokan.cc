@@ -98,13 +98,8 @@ static NTSTATUS WinCephCreateDirectory(
     return 0;
   }
 
-  if (g_cfg->enforce_perm) {
-    int st = permission_walk_parent(
-      cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-      PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
-    if (st)
-      return STATUS_ACCESS_DENIED;
-  }
+  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
 
   int ret = ceph_mkdir(cmount, file_name.c_str(), 0755);
   if (ret < 0) {
@@ -132,15 +127,8 @@ static int WinCephOpenDirectory(
     return errno_to_ntstatus(ret);
   }
 
-  if (g_cfg->enforce_perm)
-  {
-    /* permission check*/
-    int st = permission_walk(
-      cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-      PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
-    if (st)
-      return STATUS_ACCESS_DENIED;
-  }
+  if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
 
   if (!S_ISDIR(stbuf.stx_mode)) {
     dout(10) << __func__ << " " << file_name << " failed. Not a directory." << dendl;
@@ -158,6 +146,50 @@ static int WinCephOpenDirectory(
 
   // DokanFileInfo->IsDirectory = TRUE;
   dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
+  return 0;
+}
+
+static int check_perm(string file_name, int perm_chk)
+{
+  if (g_cfg->enforce_perm) {
+    return 0;
+  }
+  return permission_walk(
+    cmount, file_name.c_str(),
+    g_cfg->uid, g_cfg->gid,
+    perm_chk);
+}
+
+static int check_parent_perm(string file_name, int perm_chk)
+{
+  if (g_cfg->enforce_perm) {
+    return 0;
+  }
+  return permission_walk_parent(
+    cmount, file_name.c_str(),
+    g_cfg->uid, g_cfg->gid,
+    perm_chk);
+}
+
+static NTSTATUS
+DoCreateFile(
+  string file_name,
+  int flags,
+  mode_t mode,
+  fd_context* fdc)
+{
+  fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
+  if (fd < 0) {
+    dout(10) << __func__ << " " << file_name
+             << ": ceph_open failed. Error: " << fd << dendl;
+    return errno_to_ntstatus(fd);
+  }
+
+  fdc->fd = fd;
+  memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
+  dout(20) << "CreateFile " << file_name << ": ceph_open OK. "
+           << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
+           << dendl;
   return 0;
 }
 
@@ -205,14 +237,9 @@ WinCephCreateFile(
         return STATUS_OBJECT_NAME_COLLISION;
       case TRUNCATE_EXISTING:
         // open O_TRUNC & return 0
-        if (g_cfg->enforce_perm) {
-          int st = permission_walk(
-            cmount, file_name.c_str(),
-            g_cfg->uid, g_cfg->gid,
-            PERM_WALK_CHECK_WRITE);
-          if (st)
-            return STATUS_ACCESS_DENIED;
-        }
+        if (check_perm(file_name, PERM_WALK_CHECK_WRITE))
+          return STATUS_ACCESS_DENIED;
+
         fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
         if (fd < 0) {
           dout(10) << __func__ << " " << file_name
@@ -229,23 +256,13 @@ WinCephCreateFile(
         return 0;
       case OPEN_ALWAYS:
         // open & return STATUS_OBJECT_NAME_COLLISION
-        if (READ_ACCESS_REQUESTED(AccessMode)) {
-          if (g_cfg->enforce_perm) {
-            int st = permission_walk(
-              cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-              PERM_WALK_CHECK_READ);
-            if (st)
-              return STATUS_ACCESS_DENIED;
-          }
+        if (READ_ACCESS_REQUESTED(AccessMode) &&
+            check_perm(file_name, PERM_WALK_CHECK_READ)) {
+          return STATUS_ACCESS_DENIED;
         }
-        if (WRITE_ACCESS_REQUESTED(AccessMode)) {
-          if (g_cfg->enforce_perm) {
-            /* permission check*/
-            int st = permission_walk(
-              cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-              PERM_WALK_CHECK_WRITE);
-            if (st) fdc.read_only = 1;
-          }
+        if (WRITE_ACCESS_REQUESTED(AccessMode) &&
+            check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
+          fdc.read_only = 1;
         }
 
         fd = ceph_open(cmount, file_name.c_str(), fdc.read_only ? O_RDONLY : O_RDWR, 0755);
@@ -264,22 +281,13 @@ WinCephCreateFile(
         return STATUS_OBJECT_NAME_COLLISION;
       case OPEN_EXISTING:
         // open & return 0
-        if (READ_ACCESS_REQUESTED(AccessMode)) {
-          if (g_cfg->enforce_perm) {
-            int st = permission_walk(
-              cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-              PERM_WALK_CHECK_READ);
-            if (st)
-              return STATUS_ACCESS_DENIED;
-          }
+        if (READ_ACCESS_REQUESTED(AccessMode) &&
+            check_perm(file_name, PERM_WALK_CHECK_READ)) {
+          return STATUS_ACCESS_DENIED;
         }
-        if (WRITE_ACCESS_REQUESTED(AccessMode)) {
-          if (g_cfg->enforce_perm) {
-            /* permission check*/
-            int st = permission_walk(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-                            PERM_WALK_CHECK_WRITE);
-            if (st) fdc.read_only = 1;
-          }
+        if (WRITE_ACCESS_REQUESTED(AccessMode) &&
+            check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
+          fdc.read_only = 1;
         }
 
         fd = ceph_open(cmount, file_name.c_str(), fdc.read_only ? O_RDONLY : O_RDWR, 0755);
@@ -297,14 +305,11 @@ WinCephCreateFile(
         return 0;
       case CREATE_ALWAYS:
         // open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
-        if (g_cfg->enforce_perm) {
-          int st = permission_walk(
-            cmount, file_name.c_str(),
-            g_cfg->uid, g_cfg->gid,
-            PERM_WALK_CHECK_READ | PERM_WALK_CHECK_WRITE);
-          if (st)
-            return STATUS_ACCESS_DENIED;
-        }
+        if (check_perm(
+            file_name,
+            PERM_WALK_CHECK_READ | PERM_WALK_CHECK_WRITE))
+          return STATUS_ACCESS_DENIED;
+
         fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
         if (fd < 0){
           dout(10) << __func__ << " REG CREATE_ALWAYS " << file_name
@@ -347,14 +352,11 @@ WinCephCreateFile(
     switch (CreationDisposition) {
       case CREATE_NEW:
         // create & return 0
-        if (g_cfg->enforce_perm) {
-          int st = permission_walk_parent(
-            cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
-          if (st)
-            return STATUS_ACCESS_DENIED;
-        }
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT |O_RDWR |O_EXCL, 0755);
+        if (check_parent_perm(
+            file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+          return STATUS_ACCESS_DENIED;
+
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_RDWR | O_EXCL, 0755);
         if (fd <0 ) {
           dout(10) << __func__ << " NOF CREATE_NEW " << file_name
                    << ": ceph_open failed. Error: " << fd << dendl;
@@ -371,14 +373,11 @@ WinCephCreateFile(
         return 0;
       case CREATE_ALWAYS:
         // create & return 0
-        if (g_cfg->enforce_perm) {
-          int st = permission_walk_parent(
-            cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
-          if (st)
-            return STATUS_ACCESS_DENIED;
-        }
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT|O_TRUNC|O_RDWR, 0755);
+        if (check_parent_perm(
+            file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+          return STATUS_ACCESS_DENIED;
+
+        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
         if (fd < 0){
           dout(10) << __func__ << " NOF CREATE_ALWAYS " << file_name
                    << ": ceph_open failed. Error: " << fd << dendl;
@@ -394,13 +393,11 @@ WinCephCreateFile(
         fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
         return 0;
       case OPEN_ALWAYS:
-        if (g_cfg->enforce_perm) {
-          int st = permission_walk_parent(
-            cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid,
-            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC);
-          if (st)
-            return STATUS_ACCESS_DENIED;
-        }
+        if (check_parent_perm(
+            file_name,
+            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+          return STATUS_ACCESS_DENIED;
+
         fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_RDWR, 0755);
         if (fd <= 0) {
           dout(10) << __func__ << " NOF OPEN_ALWAYS " << file_name
@@ -765,14 +762,8 @@ WinCephFindFiles(
 
   DbgPrintW(L"FindFiles ceph_opendir : [%ls]\n", FileName);
 
-  if (g_cfg->enforce_perm)
-  {
-    /* permission check*/
-    int st = permission_walk(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                    PERM_WALK_CHECK_READ|PERM_WALK_CHECK_EXEC);
-    if (st)
+  if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
       return STATUS_ACCESS_DENIED;
-  }
 
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
@@ -861,14 +852,8 @@ WinCephDeleteFile(
   wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
   ToLinuxFilePath(file_name);
 
-  if (g_cfg->enforce_perm)
-  {
-    /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                    PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if (st)
-      return STATUS_ACCESS_DENIED;
-  }
+  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
 
   return 0;
 }
@@ -892,14 +877,8 @@ WinCephDeleteDirectory(
 
   DbgPrintW(L"DeleteDirectory ceph_rmdir [%ls]\n", FileName);
 
-  if (g_cfg->enforce_perm)
-  {
-    /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                    PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if (st)
-      return STATUS_ACCESS_DENIED;
-  }
+  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
 
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name, &dirp);
@@ -955,14 +934,8 @@ WinCephMoveFile(
   ToLinuxFilePath(newfile_name);
 
   DbgPrintW(L"MoveFile ceph_rename [%ls][%ls]\n", FileName, NewFileName);
-  if (g_cfg->enforce_perm)
-  {
-    /* permission check*/
-    int st = permission_walk_parent(cmount, file_name, g_cfg->uid, g_cfg->gid,
-                    PERM_WALK_CHECK_WRITE|PERM_WALK_CHECK_EXEC);
-    if (st)
-      return STATUS_ACCESS_DENIED;
-  }
+  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
 
   int ret = ceph_rename(cmount, file_name, newfile_name);
   if (ret){
