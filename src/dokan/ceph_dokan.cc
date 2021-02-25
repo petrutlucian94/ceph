@@ -105,7 +105,7 @@ static NTSTATUS WinCephCreateDirectory(
 
   int ret = ceph_mkdir(cmount, file_name.c_str(), 0755);
   if (ret < 0) {
-    dout(10) << __func__   << " " << file_name << " failed. Error: " << ret << dendl;
+    dout(10) << __func__ << " " << file_name << " ceph_mkdir failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
@@ -361,7 +361,7 @@ static void WinCephCloseFile(
 
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
   if (!fdc) {
-    derr << "Close: missing context: " << file_name << dendl;
+    derr << __func__ << ": missing context: " << file_name << dendl;
     return;
   }
 
@@ -376,207 +376,164 @@ static void WinCephCloseFile(
 }
 
 
-static void
-WinCephCleanup(
-  LPCWSTR          FileName,
-  PDOKAN_FILE_INFO    DokanFileInfo)
+static void WinCephCleanup(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
+  string file_name = get_path(FileName);
 
   if (!DokanFileInfo->Context) {
-    DbgPrintW(L"Cleanup: invalid handle %ls\n\n", filePath);
+    derr << __func__ << ": missing context: " << file_name << dendl;
     return;
   }
 
   if (DokanFileInfo->DeleteOnClose) {
-    DbgPrintW(L"Cleanup DeleteOnClose: %ls\n", filePath);
+    dout(20) << __func__ << " DeleteOnClose: " << file_name << dendl;
     if (DokanFileInfo->IsDirectory) {
-      DbgPrintW(L"cleanup ceph_rmdir [%ls]\n", FileName);
-      int ret = ceph_rmdir(cmount, file_name);
-      if (ret != 0) {
-        DbgPrintW(L"error code = %d\n\n", ret);
-      } else {
-        DbgPrintW(L"success\n\n");
-      }
+      int ret = ceph_rmdir(cmount, file_name.c_str());
+      if (ret)
+        derr << __func__ << " " << file_name
+             << ": ceph_rmdir failed. Error: " << ret << dendl;
     } else {
-      DbgPrintW(L"cleanup ceph_unlink [%ls]\n", FileName);
-      int ret = ceph_unlink(cmount, file_name);
+      int ret = ceph_unlink(cmount, file_name.c_str());
       if (ret != 0) {
-        DbgPrintW(L" error code = %d\n\n", ret);
-      } else {
-        DbgPrintW(L"success\n\n");
+        derr << __func__ << " " << file_name
+             << ": ceph_unlink failed. Error: " << ret << dendl;
       }
     }
   }
 }
 
-
-static NTSTATUS
-WinCephReadFile(
-  LPCWSTR        FileName,
-  LPVOID         Buffer,
-  DWORD          BufferLength,
-  LPDWORD        ReadLength,
-  LONGLONG       Offset,
-  PDOKAN_FILE_INFO   DokanFileInfo)
+static NTSTATUS WinCephReadFile(
+  LPCWSTR FileName,
+  LPVOID Buffer,
+  DWORD BufferLength,
+  LPDWORD ReadLength,
+  LONGLONG Offset,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR  filePath[MAX_PATH_CEPH];
   if (Offset > 1024*1024*1024*1024LL || Offset < 0 ||
-     BufferLength > 128*1024*1024){
-    fwprintf(stderr, L"File write too large [fn:%ls][Offset=%lld][BufferLength=%ld]\n", FileName, Offset, BufferLength);
+      BufferLength > 128*1024*1024) {
+    string file_name = get_path(FileName);
+    derr << "File read too large: " << file_name << ". Offset: " << Offset
+         << "Buffer length: " << BufferLength << dendl;
     return STATUS_FILE_TOO_LARGE;
   }
-  if (BufferLength == 0)
-  {
+  if (!BufferLength) {
     *ReadLength = 0;
     return 0;
   }
 
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-  DbgPrintW(L"ReadFile : %ls\n", filePath);
-
-  if (BufferLength == 0)
-  {
-    fwprintf(stderr, L"ceph_read BufferLength==0 [fn:%ls][Offset=%ld]\n",FileName, Offset);
-    *ReadLength = 0;
-    return 0;
-  }
-
-  DbgPrintW(L"ceph_read [Offset=%lld][BufferLength=%ld]\n", Offset, BufferLength);
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
-  if (!fdc->fd){
-    char file_name[MAX_PATH_CEPH];
-    wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-    ToLinuxFilePath(file_name);
+  if (!fdc->fd) {
+    string file_name = get_path(FileName);
+    dout(15) << __func__ << " " << file_name
+             << ". Missing context, using temporary handle." << dendl;
 
-    fwprintf(stderr, L"ceph_read reopen fd [fn:%ls][Offset=%ld]\n", FileName, Offset);
-
-    int fd_new = ceph_open(cmount, file_name, O_RDONLY, 0);
-    if (fd_new < 0)
-    {
-      fwprintf(stderr, L"ceph_read reopen fd [fn:%ls][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
+    int fd_new = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0);
+    if (fd_new < 0) {
+      dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << fd_new << dendl;
       return errno_to_ntstatus(fd_new);
     }
 
     int ret = ceph_read(cmount, fd_new, (char*) Buffer, BufferLength, Offset);
-    if (ret<0)
-    {
-      fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
+    if (ret < 0) {
+      dout(10) << __func__ << " " << file_name << ": ceph_read failed. Error: " << ret
+               << ". Offset: " << Offset << "Buffer length: " << BufferLength << dendl;
       ceph_close(cmount, fd_new);
       return errno_to_ntstatus(ret);
     }
     *ReadLength = ret;
     ceph_close(cmount, fd_new);
     return 0;
-  }
-  else{
+  } else {
     int ret = ceph_read(cmount, fdc->fd, (char*) Buffer, BufferLength, Offset);
-    if (ret<0)
-    {
-      fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
+    if (ret < 0) {
+      string file_name = get_path(FileName);
+      dout(10) << __func__ << " " << file_name << ": ceph_read failed. Error: " << ret
+               << ". Offset: " << Offset << "Buffer length: " << BufferLength << dendl;
       return errno_to_ntstatus(ret);
     }
     *ReadLength = ret;
-
     return 0;
   }
 }
 
 
-static NTSTATUS
-WinCephWriteFile(
-  LPCWSTR    FileName,
-  LPCVOID    Buffer,
-  DWORD    NumberOfBytesToWrite,
-  LPDWORD    NumberOfBytesWritten,
-  LONGLONG      Offset,
-  PDOKAN_FILE_INFO  DokanFileInfo)
+static NTSTATUS WinCephWriteFile(
+  LPCWSTR FileName,
+  LPCVOID Buffer,
+  DWORD NumberOfBytesToWrite,
+  LPDWORD NumberOfBytesWritten,
+  LONGLONG Offset,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
   WCHAR  filePath[MAX_PATH_CEPH];
   if (Offset > 1024*1024*1024*1024LL || Offset < 0 ||
-      NumberOfBytesToWrite > 128*1024*1024){
-    fwprintf(stderr, L"FILE WIRTE TOO LARGE [fn:%ls][Offset=%lld][NumberOfBytesToWrite=%ld]\n", FileName, Offset, NumberOfBytesToWrite);
+      NumberOfBytesToWrite > 128*1024*1024) {
+    string file_name = get_path(FileName);
+    derr << "File write too large: " << file_name << ". Offset: " << Offset
+         << "Buffer length: " << NumberOfBytesToWrite << dendl;
     return STATUS_FILE_TOO_LARGE;
   }
-  if (NumberOfBytesToWrite == 0)
-  {
+  if (!NumberOfBytesToWrite) {
     *NumberOfBytesWritten = 0;
     return 0;
   }
-  DbgPrintW(L"WriteFile : %ls, offset %I64d, length %d\n", filePath, Offset, NumberOfBytesToWrite);
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
-
   if (fdc->read_only)
     return STATUS_ACCESS_DENIED;
 
   if (!fdc->fd) {
-    char file_name[MAX_PATH_CEPH];
-    wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-    ToLinuxFilePath(file_name);
+    string file_name = get_path(FileName);
+    dout(15) << __func__ << " " << file_name
+             << ". Missing context, using temporary handle." << dendl;
 
-    fwprintf(stderr, L"ceph_write reopen fd [fn:%ls][Offset=%ld]\n",FileName, Offset);
-
-    int fd_new = ceph_open(cmount, file_name, O_RDONLY, 0);
-    if (fd_new < 0)
-    {
-      fwprintf(stderr, L"ceph_write reopen fd [fn:%ls][fd_new=%d][Offset=%ld]\n", FileName, fd_new, Offset);
+    int fd_new = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0);
+    if (fd_new < 0) {
+      dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << fd_new << dendl;
       return errno_to_ntstatus(fd_new);
     }
 
     int ret = ceph_write(cmount, fd_new, (char*) Buffer, NumberOfBytesToWrite, Offset);
-    if (ret<0)
-    {
-      fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
-               FileName, ret, fd_new, Offset, NumberOfBytesToWrite);
+    if (ret < 0) {
+      dout(10) << __func__ << " " << file_name << ": ceph_write failed. Error: " << ret
+               << ". Offset: " << Offset << "Buffer length: " << NumberOfBytesToWrite << dendl;
       ceph_close(cmount, fd_new);
       return errno_to_ntstatus(ret);
     }
     *NumberOfBytesWritten = ret;
-
     ceph_close(cmount, fd_new);
     return 0;
-  }
-  else {
+  } else {
     int ret = ceph_write(cmount, fdc->fd, (char*) Buffer, NumberOfBytesToWrite, Offset);
-    if (ret<0)
-    {
-      fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
-               FileName, ret, fdc->fd, Offset, NumberOfBytesToWrite);
+    if (ret < 0) {
+      string file_name = get_path(FileName);
+      dout(10) << __func__ << " " << file_name << ": ceph_write failed. Error: " << ret
+               << ". Offset: " << Offset << "Buffer length: " << NumberOfBytesToWrite << dendl;
       return errno_to_ntstatus(ret);
     }
     *NumberOfBytesWritten = ret;
-
     return 0;
   }
 }
 
 
-static NTSTATUS
-WinCephFlushFileBuffers(
-  LPCWSTR    FileName,
-  PDOKAN_FILE_INFO  DokanFileInfo)
+static NTSTATUS WinCephFlushFileBuffers(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR  filePath[MAX_PATH_CEPH];
-
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DbgPrintW(L"FlushFileBuffers : %ls\n", filePath);
-
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
   if (!fdc->fd) {
-    fwprintf(stderr, L"ceph_sync FD error [%ls] fdc is NULL\n", FileName);
+    string file_name = get_path(FileName);
+    derr << __func__ << ": missing context: " << file_name << dendl;
     return STATUS_INVALID_HANDLE;
   }
 
   int ret = ceph_fsync(cmount, fdc->fd, 0);
-  if (ret){
-    fwprintf(stderr, L"ceph_sync error [%ls][%df][ret=%d]\n",
-             FileName, fdc->fd, ret);
+  if (ret) {
+    string file_name = get_path(FileName);
+    dout(10) << __func__ << " " << file_name << ": ceph_sync failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
@@ -589,106 +546,70 @@ WinCephGetFileInformation(
   LPBY_HANDLE_FILE_INFORMATION  HandleFileInformation,
   PDOKAN_FILE_INFO        DokanFileInfo)
 {
-  WCHAR  filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DbgPrintW(L"GetFileInfo : %ls\n", filePath);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
 
   memset(HandleFileInformation, 0, sizeof(BY_HANDLE_FILE_INFORMATION));
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
 
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
   if (!fdc->fd) {
-    int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
-    if (ret){
-      DbgPrintW(L"GetFileInformation ceph_stat error [%ls]\n", FileName);
+    int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
+    if (ret) {
+      dout(10) << __func__ << " " << file_name << ": ceph_statx failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
-  }else{
+  } else {
     int ret = ceph_fstatx(cmount, fdc->fd, &stbuf, requested_attrs, 0);
-    if (ret){
-      fwprintf(stderr, L"GetFileInformation ceph_fstat error [%ls][ret=%d]\n",
-               FileName, ret);
+    if (ret) {
+      dout(10) << __func__ << " " << file_name << ": ceph_fstatx failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
   }
 
-  DbgPrintW(L"GetFileInformation1 [%ls][size:%lld][time:%lld]\n",
-    FileName, stbuf.stx_size, stbuf.stx_mtime);
-  //fill stbuf.stx_size
-  HandleFileInformation->nFileSizeLow = (stbuf.stx_size << 32)>>32;
+  HandleFileInformation->nFileSizeLow = (stbuf.stx_size << 32) >> 32;
   HandleFileInformation->nFileSizeHigh = stbuf.stx_size >> 32;
 
-  //fill stbuf.stx_mtim
   UnixTimeToFileTime(stbuf.stx_ctime.tv_sec, &HandleFileInformation->ftCreationTime);
   UnixTimeToFileTime(stbuf.stx_atime.tv_sec, &HandleFileInformation->ftLastAccessTime);
   UnixTimeToFileTime(stbuf.stx_mtime.tv_sec, &HandleFileInformation->ftLastWriteTime);
 
-  DbgPrintW(L"GetFileInformation6 [%ls][size:%lld][time a:%lld m:%lld c:%lld]\n",
-    FileName, stbuf.stx_size, stbuf.stx_atime, stbuf.stx_mtime, stbuf.stx_ctime.tv_sec);
-
-  //fill stbuf.stx_mode
-  if (S_ISDIR(stbuf.stx_mode)){
-    DbgPrintW(L"[%ls] is a Directory.............\n", FileName);
+  if (S_ISDIR(stbuf.stx_mode)) {
     HandleFileInformation->dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-  }
-  else if (S_ISREG(stbuf.stx_mode)){
-    DbgPrintW(L"[%ls] is a Regular File.............\n", FileName);
+  } else if (S_ISREG(stbuf.stx_mode)) {
     HandleFileInformation->dwFileAttributes |= FILE_ATTRIBUTE_NORMAL;
   }
 
-  //fill stbuf.stx_ino
-  HandleFileInformation->nFileIndexLow = (stbuf.stx_ino << 32)>>32;
+  HandleFileInformation->nFileIndexLow = (stbuf.stx_ino << 32) >> 32;
   HandleFileInformation->nFileIndexHigh = stbuf.stx_ino >> 32;
 
-  //fill stbuf.stx_nlink
   HandleFileInformation->nNumberOfLinks = stbuf.stx_nlink;
-
   return 0;
 }
 
-static NTSTATUS
-WinCephFindFiles(
-  LPCWSTR        FileName,
-  PFillFindData    FillFindData, // function pointer
-  PDOKAN_FILE_INFO  DokanFileInfo)
+static NTSTATUS WinCephFindFiles(
+  LPCWSTR FileName,
+  PFillFindData FillFindData, // function pointer
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR        filePath[MAX_PATH_CEPH];
-  WIN32_FIND_DATAW  findData;
-  PWCHAR        yenStar = L"\\*";
-  int count = 0;
-
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  wcscat(filePath, yenStar);
-  DbgPrintW(L"FindFiles :%ls\n", filePath);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-
-  ToLinuxFilePath(file_name);
-
-  DbgPrintW(L"FindFiles ceph_opendir : [%ls]\n", FileName);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
 
   if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
       return STATUS_ACCESS_DENIED;
 
   struct ceph_dir_result *dirp;
-  int ret = ceph_opendir(cmount, file_name, &dirp);
-  if (ret != 0){
-    fwprintf(stderr, L"ceph_opendir error : %ls [ret=%d]\n", FileName, ret);
+  int ret = ceph_opendir(cmount, file_name.c_str(), &dirp);
+  if (ret != 0) {
+    dout(10) << __func__ << " " << file_name
+             << " ceph_mkdir failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
-  DbgPrintW(L"FindFiles ceph_opendir OK: %ls\n", FileName);
-
-  while(1)
-  {
+  WIN32_FIND_DATAW findData;
+  int count = 0;
+  while (1) {
     memset(&findData, 0, sizeof(findData));
     struct dirent result;
     struct ceph_statx stbuf;
@@ -698,52 +619,37 @@ WinCephFindFiles(
                              requested_attrs,
                              0,     // no special flags used when filling attrs
                              NULL); // we're not using inodes.
-    if (ret==0)
+    if (!ret)
       break;
-    if (ret<0){
-      fprintf(stderr, "FindFiles ceph_readdirplus_r error [%ls][ret=%d]\n", FileName, ret);
+    if (ret < 0){
+      dout(10) << __func__ << " " << file_name
+               << " ceph_readdirplus_r failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
 
-    // TODO: check if "." or ".." need any special handling.
-    if (strcmp(result.d_name, ".")==0 || strcmp(result.d_name, "..")==0){
-    //   continue;
-    }
+    to_wstring(result.d_name).copy(findData.cFileName, MAX_PATH);
 
-    //d_name
-    WCHAR d_name[MAX_PATH_CEPH];
-    char_to_wchar(d_name, result.d_name, MAX_PATH_CEPH);
-
-    wcscpy(findData.cFileName, d_name);
-
-    //stx_size
-    findData.nFileSizeLow = (stbuf.stx_size << 32)>>32;
+    findData.nFileSizeLow = (stbuf.stx_size << 32) >> 32;
     findData.nFileSizeHigh = stbuf.stx_size >> 32;
 
-    //stx_mtim
     UnixTimeToFileTime(stbuf.stx_ctime.tv_sec, &findData.ftCreationTime);
     UnixTimeToFileTime(stbuf.stx_atime.tv_sec, &findData.ftLastAccessTime);
     UnixTimeToFileTime(stbuf.stx_mtime.tv_sec, &findData.ftLastWriteTime);
 
-    //stx_mode
-    if (S_ISDIR(stbuf.stx_mode)){
-      //printf("[%s] is a Directory.............\n", result.d_name);
+    if (S_ISDIR(stbuf.stx_mode)) {
       findData.dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-    }
-    else if (S_ISREG(stbuf.stx_mode)){
-      //printf("[%s] is a Regular File.............\n", result.d_name);
+    } else if (S_ISREG(stbuf.stx_mode)) {
       findData.dwFileAttributes |= FILE_ATTRIBUTE_NORMAL;
     }
 
     FillFindData(&findData, DokanFileInfo);
     count++;
-    DbgPrintW(L"findData.cFileName is [%ls]\n", findData.cFileName);
-    DbgPrintW(L"ceph_readdir [%d][%s]\n", count, result.d_name);
   }
 
-  ret = ceph_closedir(cmount, dirp);
+  ceph_closedir(cmount, dirp);
 
-  DbgPrintW(L"\tFindFiles return %d entries in %ls\n\n", count, filePath);
+  dout(20) << __func__ << " " << file_name
+           << " found " << count << " entries." << dendl;
   return 0;
 }
 
@@ -751,19 +657,12 @@ WinCephFindFiles(
  * This callback is only supposed to check if deleting a file is
  * allowed. The actual file deletion will be performed by WinCephCleanup
  */
-static NTSTATUS
-WinCephDeleteFile(
-  LPCWSTR        FileName,
-  PDOKAN_FILE_INFO  DokanFileInfo)
+static NTSTATUS WinCephDeleteFile(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR  filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DbgPrintW(L"DeleteFile %ls\n", filePath);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
 
   if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
     return STATUS_ACCESS_DENIED;
@@ -771,51 +670,36 @@ WinCephDeleteFile(
   return 0;
 }
 
-static NTSTATUS
-WinCephDeleteDirectory(
-  LPCWSTR        FileName,
-  PDOKAN_FILE_INFO  DokanFileInfo)
+static NTSTATUS WinCephDeleteDirectory(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR filePath[MAX_PATH_CEPH];
-  WIN32_FIND_DATAW findData;
-
-  ZeroMemory(filePath, sizeof(filePath));
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DbgPrintW(L"DeleteDirectory %ls\n", filePath);
-
-  char file_name[MAX_PATH_CEPH];
-  wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
-  ToLinuxFilePath(file_name);
-
-  DbgPrintW(L"DeleteDirectory ceph_rmdir [%ls]\n", FileName);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
 
   if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
     return STATUS_ACCESS_DENIED;
 
   struct ceph_dir_result *dirp;
-  int ret = ceph_opendir(cmount, file_name, &dirp);
-  if (ret != 0){
-    fwprintf(stderr, L"ceph_opendir error : %ls [%d]\n", FileName, ret);
+  int ret = ceph_opendir(cmount, file_name.c_str(), &dirp);
+  if (ret != 0) {
+    dout(10) << __func__ << " " << file_name
+             << " ceph_opendir failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
-  DbgPrintW(L"DeleteDirectory ceph_opendir OK: %ls\n", FileName);
-
-  while(1)
-  {
+  WIN32_FIND_DATAW findData;
+  while(1) {
     memset(&findData, 0, sizeof(findData));
     struct dirent *result = ceph_readdir(cmount, dirp);
-    if (result!=NULL)
-    {
-      if (strcmp(result->d_name, ".")!=0
-        && strcmp(result->d_name, "..")!=0)
-      {
+    if (result) {
+      if (strcmp(result->d_name, ".") && strcmp(result->d_name, "..")) {
         ceph_closedir(cmount, dirp);
-        DbgPrintW(L"  Directory is not empty: %ls\n", findData.cFileName);
+        dout(10) << __func__ << " " << file_name
+                 << ": directory is not empty. " << dendl;
         return STATUS_DIRECTORY_NOT_EMPTY;
       }
-    }else break;
+    } else break;
   }
 
   ceph_closedir(cmount, dirp);
@@ -823,8 +707,7 @@ WinCephDeleteDirectory(
 }
 
 
-static NTSTATUS
-WinCephMoveFile(
+static NTSTATUS WinCephMoveFile(
   LPCWSTR        FileName, // existing file name
   LPCWSTR        NewFileName,
   BOOL        ReplaceIfExisting,
@@ -860,26 +743,23 @@ WinCephMoveFile(
 
 static NTSTATUS
 WinCephSetEndOfFile(
-  LPCWSTR        FileName,
-  LONGLONG      ByteOffset,
-  PDOKAN_FILE_INFO  DokanFileInfo)
+  LPCWSTR FileName,
+  LONGLONG ByteOffset,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR      filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-  DbgPrintW(L"SetEndOfFile %ls, %I64d\n", filePath, ByteOffset);
-
   pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
   if (!fdc->fd) {
-    DbgPrintW(L"\tinvalid handle\n\n");
-    fwprintf(stderr, L"SetEndOfFile fdc is NULL [%ls]\n", FileName);
+    string file_name = get_path(FileName);
+    derr << __func__ << ": missing context: " << file_name << dendl;
     return STATUS_INVALID_HANDLE;
   }
 
-  DbgPrintW(L"SetEndOfFile [%ls][%d][ByteOffset:%lld]\n", FileName, fdc->fd, ByteOffset);
-
   int ret = ceph_ftruncate(cmount, fdc->fd, ByteOffset);
-  if (ret){
-    fwprintf(stderr, L"SetEndOfFile ceph_ftruncate error [%ls][%d][ByteOffset:%lld]\n", FileName, ret, ByteOffset);
+  if (ret) {
+    string file_name = get_path(FileName);
+    dout(10) << __func__ << " " << file_name
+             << " ceph_ftruncate failed. Error: " << ret
+             << "Offset: " << ByteOffset << dendl;
     return errno_to_ntstatus(ret);
   }
 
@@ -921,8 +801,7 @@ WinCephSetAllocationSize(
     }
 
     return 0;
-  }
-  else{
+  } else{
     DbgPrintW(L"SetAllocationSize ceph_ftruncate EQUAL no need [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
   }
 
@@ -936,10 +815,8 @@ WinCephSetFileAttributes(
   DWORD         FileAttributes,
   PDOKAN_FILE_INFO  DokanFileInfo)
 {
-  WCHAR  filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-
-  DbgPrintW(L"SetFileAttributes [%ls][%d]\n", FileName, FileAttributes);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " (stubbed) " << file_name << dendl;
 
   return 0;
 }
@@ -1008,10 +885,8 @@ WinCephSetFileSecurity(
   ULONG        SecurityDescriptorLength,
   PDOKAN_FILE_INFO  DokanFileInfo)
 {
-  WCHAR filePath[MAX_PATH_CEPH];
-
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
-  DbgPrintW(L"SetFileSecurity (stubbed) %ls\n", filePath);
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " (stubbed) " << file_name << dendl;
 
   // TODO: Windows ACLs are ignored. At the moment, we're reporting this
   // operation as successful to avoid breaking applications. We might consider
