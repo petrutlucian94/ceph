@@ -67,10 +67,11 @@ struct ceph_mount_info *cmount;
 Config *g_cfg;
 
 // Used as part of DOKAN_FILE_INFO.Context, must fit within 64B.
-struct fd_context{
+typedef struct {
   int   fd;
   short read_only;
-};
+} fd_context, *pfd_context;
+assert(sizeof(fd_context) <= sizeof(DOKAN_FILE_INFO.Context))
 
 static void
 GetFilePath(
@@ -141,10 +142,10 @@ static int WinCephOpenDirectory(
     return errno_to_ntstatus(fd);
   }
 
-  struct fd_context fdc = { .fd = fd };
-  memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  fdc->fd = fd;
 
-  // DokanFileInfo->IsDirectory = TRUE;
+  DokanFileInfo->IsDirectory = TRUE;
   dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
   return 0;
 }
@@ -171,14 +172,15 @@ static int check_parent_perm(string file_name, int perm_chk)
     perm_chk);
 }
 
-static NTSTATUS
-DoCreateFile(
+static NTSTATUS do_open_file(
   string file_name,
   int flags,
   mode_t mode,
-  fd_context* fdc)
+  fd_context* fdc,
+  bool init_perm = false,
+  umode_t new_mode = 00777)
 {
-  fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
+  fd = ceph_open(cmount, file_name.c_str(), flags, mode);
   if (fd < 0) {
     dout(10) << __func__ << " " << file_name
              << ": ceph_open failed. Error: " << fd << dendl;
@@ -186,10 +188,14 @@ DoCreateFile(
   }
 
   fdc->fd = fd;
-  memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
   dout(20) << "CreateFile " << file_name << ": ceph_open OK. "
-           << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
-           << dendl;
+           << "fd: " << fd << dendl;
+
+  if (init_perm) {
+    ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+    fuse_init_acl(cmount, file_name.c_str(), new_mode);
+  }
+
   return 0;
 }
 
@@ -214,19 +220,16 @@ WinCephCreateFile(
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
 
-  if (ShareMode == 0 && AccessMode & FILE_WRITE_DATA)
-    ShareMode = FILE_SHARE_WRITE;
-  else if (ShareMode == 0)
-    ShareMode = FILE_SHARE_READ;
-
   if (g_cfg->debug) {
     PrintOpenParams(
       file_name.c_str(), AccessMode, FlagsAndAttributes, ShareMode,
       CreateDisposition, CreateOptions, DokanFileInfo);
   }
 
-  struct fd_context fdc = { 0 };
-  int fd = 0;
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  *fdc = { 0 };
+  NTSTAUS st = 0;
+
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
   int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
@@ -240,20 +243,7 @@ WinCephCreateFile(
         if (check_perm(file_name, PERM_WALK_CHECK_WRITE))
           return STATUS_ACCESS_DENIED;
 
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
-        if (fd < 0) {
-          dout(10) << __func__ << " " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        dout(20) << __func__ << " REG TRUNCATE_EXISTING "
-                 << file_name << ": ceph_open OK. "
-                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
-                 << dendl;
-        return 0;
+        return do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc);
       case OPEN_ALWAYS:
         // open & return STATUS_OBJECT_NAME_COLLISION
         if (READ_ACCESS_REQUESTED(AccessMode) &&
@@ -262,22 +252,10 @@ WinCephCreateFile(
         }
         if (WRITE_ACCESS_REQUESTED(AccessMode) &&
             check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
-          fdc.read_only = 1;
+          fdc->read_only = 1;
         }
-
-        fd = ceph_open(cmount, file_name.c_str(), fdc.read_only ? O_RDONLY : O_RDWR, 0755);
-        if (fd < 0) {
-          dout(10) << __func__ << " REG OPEN_ALWAYS " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        dout(20) << __func__ << " REG OPEN_ALWAYS "
-                 << file_name << ": ceph_open OK. "
-                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
-                 << dendl;
+        if (st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc))
+          return st;
         return STATUS_OBJECT_NAME_COLLISION;
       case OPEN_EXISTING:
         // open & return 0
@@ -287,21 +265,10 @@ WinCephCreateFile(
         }
         if (WRITE_ACCESS_REQUESTED(AccessMode) &&
             check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
-          fdc.read_only = 1;
+          fdc->read_only = 1;
         }
-
-        fd = ceph_open(cmount, file_name.c_str(), fdc.read_only ? O_RDONLY : O_RDWR, 0755);
-        if (fd < 0) {
-          dout(10) << __func__ << " REG OPEN_EXISTING " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        dout(20) << __func__ << " REG OPEN_EXISTING "
-                 << file_name << ": ceph_open OK. "
-                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
-                 << dendl;
+        if (st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc))
+          return st;
         return 0;
       case CREATE_ALWAYS:
         // open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
@@ -310,19 +277,8 @@ WinCephCreateFile(
             PERM_WALK_CHECK_READ | PERM_WALK_CHECK_WRITE))
           return STATUS_ACCESS_DENIED;
 
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
-        if (fd < 0){
-          dout(10) << __func__ << " REG CREATE_ALWAYS " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        dout(20) << __func__ << " REG CREATE_ALWAYS "
-                 << file_name << ": ceph_open OK. "
-                 << "fd: " << fd << ", context: " << (int)DokanFileInfo->Context
-                 << dendl;
+        if (st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc))
+          return st;
         return STATUS_OBJECT_NAME_COLLISION;
       }
     } else if (S_ISDIR(stbuf.stx_mode)) {
@@ -356,20 +312,8 @@ WinCephCreateFile(
             file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
           return STATUS_ACCESS_DENIED;
 
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_RDWR | O_EXCL, 0755);
-        if (fd <0 ) {
-          dout(10) << __func__ << " NOF CREATE_NEW " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        DbgPrintW(L"CreateFile ceph_open NOF CREATE_NEW OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-          (int)DokanFileInfo->Context);
-
-        ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-        fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
+        if (st = do_open_file(file_name, O_CREAT | O_RDWR | O_EXCL, 0755, fdc, true))
+          return st;
         return 0;
       case CREATE_ALWAYS:
         // create & return 0
@@ -377,20 +321,8 @@ WinCephCreateFile(
             file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
           return STATUS_ACCESS_DENIED;
 
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0755);
-        if (fd < 0){
-          dout(10) << __func__ << " NOF CREATE_ALWAYS " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        DbgPrintW(L"CreateFile ceph_open NOF CREATE_ALWAYS_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-          (int)DokanFileInfo->Context);
-
-        ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-        fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
+        if (st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc, true))
+          return st;
         return 0;
       case OPEN_ALWAYS:
         if (check_parent_perm(
@@ -398,20 +330,8 @@ WinCephCreateFile(
             PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
           return STATUS_ACCESS_DENIED;
 
-        fd = ceph_open(cmount, file_name.c_str(), O_CREAT | O_RDWR, 0755);
-        if (fd <= 0) {
-          dout(10) << __func__ << " NOF OPEN_ALWAYS " << file_name
-                   << ": ceph_open failed. Error: " << fd << dendl;
-          return errno_to_ntstatus(fd);
-        }
-
-        fdc.fd = fd;
-        memcpy(&(DokanFileInfo->Context), &fdc, sizeof(fdc));
-        DbgPrintW(L"CreateFile ceph_open REG NOF OPEN_ALWAYS OK [%ls][fd=%d][Context=%d]\n", FileName, fd,
-          (int)DokanFileInfo->Context);
-
-        ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-        fuse_init_acl(cmount, file_name.c_str(), 00777); //S_IRWXU|S_IRWXG|S_IRWXO
+        if (st = do_open_file(file_name, O_CREAT | O_RDWR, 0755, fdc, true))
+          return st;
         return 0;
       case OPEN_EXISTING:
         if (file_name == "/")
@@ -432,27 +352,23 @@ WinCephCreateFile(
   return STATUS_INTERNAL_ERROR;
 }
 
-static void
-WinCephCloseFile(
-  LPCWSTR          FileName,
-  PDOKAN_FILE_INFO    DokanFileInfo)
+static void WinCephCloseFile(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
-  WCHAR filePath[MAX_PATH_CEPH];
-  GetFilePath(filePath, MAX_PATH_CEPH, FileName);
+  string file_name = get_path(FileName);
 
-  if (!DokanFileInfo->Context) {
-    DbgPrintW(L"Close: invalid handle %ls\n\n", filePath);
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (!fdc) {
+    derr << "Close: missing context: " << file_name << dendl;
     return;
   }
 
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-
-  DbgPrintW(L"CloseFile: %ls\n", filePath);
-  DbgPrintW(L"ceph_close [%ls][fd=%d]\n", FileName, fdc.fd);
-  int ret = ceph_close(cmount, fdc.fd);
-  if (ret){
-    DbgPrint("\terror code = %d\n\n", ret);
+  dout(20) << __func__ << " " << file_name << " fd: " << fdc->fd << dendl;
+  int ret = ceph_close(cmount, fdc->fd);
+  if (ret) {
+    dout(20) << __func__ << " " << file_name << "failed. fd: " << fdc->fd
+             << "error code: " << ret << dendl;
   }
 
   DokanFileInfo->Context = 0;
@@ -531,9 +447,8 @@ WinCephReadFile(
   }
 
   DbgPrintW(L"ceph_read [Offset=%lld][BufferLength=%ld]\n", Offset, BufferLength);
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if (fdc.fd == 0){
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (!fdc->fd){
     char file_name[MAX_PATH_CEPH];
     wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
     ToLinuxFilePath(file_name);
@@ -559,7 +474,7 @@ WinCephReadFile(
     return 0;
   }
   else{
-    int ret = ceph_read(cmount, fdc.fd, Buffer, BufferLength, Offset);
+    int ret = ceph_read(cmount, fdc->fd, Buffer, BufferLength, Offset);
     if (ret<0)
     {
       fwprintf(stderr, L"ceph_read IO error [Offset=%ld][ret=%d]\n", Offset, ret);
@@ -593,13 +508,12 @@ WinCephWriteFile(
     return 0;
   }
   DbgPrintW(L"WriteFile : %ls, offset %I64d, length %d\n", filePath, Offset, NumberOfBytesToWrite);
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
 
-  if (fdc.read_only == 1)
+  if (fdc->read_only)
     return STATUS_ACCESS_DENIED;
 
-  if (fdc.fd==0){
+  if (!fdc->fd) {
     char file_name[MAX_PATH_CEPH];
     wchar_to_char(file_name, FileName, MAX_PATH_CEPH);
     ToLinuxFilePath(file_name);
@@ -626,12 +540,12 @@ WinCephWriteFile(
     ceph_close(cmount, fd_new);
     return 0;
   }
-  else{
-    int ret = ceph_write(cmount, fdc.fd, Buffer, NumberOfBytesToWrite, Offset);
+  else {
+    int ret = ceph_write(cmount, fdc->fd, Buffer, NumberOfBytesToWrite, Offset);
     if (ret<0)
     {
       fwprintf(stderr, L"ceph_write IO error [fn:%ls][ret=%d][fd=%d][Offset=%lld][Length=%ld]\n",
-               FileName, ret, fdc.fd, Offset, NumberOfBytesToWrite);
+               FileName, ret, fdc->fd, Offset, NumberOfBytesToWrite);
       return errno_to_ntstatus(ret);
     }
     *NumberOfBytesWritten = ret;
@@ -652,17 +566,16 @@ WinCephFlushFileBuffers(
 
   DbgPrintW(L"FlushFileBuffers : %ls\n", filePath);
 
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if (fdc.fd==0){
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (!fdc->fd) {
     fwprintf(stderr, L"ceph_sync FD error [%ls] fdc is NULL\n", FileName);
     return STATUS_INVALID_HANDLE;
   }
 
-  int ret = ceph_fsync(cmount, fdc.fd, 0);
+  int ret = ceph_fsync(cmount, fdc->fd, 0);
   if (ret){
     fwprintf(stderr, L"ceph_sync error [%ls][%df][ret=%d]\n",
-             FileName, fdc.fd, ret);
+             FileName, fdc->fd, ret);
     return errno_to_ntstatus(ret);
   }
 
@@ -688,16 +601,15 @@ WinCephGetFileInformation(
 
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if (fdc.fd==0) {
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (!fdc->fd) {
     int ret = ceph_statx(cmount, file_name, &stbuf, requested_attrs, 0);
     if (ret){
       DbgPrintW(L"GetFileInformation ceph_stat error [%ls]\n", FileName);
       return errno_to_ntstatus(ret);
     }
   }else{
-    int ret = ceph_fstatx(cmount, fdc.fd, &stbuf, requested_attrs, 0);
+    int ret = ceph_fstatx(cmount, fdc->fd, &stbuf, requested_attrs, 0);
     if (ret){
       fwprintf(stderr, L"GetFileInformation ceph_fstat error [%ls][ret=%d]\n",
                FileName, ret);
@@ -955,17 +867,16 @@ WinCephSetEndOfFile(
   GetFilePath(filePath, MAX_PATH_CEPH, FileName);
   DbgPrintW(L"SetEndOfFile %ls, %I64d\n", filePath, ByteOffset);
 
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if (fdc.fd==0) {
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (!fdc->fd) {
     DbgPrintW(L"\tinvalid handle\n\n");
     fwprintf(stderr, L"SetEndOfFile fdc is NULL [%ls]\n", FileName);
     return STATUS_INVALID_HANDLE;
   }
 
-  DbgPrintW(L"SetEndOfFile [%ls][%d][ByteOffset:%lld]\n", FileName, fdc.fd, ByteOffset);
+  DbgPrintW(L"SetEndOfFile [%ls][%d][ByteOffset:%lld]\n", FileName, fdc->fd, ByteOffset);
 
-  int ret = ceph_ftruncate(cmount, fdc.fd, ByteOffset);
+  int ret = ceph_ftruncate(cmount, fdc->fd, ByteOffset);
   if (ret){
     fwprintf(stderr, L"SetEndOfFile ceph_ftruncate error [%ls][%d][ByteOffset:%lld]\n", FileName, ret, ByteOffset);
     return errno_to_ntstatus(ret);
@@ -985,25 +896,24 @@ WinCephSetAllocationSize(
 
   DbgPrintW(L"SetAllocationSize %ls, %I64d\n", filePath, AllocSize);
 
-  struct fd_context fdc;
-  memcpy(&fdc, &(DokanFileInfo->Context), sizeof(fdc));
-  if (fdc.fd==0) {
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (!fdc->fd) {
     fwprintf(stderr, L"SetAllocationSize fdc is NULL [%ls]\n", FileName);
     return STATUS_INVALID_HANDLE;
   }
 
-  fwprintf(stderr, L"SetAllocationSize [%ls][%d][AllocSize:%lld]\n", FileName, fdc.fd, AllocSize);
+  fwprintf(stderr, L"SetAllocationSize [%ls][%d][AllocSize:%lld]\n", FileName, fdc->fd, AllocSize);
 
   struct ceph_statx stbuf;
   unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
-  int ret = ceph_fstatx(cmount, fdc.fd, &stbuf, requested_attrs, 0);
+  int ret = ceph_fstatx(cmount, fdc->fd, &stbuf, requested_attrs, 0);
   if (ret){
     fwprintf(stderr, L"SetAllocationSize ceph_stat error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
     return errno_to_ntstatus(ret);
   }
 
   if (AllocSize < stbuf.stx_size){
-    int ret = ceph_ftruncate(cmount, fdc.fd, AllocSize);
+    int ret = ceph_ftruncate(cmount, fdc->fd, AllocSize);
     if (ret){
       fwprintf(stderr, L"SetAllocationSize ceph_ftruncate error [%ls][%d][AllocSize:%lld]\n", FileName, ret, AllocSize);
       return errno_to_ntstatus(ret);
