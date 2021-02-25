@@ -11,9 +11,6 @@
 
 #include "ceph_dokan.h"
 
-void DbgPrint(char* format, ...);
-void DbgPrintW(LPCWSTR format, ...);
-
 void PrintUserName(
   std::ostringstream& Stream,
   PDOKAN_FILE_INFO DokanFileInfo);

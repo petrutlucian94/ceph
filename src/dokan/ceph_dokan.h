@@ -53,6 +53,3 @@ int parse_args(
   std::ostream *err_msg,
   Command *command, Config *cfg);
 int set_dokan_options(Config *cfg, PDOKAN_OPTIONS dokan_options);
-
-int check_perm(std::string file_name, int perm_chk);
-int check_parent_perm(std::string file_name, int perm_chk);

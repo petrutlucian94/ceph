@@ -80,70 +80,9 @@ string get_path(LPCWSTR path_w) {
   return path;
 }
 
-static NTSTATUS WinCephCreateDirectory(
-  LPCWSTR FileName,
-  PDOKAN_FILE_INFO DokanFileInfo)
-{
-  string file_name = get_path(FileName);
-  dout(20) << __func__ << " " << file_name << dendl;
-  if (file_name == "/") {
-    return 0;
-  }
-
-  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
-    return STATUS_ACCESS_DENIED;
-
-  int ret = ceph_mkdir(cmount, file_name.c_str(), 0755);
-  if (ret < 0) {
-    dout(10) << __func__ << " " << file_name << " ceph_mkdir failed. Error: " << ret << dendl;
-    return errno_to_ntstatus(ret);
-  }
-
-  ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-  fuse_init_acl(cmount, file_name.c_str(), 0040777); // S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
-  return 0;
-}
-
-static int WinCephOpenDirectory(
-  LPCWSTR FileName,
-  PDOKAN_FILE_INFO DokanFileInfo)
-{
-  string file_name = get_path(FileName);
-  dout(20) << __func__ << " " << file_name << dendl;
-
-  struct ceph_statx stbuf;
-  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
-  int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
-  if (ret) {
-    dout(10) << __func__ << " " << file_name << ": ceph_statx failed. Error: " << ret << dendl;
-    return errno_to_ntstatus(ret);
-  }
-
-  if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
-    return STATUS_ACCESS_DENIED;
-
-  if (!S_ISDIR(stbuf.stx_mode)) {
-    dout(10) << __func__ << " " << file_name << " failed. Not a directory." << dendl;
-    return STATUS_NOT_A_DIRECTORY;
-  }
-
-  int fd = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0755);
-  if (fd <= 0) {
-    dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << fd << dendl;
-    return errno_to_ntstatus(fd);
-  }
-
-  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
-  fdc->fd = fd;
-
-  DokanFileInfo->IsDirectory = TRUE;
-  dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
-  return 0;
-}
-
 int check_perm(string file_name, int perm_chk)
 {
-  if (g_cfg->enforce_perm) {
+  if (!g_cfg->enforce_perm) {
     return 0;
   }
   return permission_walk(
@@ -179,8 +118,7 @@ static NTSTATUS do_open_file(
   }
 
   fdc->fd = fd;
-  dout(20) << "CreateFile " << file_name << ": ceph_open OK. "
-           << "fd: " << fd << dendl;
+  dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
 
   if (init_perm) {
     ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
@@ -190,8 +128,64 @@ static NTSTATUS do_open_file(
   return 0;
 }
 
-static NTSTATUS
-WinCephCreateFile(
+static NTSTATUS WinCephCreateDirectory(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
+{
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
+  if (file_name == "/") {
+    return 0;
+  }
+
+  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
+
+  int ret = ceph_mkdir(cmount, file_name.c_str(), 0755);
+  if (ret < 0) {
+    dout(10) << __func__ << " "
+             << file_name << ": ceph_mkdir failed. Error: " << ret << dendl;
+    return errno_to_ntstatus(ret);
+  }
+
+  ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+  fuse_init_acl(cmount, file_name.c_str(), 0040777); // S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
+  return 0;
+}
+
+static int WinCephOpenDirectory(
+  LPCWSTR FileName,
+  PDOKAN_FILE_INFO DokanFileInfo)
+{
+  string file_name = get_path(FileName);
+  dout(20) << __func__ << " " << file_name << dendl;
+
+  struct ceph_statx stbuf;
+  unsigned int requested_attrs = CEPH_STATX_BASIC_STATS;
+  int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
+  if (ret) {
+    dout(10) << __func__ << " " << file_name
+             << ": ceph_statx failed. Error: " << ret << dendl;
+    return errno_to_ntstatus(ret);
+  }
+
+  if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
+    return STATUS_ACCESS_DENIED;
+
+  if (!S_ISDIR(stbuf.stx_mode)) {
+    dout(10) << __func__ << " " << file_name << " failed. Not a directory." << dendl;
+    return STATUS_NOT_A_DIRECTORY;
+  }
+
+  pfd_context fdc = (pfd_context) &(DokanFileInfo->Context);
+  if (NTSTATUS st = do_open_file(file_name, O_RDONLY, 0755, fdc))
+    return st;
+
+  DokanFileInfo->IsDirectory = TRUE;
+  return 0;
+}
+
+static NTSTATUS WinCephCreateFile(
   LPCWSTR FileName,
   PDOKAN_IO_SECURITY_CONTEXT SecurityContext,
   ACCESS_MASK DesiredAccess,
@@ -373,7 +367,7 @@ static void WinCephCleanup(
   string file_name = get_path(FileName);
 
   if (!DokanFileInfo->Context) {
-    derr << __func__ << ": missing context: " << file_name << dendl;
+    dout(20) << __func__ << ": missing context: " << file_name << dendl;
     return;
   }
 
@@ -421,14 +415,17 @@ static NTSTATUS WinCephReadFile(
     string file_name = get_path(FileName);
     int fd_new = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0);
     if (fd_new < 0) {
-      dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << fd_new << dendl;
+      dout(10) << __func__ << " " << file_name
+               << ": ceph_open failed. Error: " << fd_new << dendl;
       return errno_to_ntstatus(fd_new);
     }
 
     int ret = ceph_read(cmount, fd_new, (char*) Buffer, BufferLength, Offset);
     if (ret < 0) {
-      dout(10) << __func__ << " " << file_name << ": ceph_read failed. Error: " << ret
-               << ". Offset: " << Offset << "Buffer length: " << BufferLength << dendl;
+      dout(10) << __func__ << " " << file_name
+               << ": ceph_read failed. Error: " << ret
+               << ". Offset: " << Offset
+               << "Buffer length: " << BufferLength << dendl;
       ceph_close(cmount, fd_new);
       return errno_to_ntstatus(ret);
     }
@@ -438,8 +435,10 @@ static NTSTATUS WinCephReadFile(
   } else {
     int ret = ceph_read(cmount, fdc->fd, (char*) Buffer, BufferLength, Offset);
     if (ret < 0) {
-      dout(10) << __func__ << " " << get_path(FileName) << ": ceph_read failed. Error: " << ret
-               << ". Offset: " << Offset << "Buffer length: " << BufferLength << dendl;
+      dout(10) << __func__ << " " << get_path(FileName)
+               << ": ceph_read failed. Error: " << ret
+               << ". Offset: " << Offset
+               << "Buffer length: " << BufferLength << dendl;
       return errno_to_ntstatus(ret);
     }
     *ReadLength = ret;
@@ -477,13 +476,15 @@ static NTSTATUS WinCephWriteFile(
 
     int fd_new = ceph_open(cmount, file_name.c_str(), O_RDONLY, 0);
     if (fd_new < 0) {
-      dout(10) << __func__ << " " << file_name << ": ceph_open failed. Error: " << fd_new << dendl;
+      dout(10) << __func__ << " " << file_name
+               << ": ceph_open failed. Error: " << fd_new << dendl;
       return errno_to_ntstatus(fd_new);
     }
 
     int ret = ceph_write(cmount, fd_new, (char*) Buffer, NumberOfBytesToWrite, Offset);
     if (ret < 0) {
-      dout(10) << __func__ << " " << file_name << ": ceph_write failed. Error: " << ret
+      dout(10) << __func__ << " " << file_name
+               << ": ceph_write failed. Error: " << ret
                << ". Offset: " << Offset << "Buffer length: " << NumberOfBytesToWrite << dendl;
       ceph_close(cmount, fd_new);
       return errno_to_ntstatus(ret);
@@ -494,7 +495,8 @@ static NTSTATUS WinCephWriteFile(
   } else {
     int ret = ceph_write(cmount, fdc->fd, (char*) Buffer, NumberOfBytesToWrite, Offset);
     if (ret < 0) {
-      dout(10) << __func__ << " " << get_path(FileName) << ": ceph_write failed. Error: " << ret
+      dout(10) << __func__ << " " << get_path(FileName)
+               << ": ceph_write failed. Error: " << ret
                << ". Offset: " << Offset << "Buffer length: " << NumberOfBytesToWrite << dendl;
       return errno_to_ntstatus(ret);
     }
@@ -516,18 +518,18 @@ static NTSTATUS WinCephFlushFileBuffers(
 
   int ret = ceph_fsync(cmount, fdc->fd, 0);
   if (ret) {
-    dout(10) << __func__ << " " << get_path(FileName) << ": ceph_sync failed. Error: " << ret << dendl;
+    dout(10) << __func__ << " " << get_path(FileName)
+             << ": ceph_sync failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
   return 0;
 }
 
-static NTSTATUS
-WinCephGetFileInformation(
-  LPCWSTR              FileName,
-  LPBY_HANDLE_FILE_INFORMATION  HandleFileInformation,
-  PDOKAN_FILE_INFO        DokanFileInfo)
+static NTSTATUS WinCephGetFileInformation(
+  LPCWSTR FileName,
+  LPBY_HANDLE_FILE_INFORMATION HandleFileInformation,
+  PDOKAN_FILE_INFO DokanFileInfo)
 {
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
@@ -540,13 +542,15 @@ WinCephGetFileInformation(
   if (!fdc->fd) {
     int ret = ceph_statx(cmount, file_name.c_str(), &stbuf, requested_attrs, 0);
     if (ret) {
-      dout(10) << __func__ << " " << file_name << ": ceph_statx failed. Error: " << ret << dendl;
+      dout(10) << __func__ << " " << file_name
+               << ": ceph_statx failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
   } else {
     int ret = ceph_fstatx(cmount, fdc->fd, &stbuf, requested_attrs, 0);
     if (ret) {
-      dout(10) << __func__ << " " << file_name << ": ceph_fstatx failed. Error: " << ret << dendl;
+      dout(10) << __func__ << " " << file_name
+               << ": ceph_fstatx failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
   }
@@ -586,7 +590,7 @@ static NTSTATUS WinCephFindFiles(
   int ret = ceph_opendir(cmount, file_name.c_str(), &dirp);
   if (ret != 0) {
     dout(10) << __func__ << " " << file_name
-             << " ceph_mkdir failed. Error: " << ret << dendl;
+             << ": ceph_mkdir failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
@@ -606,7 +610,7 @@ static NTSTATUS WinCephFindFiles(
       break;
     if (ret < 0) {
       dout(10) << __func__ << " " << file_name
-               << " ceph_readdirplus_r failed. Error: " << ret << dendl;
+               << ": ceph_readdirplus_r failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
 
@@ -667,12 +671,12 @@ static NTSTATUS WinCephDeleteDirectory(
   int ret = ceph_opendir(cmount, file_name.c_str(), &dirp);
   if (ret != 0) {
     dout(10) << __func__ << " " << file_name
-             << " ceph_opendir failed. Error: " << ret << dendl;
+             << ": ceph_opendir failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
   WIN32_FIND_DATAW findData;
-  while(1) {
+  while (1) {
     memset(&findData, 0, sizeof(findData));
     struct dirent *result = ceph_readdir(cmount, dirp);
     if (result) {
@@ -706,7 +710,7 @@ static NTSTATUS WinCephMoveFile(
   int ret = ceph_rename(cmount, file_name.c_str(), new_file_name.c_str());
   if (ret) {
     dout(10) << __func__ << " " << file_name << " -> " << new_file_name
-             << " ceph_rename failed. Error: " << ret << dendl;
+             << ": ceph_rename failed. Error: " << ret << dendl;
   }
 
   return errno_to_ntstatus(ret);
@@ -726,7 +730,7 @@ static NTSTATUS WinCephSetEndOfFile(
   int ret = ceph_ftruncate(cmount, fdc->fd, ByteOffset);
   if (ret) {
     dout(10) << __func__ << " " << get_path(FileName)
-             << " ceph_ftruncate failed. Error: " << ret
+             << ": ceph_ftruncate failed. Error: " << ret
              << " Offset: " << ByteOffset << dendl;
     return errno_to_ntstatus(ret);
   }
@@ -750,7 +754,7 @@ static NTSTATUS WinCephSetAllocationSize(
   int ret = ceph_fstatx(cmount, fdc->fd, &stbuf, requested_attrs, 0);
   if (ret) {
     dout(10) << __func__ << " " << get_path(FileName)
-             << " ceph_fstatx failed. Error: " << ret << dendl;
+             << ": ceph_fstatx failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
 
@@ -758,7 +762,7 @@ static NTSTATUS WinCephSetAllocationSize(
     int ret = ceph_ftruncate(cmount, fdc->fd, AllocSize);
     if (ret) {
       dout(10) << __func__ << " " << get_path(FileName)
-             << " ceph_ftruncate failed. Error: " << ret << dendl;
+               << ": ceph_ftruncate failed. Error: " << ret << dendl;
       return errno_to_ntstatus(ret);
     }
     return 0;
@@ -812,7 +816,7 @@ static NTSTATUS WinCephSetFileTime(
   int ret = ceph_setattrx(cmount, file_name.c_str(), &stbuf, mask, 0);
   if (ret) {
     dout(10) << __func__ << " " << file_name
-             << " ceph_setattrx failed. Error: " << ret << dendl;
+             << ": ceph_setattrx failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
   return 0;
@@ -951,16 +955,25 @@ int do_map() {
   dokan_operations->GetVolumeInformation = WinCephGetVolumeInformation;
   dokan_operations->Unmounted = WinCephUnmount;
 
-  int ret = 0;
   ceph_create_with_context(&cmount, g_ceph_context);
 
-  ret = ceph_mount(cmount, g_cfg->root_path.c_str());
-  if (ret) {
-    derr << "ceph_mount failed. Error: " << ret << dendl;
-    return errno_to_ntstatus(ret);
+  UserPerm *user_perm = ceph_userperm_new(g_cfg->uid, g_cfg->gid, 0, NULL);
+  if (!user_perm) {
+    derr << "Couldn't allocate mount permissions." << dendl;
   }
-  atexit(unmount_atexit);
+  r = ceph_mount_perms_set(cmount, user_perm);
+  if (r) {
+    derr << "Couldn't set mount permissions." << dendl;
+    return r;
+  }
 
+  r = ceph_mount(cmount, g_cfg->root_path.c_str());
+  if (r) {
+    derr << "ceph_mount failed. Error: " << r << dendl;
+    return errno_to_ntstatus(r);
+  }
+
+  atexit(unmount_atexit);
   dout(0) << "Mounted cephfs directory: " << ceph_getcwd(cmount) << dendl;
 
   DWORD status = DokanMain(dokan_options, dokan_operations);

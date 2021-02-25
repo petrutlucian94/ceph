@@ -12,9 +12,6 @@
 #include "utils.h"
 #include "dbg.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include "common/debug.h"
 #include "common/dout.h"
 
@@ -25,37 +22,6 @@
 
 #define check_flag(stream, val, flag) if (val&flag) { stream << "[" #flag "]"; }
 
-void DbgPrintW(LPCWSTR format, ...)
-{
-  if (g_cfg->debug) {
-    WCHAR buffer[512];
-    va_list argp;
-    va_start(argp, format);
-    vswprintf(buffer, 512, format, argp);
-    va_end(argp);
-    if (g_cfg->dokan_stderr) {
-      fwprintf(stderr, buffer);
-    } else {
-      OutputDebugStringW(buffer);
-    }
-  }
-}
-
-void DbgPrint(char* format, ...)
-{
-  if (g_cfg->debug) {
-    char buffer[512];
-    va_list argp;
-    va_start(argp, format);
-    vsprintf(buffer, format, argp);
-    va_end(argp);
-    if (g_cfg->dokan_stderr) {
-      fprintf(stderr, "%s", buffer);
-    } else {
-      OutputDebugString(buffer);
-    }
-  }
-}
 
 void PrintUserName(ostringstream& Stream, PDOKAN_FILE_INFO DokanFileInfo)
 {
