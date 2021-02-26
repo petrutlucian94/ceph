@@ -27,9 +27,6 @@ struct Config {
   bool debug = false;
   bool dokan_stderr = false;
 
-  int uid = 0;
-  int gid = 0;
-  bool enforce_perm = true;
   int operation_timeout = CEPH_DOKAN_IO_DEFAULT_TIMEOUT;
   int thread_count = CEPH_DOKAN_DEFAULT_THREAD_COUNT;
 

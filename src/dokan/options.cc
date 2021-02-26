@@ -30,8 +30,6 @@ void print_usage() {
     "  -o (use Windows mount manager)\n"
     "  -c (mount for the current session only)\n"
     "  -w (write-protect drive - read only mount)\n"
-    "  -u Uid (use the specified uid when mounting, defaults to 0)\n"
-    "  -g Gid (use the specified gid when mounting, defaults to 0)\n"
     "  -n (skip enforcing permissions on client side)\n"
     "  -x root (mount a Ceph filesystem subdirectory)\n"
     "  -h (show this help message)\n"
@@ -90,28 +88,6 @@ int parse_args(
       cfg->use_win_mount_mgr = true;
     } else if (ceph_argparse_flag(args, i, "--current-session-only", (char *)NULL)) {
       cfg->current_session_only = true;
-    } else if (ceph_argparse_flag(args, i, "--no-perm-enforcing", (char *)NULL)) {
-      cfg->enforce_perm = false;
-    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->uid,
-                                     err, "--uid", "-u", (char *)NULL)) {
-      if (!err.str().empty()) {
-        *err_msg << "ceph-dokan: " << err.str();
-        return -EINVAL;
-      }
-      if (cfg->uid < 0) {
-        *err_msg << "ceph-dokan: Invalid argument for uid";
-        return -EINVAL;
-      }
-    } else if (ceph_argparse_witharg(args, i, (int*)&cfg->gid,
-                                     err, "--gid", "-g", (char *)NULL)) {
-      if (!err.str().empty()) {
-        *err_msg << "ceph-dokan: " << err.str();
-        return -EINVAL;
-      }
-      if (cfg->gid < 0) {
-        *err_msg << "ceph-dokan: Invalid argument for gid";
-        return -EINVAL;
-      }
     } else if (ceph_argparse_witharg(args, i, (int*)&cfg->thread_count,
                                      err, "--thread-count", "-t", (char *)NULL)) {
       if (!err.str().empty()) {

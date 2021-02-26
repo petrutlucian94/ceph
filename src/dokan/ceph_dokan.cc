@@ -40,7 +40,6 @@
 #include "global/global_init.h"
 
 #include "dbg.h"
-#include "posix_acl.h"
 #include "utils.h"
 
 #define dout_context g_ceph_context
@@ -80,35 +79,13 @@ string get_path(LPCWSTR path_w) {
   return path;
 }
 
-int check_perm(string file_name, int perm_chk)
-{
-  if (!g_cfg->enforce_perm) {
-    return 0;
-  }
-  return permission_walk(
-    cmount, file_name.c_str(),
-    g_cfg->uid, g_cfg->gid,
-    perm_chk);
-}
-
-int check_parent_perm(string file_name, int perm_chk)
-{
-  if (g_cfg->enforce_perm) {
-    return 0;
-  }
-  return permission_walk_parent(
-    cmount, file_name.c_str(),
-    g_cfg->uid, g_cfg->gid,
-    perm_chk);
-}
-
 static NTSTATUS do_open_file(
   string file_name,
   int flags,
   mode_t mode,
   fd_context* fdc,
   bool init_perm = false,
-  umode_t new_mode = 00777)
+  mode_t new_mode = 00777)
 {
   int fd = ceph_open(cmount, file_name.c_str(), flags, mode);
   if (fd < 0) {
@@ -119,11 +96,6 @@ static NTSTATUS do_open_file(
 
   fdc->fd = fd;
   dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
-
-  // if (init_perm) {
-  //   ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-  //   fuse_init_acl(cmount, file_name.c_str(), new_mode);
-  // }
 
   return 0;
 }
@@ -138,9 +110,6 @@ static NTSTATUS WinCephCreateDirectory(
     return 0;
   }
 
-  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
-    return STATUS_ACCESS_DENIED;
-
   int ret = ceph_mkdir(cmount, file_name.c_str(), 0755);
   if (ret < 0) {
     dout(10) << __func__ << " "
@@ -148,8 +117,6 @@ static NTSTATUS WinCephCreateDirectory(
     return errno_to_ntstatus(ret);
   }
 
-  // ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-  // fuse_init_acl(cmount, file_name.c_str(), 0040777); // S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
   return 0;
 }
 
@@ -157,6 +124,7 @@ static int WinCephOpenDirectory(
   LPCWSTR FileName,
   PDOKAN_FILE_INFO DokanFileInfo)
 {
+  // TODO: return STATUS_IS_A_DIRECTORY?
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
 
@@ -168,9 +136,6 @@ static int WinCephOpenDirectory(
              << ": ceph_statx failed. Error: " << ret << dendl;
     return errno_to_ntstatus(ret);
   }
-
-  if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
-    return STATUS_ACCESS_DENIED;
 
   if (!S_ISDIR(stbuf.stx_mode)) {
     dout(10) << __func__ << " " << file_name << " failed. Not a directory." << dendl;
@@ -225,43 +190,23 @@ static NTSTATUS WinCephCreateFile(
         return STATUS_OBJECT_NAME_COLLISION;
       case TRUNCATE_EXISTING:
         // open O_TRUNC & return 0
-        if (check_perm(file_name, PERM_WALK_CHECK_WRITE))
-          return STATUS_ACCESS_DENIED;
-
         return do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc);
       case OPEN_ALWAYS:
         // open & return STATUS_OBJECT_NAME_COLLISION
-        if (READ_ACCESS_REQUESTED(AccessMode) &&
-            check_perm(file_name, PERM_WALK_CHECK_READ)) {
-          return STATUS_ACCESS_DENIED;
-        }
-        if (WRITE_ACCESS_REQUESTED(AccessMode) &&
-            check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
+        if (!WRITE_ACCESS_REQUESTED(AccessMode))
           fdc->read_only = 1;
-        }
         if ((st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc)))
           return st;
         return STATUS_OBJECT_NAME_COLLISION;
       case OPEN_EXISTING:
         // open & return 0
-        if (READ_ACCESS_REQUESTED(AccessMode) &&
-            check_perm(file_name, PERM_WALK_CHECK_READ)) {
-          return STATUS_ACCESS_DENIED;
-        }
-        if (WRITE_ACCESS_REQUESTED(AccessMode) &&
-            check_perm(file_name, PERM_WALK_CHECK_WRITE)) {
+        if (!WRITE_ACCESS_REQUESTED(AccessMode))
           fdc->read_only = 1;
-        }
         if ((st = do_open_file(file_name, fdc->read_only ? O_RDONLY : O_RDWR, 0755, fdc)))
           return st;
         return 0;
       case CREATE_ALWAYS:
         // open O_TRUNC & return STATUS_OBJECT_NAME_COLLISION
-        if (check_perm(
-            file_name,
-            PERM_WALK_CHECK_READ | PERM_WALK_CHECK_WRITE))
-          return STATUS_ACCESS_DENIED;
-
         if ((st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc)))
           return st;
         return STATUS_OBJECT_NAME_COLLISION;
@@ -293,31 +238,12 @@ static NTSTATUS WinCephCreateFile(
     switch (CreationDisposition) {
       case CREATE_NEW:
         // create & return 0
-        if (check_parent_perm(
-            file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
-          return STATUS_ACCESS_DENIED;
-
-        if ((st = do_open_file(file_name, O_CREAT | O_RDWR | O_EXCL, 0755, fdc, true)))
-          return st;
-        return 0;
+        return do_open_file(file_name, O_CREAT | O_RDWR | O_EXCL, 0755, fdc, true);
       case CREATE_ALWAYS:
         // create & return 0
-        if (check_parent_perm(
-            file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
-          return STATUS_ACCESS_DENIED;
-
-        if ((st = do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc, true)))
-          return st;
-        return 0;
+        return do_open_file(file_name, O_CREAT | O_TRUNC | O_RDWR, 0755, fdc, true);
       case OPEN_ALWAYS:
-        if (check_parent_perm(
-            file_name,
-            PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
-          return STATUS_ACCESS_DENIED;
-
-        if ((st = do_open_file(file_name, O_CREAT | O_RDWR, 0755, fdc, true)))
-          return st;
-        return 0;
+        return do_open_file(file_name, O_CREAT | O_RDWR, 0755, fdc, true);
       case OPEN_EXISTING:
         if (file_name == "/")
           return STATUS_OBJECT_NAME_NOT_FOUND;
@@ -358,7 +284,6 @@ static void WinCephCloseFile(
 
   DokanFileInfo->Context = 0;
 }
-
 
 static void WinCephCleanup(
   LPCWSTR FileName,
@@ -446,7 +371,6 @@ static NTSTATUS WinCephReadFile(
   }
 }
 
-
 static NTSTATUS WinCephWriteFile(
   LPCWSTR FileName,
   LPCVOID Buffer,
@@ -504,7 +428,6 @@ static NTSTATUS WinCephWriteFile(
     return 0;
   }
 }
-
 
 static NTSTATUS WinCephFlushFileBuffers(
   LPCWSTR FileName,
@@ -583,9 +506,6 @@ static NTSTATUS WinCephFindFiles(
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
 
-  if (check_perm(file_name, PERM_WALK_CHECK_READ | PERM_WALK_CHECK_EXEC))
-      return STATUS_ACCESS_DENIED;
-
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name.c_str(), &dirp);
   if (ret != 0) {
@@ -651,8 +571,9 @@ static NTSTATUS WinCephDeleteFile(
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
 
-  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+  if (ceph_may_delete(cmount, file_name.c_str()) < 0) {
     return STATUS_ACCESS_DENIED;
+  }
 
   return 0;
 }
@@ -664,8 +585,9 @@ static NTSTATUS WinCephDeleteDirectory(
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
 
-  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
+  if (ceph_may_delete(cmount, file_name.c_str()) < 0) {
     return STATUS_ACCESS_DENIED;
+  }
 
   struct ceph_dir_result *dirp;
   int ret = ceph_opendir(cmount, file_name.c_str(), &dirp);
@@ -693,7 +615,6 @@ static NTSTATUS WinCephDeleteDirectory(
   return 0;
 }
 
-
 static NTSTATUS WinCephMoveFile(
   LPCWSTR FileName, // existing file name
   LPCWSTR NewFileName,
@@ -703,9 +624,6 @@ static NTSTATUS WinCephMoveFile(
   string file_name = get_path(FileName);
   string new_file_name = get_path(NewFileName);
   dout(20) << __func__ << " " << file_name << " -> " << new_file_name << dendl;
-
-  if (check_parent_perm(file_name, PERM_WALK_CHECK_WRITE | PERM_WALK_CHECK_EXEC))
-    return STATUS_ACCESS_DENIED;
 
   int ret = ceph_rename(cmount, file_name.c_str(), new_file_name.c_str());
   if (ret) {
@@ -770,7 +688,6 @@ static NTSTATUS WinCephSetAllocationSize(
   return 0;
 }
 
-
 static NTSTATUS WinCephSetFileAttributes(
   LPCWSTR FileName,
   DWORD FileAttributes,
@@ -780,7 +697,6 @@ static NTSTATUS WinCephSetFileAttributes(
   dout(20) << __func__ << " (stubbed) " << file_name << dendl;
   return 0;
 }
-
 
 static NTSTATUS WinCephSetFileTime(
   LPCWSTR FileName,
