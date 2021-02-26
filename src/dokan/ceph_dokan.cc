@@ -120,10 +120,10 @@ static NTSTATUS do_open_file(
   fdc->fd = fd;
   dout(20) << __func__ << " " << file_name << " - fd: " << fd << dendl;
 
-  if (init_perm) {
-    ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-    fuse_init_acl(cmount, file_name.c_str(), new_mode);
-  }
+  // if (init_perm) {
+  //   ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+  //   fuse_init_acl(cmount, file_name.c_str(), new_mode);
+  // }
 
   return 0;
 }
@@ -148,8 +148,8 @@ static NTSTATUS WinCephCreateDirectory(
     return errno_to_ntstatus(ret);
   }
 
-  ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
-  fuse_init_acl(cmount, file_name.c_str(), 0040777); // S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
+  // ceph_chown(cmount, file_name.c_str(), g_cfg->uid, g_cfg->gid);
+  // fuse_init_acl(cmount, file_name.c_str(), 0040777); // S_IRWXU|S_IRWXG|S_IRWXO|S_IFDIR
   return 0;
 }
 
@@ -956,16 +956,6 @@ int do_map() {
   dokan_operations->Unmounted = WinCephUnmount;
 
   ceph_create_with_context(&cmount, g_ceph_context);
-
-  UserPerm *user_perm = ceph_userperm_new(g_cfg->uid, g_cfg->gid, 0, NULL);
-  if (!user_perm) {
-    derr << "Couldn't allocate mount permissions." << dendl;
-  }
-  r = ceph_mount_perms_set(cmount, user_perm);
-  if (r) {
-    derr << "Couldn't set mount permissions." << dendl;
-    return r;
-  }
 
   r = ceph_mount(cmount, g_cfg->root_path.c_str());
   if (r) {
