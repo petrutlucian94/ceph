@@ -120,11 +120,10 @@ static NTSTATUS WinCephCreateDirectory(
   return 0;
 }
 
-static int WinCephOpenDirectory(
+static NTSTATUS WinCephOpenDirectory(
   LPCWSTR FileName,
   PDOKAN_FILE_INFO DokanFileInfo)
 {
-  // TODO: return STATUS_IS_A_DIRECTORY?
   string file_name = get_path(FileName);
   dout(20) << __func__ << " " << file_name << dendl;
 
