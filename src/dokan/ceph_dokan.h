@@ -32,6 +32,8 @@ struct Config {
 
   std::wstring mountpoint = L"";
   std::string root_path = "";
+
+  std::wstring win_vol_name = L"";
 };
 
 extern Config *g_cfg;

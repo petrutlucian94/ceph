@@ -784,10 +784,10 @@ static NTSTATUS WinCephGetVolumeInformation(
   DWORD FileSystemNameSize,
   PDOKAN_FILE_INFO DokanFileInfo)
 {
-  // TODO: configurable volume name and serial number.
-  // We should also support having multiple mounts.
-  wcscpy(VolumeNameBuffer, L"Ceph");
-  *VolumeSerialNumber = 0x19831116;
+  g_cfg->win_vol_name.copy(VolumeNameBuffer, VolumeNameSize);
+
+  // TODO: consider prepending this value with the cluster fsid.
+  *VolumeSerialNumber = ceph_get_fs_cid(cmount);
   *MaximumComponentLength = 256;
   *FileSystemFlags = FILE_CASE_SENSITIVE_SEARCH |
             FILE_CASE_PRESERVED_NAMES |
@@ -907,6 +907,15 @@ int do_map() {
   if (r) {
     derr << "ceph_mount failed. Error: " << r << dendl;
     return errno_to_ntstatus(r);
+  }
+
+  if (g_cfg->win_vol_name.empty()) {
+    string ceph_fs_name = g_conf().get_val<string>("client_fs");
+
+    g_cfg->win_vol_name = L"Ceph";
+    if (!ceph_fs_name.empty()) {
+      g_cfg->win_vol_name += L" - " + to_wstring(ceph_fs_name);
+    }
   }
 
   atexit(unmount_atexit);
