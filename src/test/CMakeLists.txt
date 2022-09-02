@@ -32,6 +32,8 @@ if (WITH_CEPHFS)
 endif()
 add_subdirectory(pybind)
 
+add_subdirectory(libcephfs)
+
 # Not available on Windows for the time being.
 if(NOT WIN32)
   # libcls_* dependencies cascade to osd, kv and other libs that are not
