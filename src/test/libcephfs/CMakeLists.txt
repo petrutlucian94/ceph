@@ -75,4 +75,4 @@ if(WITH_LIBCEPHFS)
     )
   install(TARGETS ceph_test_libcephfs_access
     DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif(WITH_CEPHFS)
+endif(WITH_LIBCEPHFS)
