@@ -18,6 +18,7 @@
 #error "!GTEST_IS_THREADSAFE"
 #endif
 
+#include "include/compat.h"
 #include "include/cephfs/libcephfs.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -29,7 +30,10 @@
 #include <stdlib.h>
 #include <semaphore.h>
 #include <time.h>
+
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
 
 #ifdef __linux__
 #include <limits.h>
@@ -431,6 +435,7 @@ static void process_ConcurrentLocking(str_ConcurrentLocking& s) {
   exit(EXIT_SUCCESS);
 }
 
+#ifndef _WIN32
 // Disabled because of fork() issues (http://tracker.ceph.com/issues/16556)
 TEST(LibCephFS, DISABLED_InterProcessLocking) {
   PROCESS_SLOW_MS();
@@ -530,7 +535,9 @@ TEST(LibCephFS, DISABLED_InterProcessLocking) {
   ASSERT_EQ(0, ceph_unlink(cmount, c_file));
   CLEANUP_CEPH();
 }
+#endif
 
+#ifndef _WIN32
 // Disabled because of fork() issues (http://tracker.ceph.com/issues/16556)
 TEST(LibCephFS, DISABLED_ThreesomeInterProcessLocking) {
   PROCESS_SLOW_MS();
@@ -643,3 +650,4 @@ TEST(LibCephFS, DISABLED_ThreesomeInterProcessLocking) {
   ASSERT_EQ(0, ceph_unlink(cmount, c_file));
   CLEANUP_CEPH();
 }
+#endif

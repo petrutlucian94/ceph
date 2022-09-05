@@ -15,6 +15,7 @@
 #include "gtest/gtest.h"
 #include "include/cephfs/libcephfs.h"
 #include "include/ceph_fs.h"
+#include "include/fs_types.h"
 #include "client/posix_acl.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -147,7 +148,10 @@ TEST(ACL, SetACL) {
   ASSERT_EQ(ceph_fchown(cmount, fd, 65534, 65534), 0);
 
   ASSERT_EQ(0, ceph_conf_set(cmount, "client_permissions", "1"));
-  ASSERT_EQ(ceph_open(cmount, test_file, O_RDWR, 0), -EACCES);
+  // "nobody" will be ignored on Windows
+  #ifndef _WIN32
+  ASSERT_EQ(ceph_open(cmount, test_file, O_RDWR, 0), -CEPHFS_EACCES);
+  #endif
   ASSERT_EQ(0, ceph_conf_set(cmount, "client_permissions", "0"));
 
   size_t acl_buf_size = acl_ea_size(5);
@@ -155,7 +159,7 @@ TEST(ACL, SetACL) {
   ASSERT_EQ(generate_test_acl(acl_buf, acl_buf_size, 0750), 0);
 
   // can't set default acl for non-directory
-  ASSERT_EQ(ceph_fsetxattr(cmount, fd, ACL_EA_DEFAULT, acl_buf, acl_buf_size, 0), -EACCES);
+  ASSERT_EQ(ceph_fsetxattr(cmount, fd, ACL_EA_DEFAULT, acl_buf, acl_buf_size, 0), -CEPHFS_EACCES);
   ASSERT_EQ(ceph_fsetxattr(cmount, fd, ACL_EA_ACCESS, acl_buf, acl_buf_size, 0), 0);
 
   int tmpfd = ceph_open(cmount, test_file, O_RDWR, 0);
@@ -173,7 +177,7 @@ TEST(ACL, SetACL) {
   ASSERT_EQ(generate_empty_acl(acl_buf, acl_buf_size, 0600), 0);
   ASSERT_EQ(ceph_fsetxattr(cmount, fd, ACL_EA_ACCESS, acl_buf, acl_buf_size, 0), 0);
   // ACL was deleted
-  ASSERT_EQ(ceph_fgetxattr(cmount, fd, ACL_EA_ACCESS, NULL, 0), -ENODATA);
+  ASSERT_EQ(ceph_fgetxattr(cmount, fd, ACL_EA_ACCESS, NULL, 0), -CEPHFS_ENODATA);
 
   ASSERT_EQ(ceph_fstatx(cmount, fd, &stx, CEPH_STATX_MODE, 0), 0);
   // mode was modified according to ACL
@@ -266,7 +270,7 @@ TEST(ACL, DefaultACL) {
   ASSERT_GT(fd, 0);
 
   // no default acl
-  ASSERT_EQ(ceph_fgetxattr(cmount, fd, ACL_EA_DEFAULT, NULL, 0), -ENODATA);
+  ASSERT_EQ(ceph_fgetxattr(cmount, fd, ACL_EA_DEFAULT, NULL, 0), -CEPHFS_ENODATA);
 
   // mode and ACL are updated
   ASSERT_EQ(ceph_fgetxattr(cmount, fd, ACL_EA_ACCESS, acl2_buf, acl_buf_size), acl_buf_size);
@@ -299,10 +303,10 @@ TEST(ACL, Disabled) {
   sprintf(test_dir, "dir1_acl_disabled_%d", getpid());
   ASSERT_EQ(ceph_mkdir(cmount, test_dir, 0750), 0);
 
-  ASSERT_EQ(ceph_setxattr(cmount, test_dir, ACL_EA_DEFAULT, acl_buf, acl_buf_size, 0), -EOPNOTSUPP);
-  ASSERT_EQ(ceph_setxattr(cmount, test_dir, ACL_EA_ACCESS, acl_buf, acl_buf_size, 0), -EOPNOTSUPP);
-  ASSERT_EQ(ceph_getxattr(cmount, test_dir, ACL_EA_DEFAULT, acl_buf, acl_buf_size), -EOPNOTSUPP);
-  ASSERT_EQ(ceph_getxattr(cmount, test_dir, ACL_EA_ACCESS, acl_buf, acl_buf_size), -EOPNOTSUPP);
+  ASSERT_EQ(ceph_setxattr(cmount, test_dir, ACL_EA_DEFAULT, acl_buf, acl_buf_size, 0), -CEPHFS_EOPNOTSUPP);
+  ASSERT_EQ(ceph_setxattr(cmount, test_dir, ACL_EA_ACCESS, acl_buf, acl_buf_size, 0), -CEPHFS_EOPNOTSUPP);
+  ASSERT_EQ(ceph_getxattr(cmount, test_dir, ACL_EA_DEFAULT, acl_buf, acl_buf_size), -CEPHFS_EOPNOTSUPP);
+  ASSERT_EQ(ceph_getxattr(cmount, test_dir, ACL_EA_ACCESS, acl_buf, acl_buf_size), -CEPHFS_EOPNOTSUPP);
 
   free(acl_buf);
   ceph_shutdown(cmount);
