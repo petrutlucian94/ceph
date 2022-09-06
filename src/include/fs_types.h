@@ -45,6 +45,7 @@ class JSONObj;
 #define CEPHFS_EMLINK          31
 #define CEPHFS_ETIME           62
 #define CEPHFS_EOLDSNAPC       85
+#define CEPHFS_EISCONN         106
 
 // taken from linux kernel: include/uapi/linux/fcntl.h
 #define CEPHFS_AT_FDCWD        -100    /* Special value used to indicate
