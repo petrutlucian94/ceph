@@ -397,8 +397,9 @@ __s32 wsae_to_errno_unsigned(__s32 r)
 // converts from linux errno values to host values
 __s32 ceph_to_hostos_errno(__s32 r)
 {
-  int sign = (r < 0 ? -1 : 1);
-  return ceph_to_hostos_errno_unsigned(abs(r)) * sign;
+  return r;
+  // int sign = (r < 0 ? -1 : 1);
+  // return ceph_to_hostos_errno_unsigned(abs(r)) * sign;
 }
 
 // converts Host OS errno values to linux/Ceph values
