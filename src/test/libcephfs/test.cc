@@ -898,8 +898,11 @@ TEST(LibCephFS, Fchown) {
 
   ceph_close(cmount, fd);
 
+  // "nobody" will be ignored on Windows
+  #ifndef _WIN32
   fd = ceph_open(cmount, test_file, O_RDWR, 0);
   ASSERT_EQ(fd, -EACCES);
+  #endif
 
   ceph_shutdown(cmount);
 }
@@ -3241,8 +3244,11 @@ TEST(LibCephFS, Chownat) {
   ASSERT_EQ(ceph_conf_set(cmount, "client_permissions", "1"), 0);
   ceph_close(cmount, fd);
 
+  // "nobody" will be ignored on Windows
+  #ifndef _WIN32
   fd = ceph_open(cmount, file_path, O_RDWR, 0);
   ASSERT_EQ(fd, -EACCES);
+  #endif
 
   ASSERT_EQ(ceph_conf_set(cmount, "client_permissions", "0"), 0);
   ASSERT_EQ(0, ceph_unlink(cmount, file_path));
@@ -3282,8 +3288,11 @@ TEST(LibCephFS, ChownatATFDCWD) {
   ASSERT_EQ(ceph_chownat(cmount, CEPHFS_AT_FDCWD, rel_file_path, 65534, 65534, 0), 0);
   ASSERT_EQ(ceph_conf_set(cmount, "client_permissions", "1"), 0);
 
+  // "nobody" will be ignored on Windows
+  #ifndef _WIN32
   fd = ceph_open(cmount, file_path, O_RDWR, 0);
   ASSERT_EQ(fd, -EACCES);
+  #endif
 
   ASSERT_EQ(ceph_conf_set(cmount, "client_permissions", "0"), 0);
   ASSERT_EQ(0, ceph_unlink(cmount, file_path));
