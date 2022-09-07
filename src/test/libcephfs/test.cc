@@ -486,7 +486,7 @@ TEST(LibCephFS, DirLs) {
     // On Windows, dirent uses long (4B) inodes, which get trimmed
     // and can't be used.
     // TODO: consider defining ceph_dirent.
-    #ifdef _WIN32
+    #ifndef _WIN32
     ASSERT_EQ(stx.stx_ino, rdent.d_ino);
     #endif
     //ASSERT_EQ(st.st_mode, (mode_t)0666);
