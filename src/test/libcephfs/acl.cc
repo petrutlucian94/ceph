@@ -53,7 +53,7 @@ static int check_acl_and_mode(const void *buf, size_t size, mode_t mode)
     switch(tag) {
       case ACL_USER_OBJ:
 	if (perm != ((mode >> 6) & 7))
-	  return -EINVAL;
+	  return -CEPHFS_EINVAL;
 	break;
       case ACL_USER:
       case ACL_GROUP:
@@ -63,26 +63,26 @@ static int check_acl_and_mode(const void *buf, size_t size, mode_t mode)
 	break;
       case ACL_OTHER:
 	if (perm != (mode & 7))
-	  return -EINVAL;
+	  return -CEPHFS_EINVAL;
 	break;
       case ACL_MASK:
 	mask_entry = entry;
 	break;
       default:
-	return -EIO;
+	return -CEPHFS_EIO;
     }
     ++entry;
   }
   if (mask_entry) {
     __u16 perm = mask_entry->e_perm;
     if (perm != ((mode >> 3) & 7))
-      return -EINVAL;
+      return -CEPHFS_EINVAL;
   } else {
     if (!group_entry)
-      return -EIO;
+      return -CEPHFS_EIO;
     __u16 perm = group_entry->e_perm;
     if (perm != ((mode >> 3) & 7))
-      return -EINVAL;
+      return -CEPHFS_EINVAL;
   }
   return 0;
 }
