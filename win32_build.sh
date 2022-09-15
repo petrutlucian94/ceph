@@ -192,6 +192,8 @@ if [[ -z $SKIP_BUILD ]]; then
     if [[ -z $SKIP_TESTS ]]; then
       ninja_targets+=" tests ceph_radosacl ceph_scratchtool"
     fi
+    ninja_targets+=" "
+    ninja_targets+=`ninja -t targets | grep ceph_test | cut -d ":" -f 1 | grep -v exe`
 
     ninja -v $ninja_targets 2>&1 | tee "${BUILD_DIR}/build.log"
 fi
