@@ -198,6 +198,8 @@ if [[ -z $SKIP_BUILD ]]; then
     ninja_targets+=" compressor ceph_lz4 ceph_snappy ceph_zlib ceph_zstd"
     if [[ -z $SKIP_TESTS ]]; then
       ninja_targets+=" tests ceph_radosacl ceph_scratchtool"
+      ninja_targets+=" "
+      ninja_targets+=`ninja -t targets | grep ceph_test | cut -d ":" -f 1 | grep -v exe`
     fi
 
     ninja -v $ninja_targets 2>&1 | tee "${BUILD_DIR}/build.log"
