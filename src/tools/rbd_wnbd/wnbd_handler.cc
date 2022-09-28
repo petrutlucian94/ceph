@@ -14,6 +14,7 @@
 #define dout_subsys ceph_subsys_rbd
 
 #include "wnbd_handler.h"
+#include "per_res.h"
 
 #define _NTSCSI_USER_MODE_
 #include <rpc.h>
@@ -354,6 +355,125 @@ void WnbdHandler::Unmap(
   dout(20) << *ctx << ": submitted" << dendl;
 }
 
+// TODO: drop Buffer parameter and consider doing the same
+// for the Read callback eventually.
+void WnbdHandler::PersistResIn(
+  PWNBD_DISK Disk,
+  UINT64 RequestHandle,
+  UINT8 ServiceAction)
+{
+  WnbdHandler* handler = nullptr;
+  ceph_assert(!WnbdGetUserContext(Disk, (PVOID*)&handler));
+
+  // TODO: free this
+  WnbdHandler::IOContext* ctx = new WnbdHandler::IOContext();
+  ctx->handler = handler;
+  ctx->req_handle = RequestHandle;
+  ctx->req_type = WnbdReqTypePersistResIn;
+  ctx->req_from = 0;
+
+  dout(20) << *ctx
+    << ", action=" << (int) ServiceAction
+    << ": start" << dendl;
+
+  // TODO: can/should this be async?
+  auto op = WnbdPerResInOperation(
+    handler->rados_ctx,
+    handler->image,
+    ServiceAction,
+    ctx->data,
+    &ctx->wnbd_status);
+  int r = op.execute();
+  if (r < 0) {
+    if (!ctx->wnbd_status.ScsiStatus) {
+      ctx->set_sense(SCSI_SENSE_MEDIUM_ERROR,
+                     SCSI_ADSENSE_UNRECOVERED_ERROR);
+    }
+  }
+
+  WNBD_IO_RESPONSE wnbd_rsp = {0};
+  wnbd_rsp.RequestHandle = RequestHandle;
+  wnbd_rsp.RequestType = WnbdReqTypePersistResIn;
+  wnbd_rsp.Status = ctx->wnbd_status;
+
+  int err = WnbdSendResponse(
+    handler->wnbd_disk,
+    &wnbd_rsp,
+    ctx->data.c_str(),
+    ctx->data.length());
+  if (err != 0) {
+    derr << "Could not send response. Request id: " << wnbd_rsp.RequestHandle
+         << ". Error: " << err << dendl;
+  }
+
+  dout(20) << *ctx << ": submitted" << dendl;
+}
+
+void WnbdHandler::PersistResOut(
+  PWNBD_DISK Disk,
+  UINT64 RequestHandle,
+  UINT8 ServiceAction,
+  UINT8 Scope,
+  UINT8 Type,
+  PVOID Buffer,
+  UINT32 ParameterListLength)
+{
+  WnbdHandler* handler = nullptr;
+  ceph_assert(!WnbdGetUserContext(Disk, (PVOID*)&handler));
+
+  // TODO: free this
+  WnbdHandler::IOContext* ctx = new WnbdHandler::IOContext();
+  ctx->handler = handler;
+  ctx->req_handle = RequestHandle;
+  ctx->req_type = WnbdReqTypePersistResOut;
+  ctx->req_size = ParameterListLength;
+  ctx->req_from = 0;
+
+  bufferptr ptr((char*)Buffer, ctx->req_size);
+  ctx->data.push_back(ptr);
+
+  dout(20) << *ctx
+    << ", action=" << (uint) ServiceAction
+    << ", scope=" << (uint) Scope
+    << ", type=" << (uint) Type
+    << ", buffer_sz=" << (uint) ParameterListLength
+    << ": start" << dendl;
+
+  // TODO: can/should this be async?
+  auto op = WnbdPerResOutOperation(
+    handler->rados_ctx,
+    handler->image,
+    ServiceAction,
+    Scope,
+    Type,
+    ctx->data,
+    &ctx->wnbd_status);
+  int r = op.execute();
+  if (r < 0) {
+    if (!ctx->wnbd_status.ScsiStatus) {
+      ctx->set_sense(SCSI_SENSE_MEDIUM_ERROR,
+                     SCSI_ADSENSE_UNRECOVERED_ERROR);
+    }
+  }
+
+  WNBD_IO_RESPONSE wnbd_rsp = {0};
+  wnbd_rsp.RequestHandle = RequestHandle;
+  wnbd_rsp.RequestType = WnbdReqTypePersistResOut;
+  wnbd_rsp.Status = ctx->wnbd_status;
+
+  int err = WnbdSendResponse(
+    handler->wnbd_disk,
+    &wnbd_rsp,
+    nullptr,
+    0);
+  if (err != 0) {
+    derr << "Could not send response. Request id: " << wnbd_rsp.RequestHandle
+         << ". Error: " << err << dendl;
+  }
+
+  dout(20) << *ctx << ": submitted" << dendl;
+}
+
 void WnbdHandler::LogMessage(
   WnbdLogLevel LogLevel,
   const char* Message,
@@ -383,6 +503,7 @@ int WnbdHandler::start()
 
   wnbd_props.Flags.ReadOnly = readonly;
   wnbd_props.Flags.UnmapSupported = 1;
+  wnbd_props.Flags.PersistResSupported = 1;
   if (rbd_cache_enabled) {
     wnbd_props.Flags.FUASupported = 1;
     wnbd_props.Flags.FlushSupported = 1;
@@ -420,6 +541,12 @@ std::ostream &operator<<(std::ostream &os, const WnbdHandler::IOContext &ctx) {
     break;
   case WnbdReqTypeUnmap:
     os << " TRIM ";
+    break;
+  case WnbdReqTypePersistResIn:
+    os << " PERSISTENT_RESERVE_IN ";
+    break;
+  case WnbdReqTypePersistResOut:
+    os << " PERSISTENT_RESERVE_OUT ";
     break;
   default:
     os << " UNKNOWN(" << ctx.req_type << ") ";
