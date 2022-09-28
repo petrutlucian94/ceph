@@ -48,6 +48,8 @@ ceph::mutex shutdown_lock = ceph::make_mutex("RbdWnbd::ShutdownLock");
 struct Config {
   bool exclusive = false;
   bool readonly = false;
+  // Enable persistent reservations;
+  bool enable_pr = false;
 
   std::string parent_pipe;
 
