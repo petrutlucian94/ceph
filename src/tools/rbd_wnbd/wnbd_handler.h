@@ -172,6 +172,20 @@ private:
     UINT64 RequestHandle,
     PWNBD_UNMAP_DESCRIPTOR Descriptors,
     UINT32 Count);
+  static void PersistResIn(
+    PWNBD_DISK Disk,
+    UINT64 RequestHandle,
+    UINT16 ServiceAction,
+    PVOID Buffer,
+    UINT32 AllocationLength);
+  static void PersistResOut(
+    PWNBD_DISK Disk,
+    UINT64 RequestHandle,
+    UINT16 ServiceAction,
+    UINT16 Scope,
+    UINT16 Type,
+    PVOID Buffer,
+    UINT32 ParameterListLength);
 
   static constexpr WNBD_INTERFACE RbdWnbdInterface =
   {
@@ -179,6 +193,8 @@ private:
     Write,
     Flush,
     Unmap,
+    PersistResIn,
+    PersistResOut,
   };
 };
 
