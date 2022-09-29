@@ -1,4 +1,4 @@
-add_executable(rbd-wnbd wnbd_handler.cc rbd_wnbd.cc)
+add_executable(rbd-wnbd wnbd_handler.cc rbd_wnbd.cc per_res.cc)
 set_target_properties(
     rbd-wnbd PROPERTIES COMPILE_FLAGS
     "-fpermissive -I${WNBD_INCLUDE_DIRS}")

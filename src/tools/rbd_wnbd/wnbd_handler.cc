@@ -14,6 +14,7 @@
 #define dout_subsys ceph_subsys_rbd
 
 #include "wnbd_handler.h"
+#include "per_res.h"
 
 #define _NTSCSI_USER_MODE_
 #include <rpc.h>
@@ -357,7 +358,7 @@ void WnbdHandler::Unmap(
 void WnbdHandler::PersistResIn(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
-  UINT16 ServiceAction,
+  UINT8 ServiceAction,
   PVOID Buffer,
   UINT32 AllocationLength)
 {
@@ -403,9 +404,9 @@ void WnbdHandler::PersistResIn(
 void WnbdHandler::PersistResOut(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
-  UINT16 ServiceAction,
-  UINT16 Scope,
-  UINT16 Type,
+  UINT8 ServiceAction,
+  UINT8 Scope,
+  UINT8 Type,
   PVOID Buffer,
   UINT32 ParameterListLength)
 {

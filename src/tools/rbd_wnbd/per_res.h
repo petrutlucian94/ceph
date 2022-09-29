@@ -1,0 +1,124 @@
+/*
+ * Ceph - scalable distributed file system
+ *
+ * Copyright (C) 2022 Cloudbase Solutions
+ *
+ * This is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License version 2.1, as published by the Free Software
+ * Foundation.  See file COPYING.
+ *
+ */
+
+#ifndef WNBD_PER_RES_H
+#define WNBD_PER_RES_H
+
+#include "include/encoding.h"
+#include "include/rbd/librbd.hpp"
+
+class RbdPrInfo
+{
+private:
+  librados::IoCtx &rados_ctx;
+  librbd::Image &image;
+
+  std::string get_header_obj_name();
+public:
+  // TODO: consider endianness
+  uint32_t generation;
+  std::vector<std::uint32_t> keys;
+
+  void encode(bufferlist &bl)
+  {
+    using ceph::encode;
+    ENCODE_START(1, 1, bl);
+    encode(generation, bl);
+    encode(keys, bl);
+    ENCODE_FINISH(bl);
+  }
+
+  void decode(bufferlist::const_iterator &bl)
+  {
+    using ceph::decode;
+    DECODE_START(1, bl);
+    decode(generation, bl);
+    decode(keys, bl);
+    DECODE_FINISH(bl);
+  }
+
+  int create();
+  int retrieve();
+  int retrieve_or_create();
+  int replace();
+
+  RbdPrInfo(librbd::IoCtx _rados_ctx,
+            librbd::Image& _image)
+    : rados_ctx(_rados_ctx)
+    , image(_image)
+  {
+  }
+};
+
+// WNBD PERSISTENT RESERVATION IN operation
+class WnbdPerResInOperation
+{
+private:
+  librados::IoCtx &rados_ctx;
+  librbd::Image &image;
+  uint8_t service_action;
+
+  bufferlist out_buff;
+
+  int read_keys();
+  int read_reservations();
+
+public:
+  WnbdPerResInOperation(librbd::IoCtx _rados_ctx,
+                        librbd::Image& _image,
+                        uint16_t _service_action,
+                        bufferlist& _out_buff)
+    : rados_ctx(_rados_ctx)
+    , image(_image)
+    , service_action(_service_action)
+    , out_buff(_out_buff)
+  {
+  }
+
+  int start();
+};
+
+// WNBD PERSISTENT RESERVATION OUT operation
+class WnbdPerResOutOperation
+{
+private:
+  librados::IoCtx &rados_ctx;
+  librbd::Image &image;
+  uint8_t service_action;
+  uint8_t scope;
+  uint8_t type;
+
+  bufferlist in_buff;
+
+  int register_key();
+
+public:
+  WnbdPerResOutOperation(librbd::IoCtx _rados_ctx,
+                        librbd::Image& _image,
+                        uint8_t _service_action,
+                        uint8_t _scope,
+                        uint8_t _type,
+                        bufferlist& _in_buff)
+    : rados_ctx(_rados_ctx)
+    , image(_image)
+    , service_action(_service_action)
+    , scope(_scope)
+    , type(_type)
+    , in_buff(_in_buff)
+  {
+  }
+
+  int start();
+};
+
+
+#endif // WNBD_PER_RES_H
