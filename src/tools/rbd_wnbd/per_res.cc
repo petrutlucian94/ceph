@@ -117,12 +117,12 @@ int WnbdPerResInOperation::read_keys()
     reinterpret_cast<const char*>(&generation_be), sizeof(generation_be));
 
   uint32_t allocation_length_be = boost::endian::native_to_big(
-    uint32_t(pr_info.keys.size()));
+    uint32_t(pr_info.regs.size()));
   out_buff.append(
     reinterpret_cast<const char*>(&allocation_length_be), sizeof(allocation_length_be));
 
-  for (auto key : pr_info.keys) {
-    auto key_be = boost::endian::native_to_big(key);
+  for (auto reg : pr_info.regs) {
+    auto key_be = boost::endian::native_to_big(reg.key);
     out_buff.append(
       reinterpret_cast<const char*>(&key_be), sizeof(key_be));
   }
@@ -166,8 +166,28 @@ int WnbdPerResOutOperation::register_key()
   uint32_t scope_specif_addr = boost::endian::big_to_native(
     *reinterpret_cast<uint64_t*>(params->ScopeSpecificAddress));
 
+  auto pr_info = RbdPrInfo(rados_ctx, image);
+  pr_info.retrieve_or_create();
+
+  // TODO: check registration mode
+  auto found = false;
+  for (auto reg : pr_info.regs) {
+    if (reg.key == sv_act_res_key) {
+      found = true;
+    }
+  }
+  if (!found) {
+    per_reg new_reg = {
+      .key = res_key,
+    };
+    pr_info.regs.push_back(new_reg);
+  }
+
+  // TODO: retries
+  pr_info.replace();
+
   // TODO: Placeholder
-  return -ENOTSUP;
+  return 0;
 }
 
 // TODO: set sense status

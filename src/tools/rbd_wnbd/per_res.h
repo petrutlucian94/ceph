@@ -16,6 +16,27 @@
 #include "include/encoding.h"
 #include "include/rbd/librbd.hpp"
 
+struct per_reg {
+  uint64_t key;
+
+  void encode(bufferlist &bl)
+  {
+    using ceph::encode;
+    ENCODE_START(1, 1, bl);
+    encode(key, bl);
+    ENCODE_FINISH(bl);
+  }
+
+  void decode(bufferlist::const_iterator &bl)
+  {
+    using ceph::decode;
+    DECODE_START(1, bl);
+    decode(key, bl);
+    DECODE_FINISH(bl);
+  }
+};
+WRITE_CLASS_ENCODER(per_reg)
+
 class RbdPrInfo
 {
 private:
@@ -26,14 +47,14 @@ private:
 public:
   // TODO: consider endianness
   uint32_t generation;
-  std::vector<std::uint32_t> keys;
+  std::vector<per_reg> regs;
 
   void encode(bufferlist &bl)
   {
     using ceph::encode;
     ENCODE_START(1, 1, bl);
     encode(generation, bl);
-    encode(keys, bl);
+    encode(regs, bl);
     ENCODE_FINISH(bl);
   }
 
@@ -42,7 +63,7 @@ public:
     using ceph::decode;
     DECODE_START(1, bl);
     decode(generation, bl);
-    decode(keys, bl);
+    decode(regs, bl);
     DECODE_FINISH(bl);
   }
 
