@@ -33,6 +33,8 @@
 #define RBD_HEADER_PREFIX "rbd_header."
 #define RBD_SUFFIX        ".rbd"
 
+#define CLASS_NAME typeid(*this).name()
+
 std::string RbdPrInfo::get_header_obj_name()
 {
   // TODO: double check this
@@ -52,6 +54,8 @@ std::string RbdPrInfo::get_header_obj_name()
 
 int RbdPrInfo::retrieve()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
+
   bufferlist bl;
   auto object_name = get_header_obj_name();
   auto r = rados_ctx.getxattr(object_name, RBD_PR_INFO_XATTR_KEY, bl);
@@ -66,6 +70,8 @@ int RbdPrInfo::retrieve()
 
 int RbdPrInfo::retrieve_or_create()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
+
   auto r = retrieve();
   if (r == -ENODATA) {
     r = create();
@@ -75,6 +81,8 @@ int RbdPrInfo::retrieve_or_create()
 
 int RbdPrInfo::create()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
+
   bufferlist bl;
   encode(bl);
 
@@ -89,6 +97,8 @@ int RbdPrInfo::create()
 
 int RbdPrInfo::replace()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
+
   bufferlist bl;
   encode(bl);
 
@@ -106,6 +116,8 @@ int RbdPrInfo::replace()
 
 int WnbdPerResInOperation::read_keys()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
+
   auto pr_info = RbdPrInfo(rados_ctx, image);
   int r = pr_info.retrieve_or_create();
   if (r < 0) {
@@ -132,6 +144,7 @@ int WnbdPerResInOperation::read_keys()
 
 int WnbdPerResInOperation::read_reservations()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
   // TODO: Placeholder
   return -ENOTSUP;
 }
@@ -145,6 +158,8 @@ int WnbdPerResInOperation::start()
   case RESERVATION_ACTION_READ_RESERVATIONS:
     return read_reservations();
   default:
+    dout(20) << "Unsupported Persistent Reservation IN service action: "
+             << service_action << dendl;
     return -ENOTSUP;
   }
   return 0;
@@ -153,6 +168,8 @@ int WnbdPerResInOperation::start()
 // TODO: set sense status
 int WnbdPerResOutOperation::register_key()
 {
+  dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
+
   if (in_buff.length() < sizeof(PRO_PARAMETER_LIST)) {
     return -EOVERFLOW;
   }
@@ -197,6 +214,8 @@ int WnbdPerResOutOperation::start()
   case RESERVATION_ACTION_REGISTER:
     return register_key();
   default:
+    dout(20) << "Unsupported Persistent Reservation OUT service action: "
+             << service_action << dendl;
     return -ENOTSUP;
   }
   return 0;
