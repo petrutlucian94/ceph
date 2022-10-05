@@ -355,6 +355,8 @@ void WnbdHandler::Unmap(
   dout(20) << *ctx << ": submitted" << dendl;
 }
 
+// TODO: drop Buffer parameter and consider doing the same
+// for the Read callback eventually.
 void WnbdHandler::PersistResIn(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
@@ -369,18 +371,20 @@ void WnbdHandler::PersistResIn(
   ctx->handler = handler;
   ctx->req_handle = RequestHandle;
   ctx->req_type = WnbdReqTypePersistResIn;
+  ctx->req_from = 0;
 
-  dout(20) << *ctx << ": start" << dendl;
+  dout(20) << *ctx
+    << ", action=" << ServiceAction
+    << ": start" << dendl;
 
   // TODO: can/should this be async?
   WNBD_STATUS wnbd_status = {0};
-  bufferlist in_buff;
 
   auto op = WnbdPerResInOperation(
     handler->rados_ctx,
     handler->image,
     ServiceAction,
-    in_buff,
+    ctx->data,
     &wnbd_status);
   op.execute();
 
@@ -392,8 +396,8 @@ void WnbdHandler::PersistResIn(
   int err = WnbdSendResponse(
     handler->wnbd_disk,
     &wnbd_rsp,
-    nullptr,
-    0);
+    ctx->data.c_str(),
+    ctx->data.length());
   if (err != 0) {
     derr << "Could not send response. Request id: " << wnbd_rsp.RequestHandle
          << ". Error: " << err << dendl;
@@ -418,12 +422,21 @@ void WnbdHandler::PersistResOut(
   ctx->handler = handler;
   ctx->req_handle = RequestHandle;
   ctx->req_type = WnbdReqTypePersistResOut;
+  ctx->req_size = ParameterListLength;
+  ctx->req_from = 0;
 
-  dout(20) << *ctx << ": start" << dendl;
+  bufferptr ptr((char*)Buffer, ctx->req_size);
+  ctx->data.push_back(ptr);
+
+  dout(20) << *ctx
+    << ", action=" << ServiceAction
+    << ", scope=" << Scope
+    << ", type=" << Type
+    << ", buffer_sz=" << ParameterListLength
+    << ": start" << dendl;
 
   // TODO: can/should this be async?
   WNBD_STATUS wnbd_status = {0};
-  bufferlist out_buff;
 
   auto op = WnbdPerResOutOperation(
     handler->rados_ctx,
@@ -431,7 +444,7 @@ void WnbdHandler::PersistResOut(
     ServiceAction,
     Scope,
     Type,
-    out_buff,
+    ctx->data,
     &wnbd_status);
   op.execute();
 
