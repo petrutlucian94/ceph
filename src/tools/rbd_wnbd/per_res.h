@@ -74,7 +74,7 @@ public:
   int retrieve_or_create();
   int replace();
 
-  RbdPrInfo(librbd::IoCtx _rados_ctx,
+  RbdPrInfo(librbd::IoCtx& _rados_ctx,
             librbd::Image& _image)
     : rados_ctx(_rados_ctx)
     , image(_image)
@@ -97,7 +97,7 @@ private:
   int read_reservations();
 
 public:
-  WnbdPerResInOperation(librbd::IoCtx _rados_ctx,
+  WnbdPerResInOperation(librbd::IoCtx& _rados_ctx,
                         librbd::Image& _image,
                         uint16_t _service_action,
                         bufferlist& _out_buff,
@@ -129,7 +129,7 @@ private:
   int register_key();
 
 public:
-  WnbdPerResOutOperation(librbd::IoCtx _rados_ctx,
+  WnbdPerResOutOperation(librbd::IoCtx& _rados_ctx,
                         librbd::Image& _image,
                         uint8_t _service_action,
                         uint8_t _scope,
