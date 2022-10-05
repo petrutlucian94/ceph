@@ -429,10 +429,10 @@ void WnbdHandler::PersistResOut(
   ctx->data.push_back(ptr);
 
   dout(20) << *ctx
-    << ", action=" << ServiceAction
-    << ", scope=" << Scope
-    << ", type=" << Type
-    << ", buffer_sz=" << ParameterListLength
+    << ", action=" << (uint) ServiceAction
+    << ", scope=" << (uint) Scope
+    << ", type=" << (uint) Type
+    << ", buffer_sz=" << (uint) ParameterListLength
     << ": start" << dendl;
 
   // TODO: can/should this be async?
