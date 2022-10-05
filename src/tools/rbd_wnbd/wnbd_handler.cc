@@ -372,16 +372,17 @@ void WnbdHandler::PersistResIn(
 
   dout(20) << *ctx << ": start" << dendl;
 
-  // TODO: decode the SCSI command and store the persistent reservations
-  // using xattr or rbd metadata. Right now, we're just returning a
-  // SCSI_SENSE_ILLEGAL_REQUEST sense code.
-  //
   // TODO: can/should this be async?
   WNBD_STATUS wnbd_status = {0};
-  WnbdSetSense(
-    &wnbd_status,
-    SCSI_SENSE_ILLEGAL_REQUEST,
-    SCSI_ADSENSE_ILLEGAL_COMMAND);
+  bufferlist in_buff;
+
+  auto op = WnbdPerResInOperation(
+    handler->rados_ctx,
+    handler->image,
+    ServiceAction,
+    in_buff,
+    &wnbd_status);
+  op.execute();
 
   WNBD_IO_RESPONSE wnbd_rsp = {0};
   wnbd_rsp.RequestHandle = RequestHandle;
@@ -420,16 +421,19 @@ void WnbdHandler::PersistResOut(
 
   dout(20) << *ctx << ": start" << dendl;
 
-  // TODO: decode the SCSI command and retrieve the persistent reservations
-  // using xattr or rbd metadata. Right now, we're just returning a
-  // SCSI_SENSE_ILLEGAL_REQUEST sense code.
-  //
   // TODO: can/should this be async?
   WNBD_STATUS wnbd_status = {0};
-  WnbdSetSense(
-    &wnbd_status,
-    SCSI_SENSE_ILLEGAL_REQUEST,
-    SCSI_ADSENSE_ILLEGAL_COMMAND);
+  bufferlist out_buff;
+
+  auto op = WnbdPerResOutOperation(
+    handler->rados_ctx,
+    handler->image,
+    ServiceAction,
+    Scope,
+    Type,
+    out_buff,
+    &wnbd_status);
+  op.execute();
 
   WNBD_IO_RESPONSE wnbd_rsp = {0};
   wnbd_rsp.RequestHandle = RequestHandle;

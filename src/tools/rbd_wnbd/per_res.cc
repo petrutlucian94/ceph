@@ -146,11 +146,16 @@ int WnbdPerResInOperation::read_reservations()
 {
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
   // TODO: Placeholder
+
+  WnbdSetSense(
+    wnbd_status,
+    SCSI_SENSE_ILLEGAL_REQUEST,
+    SCSI_ADSENSE_ILLEGAL_COMMAND);
   return -ENOTSUP;
 }
 
 // TODO: set sense status
-int WnbdPerResInOperation::start()
+int WnbdPerResInOperation::execute()
 {
   switch (service_action) {
   case RESERVATION_ACTION_READ_KEYS:
@@ -160,6 +165,10 @@ int WnbdPerResInOperation::start()
   default:
     dout(20) << "Unsupported Persistent Reservation IN service action: "
              << service_action << dendl;
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_ILLEGAL_REQUEST,
+      SCSI_ADSENSE_ILLEGAL_COMMAND);
     return -ENOTSUP;
   }
   return 0;
@@ -171,6 +180,10 @@ int WnbdPerResOutOperation::register_key()
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
 
   if (in_buff.length() < sizeof(PRO_PARAMETER_LIST)) {
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_ILLEGAL_REQUEST,
+      SCSI_ADSENSE_PARAMETER_LIST_LENGTH);
     return -EOVERFLOW;
   }
 
@@ -208,7 +221,7 @@ int WnbdPerResOutOperation::register_key()
 }
 
 // TODO: set sense status
-int WnbdPerResOutOperation::start()
+int WnbdPerResOutOperation::execute()
 {
   switch (service_action) {
   case RESERVATION_ACTION_REGISTER:
@@ -216,6 +229,10 @@ int WnbdPerResOutOperation::start()
   default:
     dout(20) << "Unsupported Persistent Reservation OUT service action: "
              << service_action << dendl;
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_ILLEGAL_REQUEST,
+      SCSI_ADSENSE_ILLEGAL_COMMAND);
     return -ENOTSUP;
   }
   return 0;

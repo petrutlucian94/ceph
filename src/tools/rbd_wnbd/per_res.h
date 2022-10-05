@@ -13,6 +13,8 @@
 #ifndef WNBD_PER_RES_H
 #define WNBD_PER_RES_H
 
+#include <wnbd.h>
+
 #include "include/encoding.h"
 #include "include/rbd/librbd.hpp"
 
@@ -88,7 +90,8 @@ private:
   librbd::Image &image;
   uint8_t service_action;
 
-  bufferlist out_buff;
+  bufferlist& out_buff;
+  PWNBD_STATUS wnbd_status;
 
   int read_keys();
   int read_reservations();
@@ -97,15 +100,17 @@ public:
   WnbdPerResInOperation(librbd::IoCtx _rados_ctx,
                         librbd::Image& _image,
                         uint16_t _service_action,
-                        bufferlist& _out_buff)
+                        bufferlist& _out_buff,
+                        PWNBD_STATUS _wnbd_status)
     : rados_ctx(_rados_ctx)
     , image(_image)
     , service_action(_service_action)
     , out_buff(_out_buff)
+    , wnbd_status(_wnbd_status)
   {
   }
 
-  int start();
+  int execute();
 };
 
 // WNBD PERSISTENT RESERVATION OUT operation
@@ -118,7 +123,8 @@ private:
   uint8_t scope;
   uint8_t type;
 
-  bufferlist in_buff;
+  bufferlist& in_buff;
+  PWNBD_STATUS wnbd_status;
 
   int register_key();
 
@@ -128,17 +134,19 @@ public:
                         uint8_t _service_action,
                         uint8_t _scope,
                         uint8_t _type,
-                        bufferlist& _in_buff)
+                        bufferlist& _in_buff,
+                        PWNBD_STATUS _wnbd_status)
     : rados_ctx(_rados_ctx)
     , image(_image)
     , service_action(_service_action)
     , scope(_scope)
     , type(_type)
     , in_buff(_in_buff)
+    , wnbd_status(_wnbd_status)
   {
   }
 
-  int start();
+  int execute();
 };
 
 

@@ -64,6 +64,7 @@ public:
 class WnbdHandler
 {
 private:
+  librados::IoCtx rados_ctx;
   librbd::Image &image;
   std::string instance_name;
   uint64_t block_count;
@@ -76,12 +77,14 @@ private:
   boost::asio::thread_pool* reply_tpool;
 
 public:
-  WnbdHandler(librbd::Image& _image, std::string _instance_name,
+  WnbdHandler(librados::IoCtx _rados_ctx,
+              librbd::Image& _image, std::string _instance_name,
               uint64_t _block_count, uint32_t _block_size,
               bool _readonly, bool _rbd_cache_enabled,
               uint32_t _io_req_workers,
               uint32_t _io_reply_workers)
-    : image(_image)
+    : rados_ctx(_rados_ctx)
+    , image(_image)
     , instance_name(_instance_name)
     , block_count(_block_count)
     , block_size(_block_size)
