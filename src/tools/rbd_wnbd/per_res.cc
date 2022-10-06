@@ -37,7 +37,6 @@
 
 std::string RbdPrInfo::get_header_obj_name()
 {
-  // TODO: double check this
   std::string image_id;
   auto r = image.get_id(&image_id);
   if (r < 0) {
@@ -96,8 +95,7 @@ int RbdPrInfo::create()
   return 0;
 }
 
-// TODO: rename this to "safe_replace"
-int RbdPrInfo::replace()
+int RbdPrInfo::safe_replace()
 {
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
 
@@ -177,7 +175,6 @@ int WnbdPerResInOperation::read_reservations()
   return -ENOTSUP;
 }
 
-// TODO: set sense status
 int WnbdPerResInOperation::execute()
 {
   switch (service_action) {
@@ -197,7 +194,6 @@ int WnbdPerResInOperation::execute()
   return 0;
 }
 
-// TODO: set sense status
 int WnbdPerResOutOperation::register_key()
 {
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
@@ -239,13 +235,10 @@ int WnbdPerResOutOperation::register_key()
   pr_info.generation++;
 
   // TODO: retries
-  pr_info.replace();
-
-  // TODO: Placeholder
+  pr_info.safe_replace();
   return 0;
 }
 
-// TODO: set sense status
 int WnbdPerResOutOperation::execute()
 {
   switch (service_action) {

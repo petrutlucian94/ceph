@@ -76,7 +76,9 @@ public:
   int create();
   int retrieve();
   int retrieve_or_create();
-  int replace();
+  // Performs an atomic "compare and write" operation, checking the last known
+  // state of the xattr data, which must be explicitly retrieved first.
+  int safe_replace();
 
   friend std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info);
 

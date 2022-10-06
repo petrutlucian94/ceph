@@ -243,7 +243,7 @@ void WnbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc)
 void WnbdHandler::Read(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
-  PVOID Buffer,
+  PVOID Reserved,
   UINT64 BlockAddress,
   UINT32 BlockCount,
   BOOLEAN ForceUnitAccess)
@@ -360,9 +360,7 @@ void WnbdHandler::Unmap(
 void WnbdHandler::PersistResIn(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
-  UINT8 ServiceAction,
-  PVOID Buffer,
-  UINT32 AllocationLength)
+  UINT8 ServiceAction)
 {
   WnbdHandler* handler = nullptr;
   ceph_assert(!WnbdGetUserContext(Disk, (PVOID*)&handler));

@@ -154,7 +154,7 @@ private:
   static void Read(
     PWNBD_DISK Disk,
     UINT64 RequestHandle,
-    PVOID Buffer,
+    PVOID Reserved,
     UINT64 BlockAddress,
     UINT32 BlockCount,
     BOOLEAN ForceUnitAccess);
@@ -178,9 +178,7 @@ private:
   static void PersistResIn(
     PWNBD_DISK Disk,
     UINT64 RequestHandle,
-    UINT8 ServiceAction,
-    PVOID Buffer,
-    UINT32 AllocationLength);
+    UINT8 ServiceAction);
   static void PersistResOut(
     PWNBD_DISK Disk,
     UINT64 RequestHandle,
