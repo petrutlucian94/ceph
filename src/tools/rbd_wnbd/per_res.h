@@ -45,6 +45,10 @@ private:
   librados::IoCtx &rados_ctx;
   librbd::Image &image;
 
+  // The last retrieved xattr state, used for "compare and write"
+  // operations.
+  bufferlist last_bl;
+
   std::string get_header_obj_name();
 public:
   // TODO: consider endianness

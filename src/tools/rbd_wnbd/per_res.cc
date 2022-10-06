@@ -56,18 +56,16 @@ int RbdPrInfo::retrieve()
 {
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
 
-  bufferlist bl;
   auto object_name = get_header_obj_name();
-  auto r = rados_ctx.getxattr(object_name, RBD_PR_INFO_XATTR_KEY, bl);
+  auto r = rados_ctx.getxattr(object_name, RBD_PR_INFO_XATTR_KEY, last_bl);
   if (r < 0) {
     return r;
   }
 
-  bufferlist::const_iterator ci = bl.begin();
+  bufferlist::const_iterator ci = last_bl.begin();
   decode(ci);
 
   dout(20) << CLASS_NAME << "." << __func__ << ": retrieved: " << *this << dendl;
-
   return 0;
 }
 
@@ -87,11 +85,10 @@ int RbdPrInfo::create()
 {
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
 
-  bufferlist bl;
-  encode(bl);
+  encode(last_bl);
 
   auto object_name = get_header_obj_name();
-  auto r = rados_ctx.setxattr(object_name, RBD_PR_INFO_XATTR_KEY, bl);
+  auto r = rados_ctx.setxattr(object_name, RBD_PR_INFO_XATTR_KEY, last_bl);
   if (r < 0) {
     return r;
   }
@@ -99,19 +96,21 @@ int RbdPrInfo::create()
   return 0;
 }
 
+// TODO: rename this to "safe_replace"
 int RbdPrInfo::replace()
 {
   dout(20) << CLASS_NAME << "." << __func__ << ": start" << dendl;
 
   bufferlist bl;
+  // TODO: catch encode/decode exceptions
   encode(bl);
 
   dout(20) << CLASS_NAME << "." << __func__ << ": applying: " << *this << dendl;
 
   librados::ObjectWriteOperation o;
-  o.cmpxattr(RBD_PR_INFO_XATTR_KEY, CEPH_OSD_CMPXATTR_OP_EQ, bl);
+  o.cmpxattr(RBD_PR_INFO_XATTR_KEY, CEPH_OSD_CMPXATTR_OP_EQ, last_bl);
+  o.setxattr(RBD_PR_INFO_XATTR_KEY, bl);
 
-  // TODO: output stream overload
   auto object_name = get_header_obj_name();
   auto r = rados_ctx.operate(object_name, &o);
   if (r < 0) {
@@ -153,7 +152,7 @@ int WnbdPerResInOperation::read_keys()
     reinterpret_cast<const char*>(&generation_be), sizeof(generation_be));
 
   uint32_t allocation_length_be = boost::endian::native_to_big(
-    uint32_t(pr_info.regs.size()));
+    uint32_t(pr_info.regs.size() * sizeof(uint64_t)));
   out_buff.append(
     reinterpret_cast<const char*>(&allocation_length_be), sizeof(allocation_length_be));
 
@@ -232,7 +231,7 @@ int WnbdPerResOutOperation::register_key()
   }
   if (!found) {
     per_reg new_reg = {
-      .key = res_key,
+      .key = sv_act_res_key,
     };
     pr_info.regs.push_back(new_reg);
   }
