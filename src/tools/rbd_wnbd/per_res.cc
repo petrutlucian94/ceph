@@ -65,6 +65,9 @@ int RbdPrInfo::retrieve()
 
   bufferlist::const_iterator ci = bl.begin();
   decode(ci);
+
+  dout(20) << CLASS_NAME << "." << __func__ << ": retrieved: " << *this << dendl;
+
   return 0;
 }
 
@@ -76,6 +79,7 @@ int RbdPrInfo::retrieve_or_create()
   if (r == -ENODATA) {
     r = create();
   }
+
   return r;
 }
 
@@ -102,9 +106,12 @@ int RbdPrInfo::replace()
   bufferlist bl;
   encode(bl);
 
+  dout(20) << CLASS_NAME << "." << __func__ << ": applying: " << *this << dendl;
+
   librados::ObjectWriteOperation o;
   o.cmpxattr(RBD_PR_INFO_XATTR_KEY, CEPH_OSD_CMPXATTR_OP_EQ, bl);
 
+  // TODO: output stream overload
   auto object_name = get_header_obj_name();
   auto r = rados_ctx.operate(object_name, &o);
   if (r < 0) {
@@ -112,6 +119,23 @@ int RbdPrInfo::replace()
   }
 
   return 0;
+}
+
+std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info) {
+  os << "RbdPrInfo("
+     << "generation=" << pr_info.generation;
+
+  int i = 0;
+  for (auto reg: pr_info.regs) {
+    os << ", per_reg" << i << "("
+       << "key=" << reg.key
+       << ")";
+    i++;
+  }
+
+  os << ")";
+
+  return os;
 }
 
 int WnbdPerResInOperation::read_keys()

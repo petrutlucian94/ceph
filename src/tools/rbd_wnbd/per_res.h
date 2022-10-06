@@ -74,6 +74,8 @@ public:
   int retrieve_or_create();
   int replace();
 
+  friend std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info);
+
   RbdPrInfo(librbd::IoCtx& _rados_ctx,
             librbd::Image& _image)
     : rados_ctx(_rados_ctx)
@@ -81,6 +83,8 @@ public:
   {
   }
 };
+
+std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info);
 
 // WNBD PERSISTENT RESERVATION IN operation
 class WnbdPerResInOperation
