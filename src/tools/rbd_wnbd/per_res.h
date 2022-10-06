@@ -80,6 +80,7 @@ public:
             librbd::Image& _image)
     : rados_ctx(_rados_ctx)
     , image(_image)
+    , generation(0)
   {
   }
 };

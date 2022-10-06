@@ -237,6 +237,8 @@ int WnbdPerResOutOperation::register_key()
     pr_info.regs.push_back(new_reg);
   }
 
+  pr_info.generation++;
+
   // TODO: retries
   pr_info.replace();
 
