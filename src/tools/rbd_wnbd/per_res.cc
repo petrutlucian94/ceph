@@ -226,22 +226,26 @@ std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info) {
        << ", initiator=\"" << pr_info.res.value().initiator
        << "\", type=0x" << (uint) pr_info.res.value().type
        << ")";
+  } else {
+    os << ", reservation=None";
   }
 
+  os << ", registrations=[";
   if (!pr_info.regs.empty()) {
-    os << ", registrations=[";
-
+    bool first = true;
     for (auto reg: pr_info.regs) {
+      if (!first) {
+        os << ", ";
+      }
       os << "("
          << "key=0x" << reg.key
          << ", initiator=\"" << reg.initiator
-         << "\"), ";
+         << "\")";
+      first = false;
     }
-
-    os << "]";
   }
 
-  os << ")";
+  os << "])";
 
   return os;
 }
