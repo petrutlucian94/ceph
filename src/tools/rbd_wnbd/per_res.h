@@ -121,7 +121,7 @@ public:
   int safe_replace();
 
   // get registration
-  per_reg* get_reg(const std::string &initiator);
+  std::optional<per_reg> get_reg(const std::string &initiator) const;
   bool is_res_holder(
     const std::string &initiator,
     uint64_t res_key,

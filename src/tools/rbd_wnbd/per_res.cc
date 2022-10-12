@@ -115,15 +115,14 @@ int RbdPrInfo::retrieve_or_create()
   return r;
 }
 
-per_reg* RbdPrInfo::get_reg(const std::string &initiator)
+std::optional<per_reg> RbdPrInfo::get_reg(const std::string &initiator) const
 {
-  per_reg *existing_reg = NULL;
-  for (per_reg &reg : regs) {
+  for (auto reg : regs) {
     if (initiator == reg.initiator) {
-      existing_reg = &reg;
+      return reg;
     }
   }
-  return existing_reg;
+  return {};
 }
 
 bool RbdPrInfo::all_registrants_access() const {
@@ -145,7 +144,7 @@ bool RbdPrInfo::is_res_holder(
   bool check_reg) const
 {
   if (check_reg) {
-    per_reg *existing_reg = get_reg(initiator);
+    auto existing_reg = get_reg(initiator);
     if (!existing_reg || existing_reg->key != res_key) {
       return false;
     }
@@ -367,7 +366,7 @@ int WnbdPerResOutOperation::register_key(bool ignore_existing)
     return r;
   }
 
-  per_reg *existing_reg = pr_info.get_reg(initiator);
+  auto existing_reg = pr_info.get_reg(initiator);
 
   if (!existing_reg) {
     if (!ignore_existing && (res_key != 0)) {
@@ -502,7 +501,7 @@ int WnbdPerResOutOperation::reserve()
     return r;
   }
 
-  per_reg *existing_reg = pr_info.get_reg(initiator);
+  auto existing_reg = pr_info.get_reg(initiator);
 
   if (!existing_reg) {
     derr << CLASS_NAME << "::" << __func__
@@ -566,7 +565,7 @@ int WnbdPerResOutOperation::release()
     return 0;
   }
 
-  per_reg *existing_reg = pr_info.get_reg(initiator);
+  auto existing_reg = pr_info.get_reg(initiator);
 
   if (!existing_reg) {
     derr << CLASS_NAME << "::" << __func__
@@ -621,7 +620,7 @@ int WnbdPerResOutOperation::clear()
     return r;
   }
 
-  per_reg *existing_reg = pr_info.get_reg(initiator);
+  auto existing_reg = pr_info.get_reg(initiator);
 
   if (!existing_reg) {
     derr << CLASS_NAME << "::" << __func__
@@ -665,7 +664,7 @@ int WnbdPerResOutOperation::preempt()
     return r;
   }
 
-  per_reg *existing_reg = pr_info.get_reg(initiator);
+  auto existing_reg = pr_info.get_reg(initiator);
 
   if (!existing_reg) {
     derr << CLASS_NAME << "::" << __func__
