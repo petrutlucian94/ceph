@@ -320,7 +320,7 @@ int WnbdPerResInOperation::execute()
     return read_reservations();
   default:
     derr << "Unsupported Persistent Reservation IN service action: "
-         << service_action << dendl;
+         << std::hex << "0x" << (uint) service_action << dendl;
     WnbdSetSense(
       wnbd_status,
       SCSI_SENSE_ILLEGAL_REQUEST,
@@ -388,7 +388,8 @@ int WnbdPerResOutOperation::register_key(bool ignore_existing)
     if (!ignore_existing && (res_key != existing_reg->key)) {
       derr << "Reservation conflict. "
            << "Existing initiator, old key mismatch: "
-           << res_key << " != " << existing_reg->key << dendl;
+           << std::hex << "0x" << res_key << " != "
+           << "0x" << existing_reg->key << dendl;
       wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
       return -EEXIST;
     }
@@ -431,14 +432,15 @@ void WnbdPerResOutOperation::remove_own_reg(
   for (auto it = pr_info.regs.begin(); it != pr_info.regs.end();) {
     if (initiator == it->initiator) {
       dout(20) << CLASS_NAME << "::" << __func__ << ": removing registration: "
+               << std::hex
                << "initiator: " << initiator
-               << ", key: "
-               << it->key << dendl;
+               << ", key: 0x" << it->key << dendl;
       if (!pr_info.all_registrants_access() &&
           pr_info.is_res_holder(initiator, res_key, false)) {
         dout(5) << CLASS_NAME << "::" << __func__
+                << std::hex
                 << "cleaning up reservation while removing registration"
-                << ", type: " << pr_info.res.value().type
+                << ", type: 0x" << (uint) pr_info.res.value().type
                 << dendl;
         pr_info.res.reset();
       }
@@ -516,7 +518,8 @@ int WnbdPerResOutOperation::reserve()
   if (res_key != existing_reg->key) {
     derr << CLASS_NAME << "::" << __func__
          << ": PR key mismatch: "
-         << res_key << " != " << existing_reg->key << dendl;
+         << std::hex << "0x" << res_key << " != "
+         << "0x" << existing_reg->key << dendl;
     // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
@@ -534,8 +537,9 @@ int WnbdPerResOutOperation::reserve()
     if (pr_info.res.value().type != type) {
       derr << CLASS_NAME << "::" << __func__
          << ": reservation request with mismatching type: "
-         << pr_info.res.value().type << " != "
-         << type << dendl;
+         << std::hex
+         << "0x" << (uint) pr_info.res.value().type << " != "
+         << "0x" << (uint) type << dendl;
       wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
       return -EEXIST;
     }
@@ -587,7 +591,8 @@ int WnbdPerResOutOperation::release()
   if (res_key != existing_reg->key) {
     derr << CLASS_NAME << "::" << __func__
          << ": PR key mismatch: "
-         << res_key << " != " << existing_reg->key << dendl;
+         << std::hex << "0x" << res_key << " != "
+         << "0x" << existing_reg->key << dendl;
     // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
@@ -595,9 +600,10 @@ int WnbdPerResOutOperation::release()
 
   if (pr_info.res.value().type != type) {
     derr << CLASS_NAME << "::" << __func__
-       << ": release request with mismatching type: "
-       << pr_info.res.value().type << " != "
-       << type << dendl;
+         << ": release request with mismatching type: "
+         << std::hex
+         << "0x" << (uint) pr_info.res.value().type << " != "
+         << "0x" << (uint) type << dendl;
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
@@ -635,7 +641,8 @@ int WnbdPerResOutOperation::clear()
   if (res_key != existing_reg->key) {
     derr << CLASS_NAME << "::" << __func__
          << ": PR key mismatch: "
-         << res_key << " != " << existing_reg->key << dendl;
+         << std::hex << "0x" << res_key << " != "
+         << "0x" << existing_reg->key << dendl;
     // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
@@ -679,7 +686,8 @@ int WnbdPerResOutOperation::preempt()
   if (res_key != existing_reg->key) {
     derr << CLASS_NAME << "::" << __func__
          << ": PR key mismatch: "
-         << res_key << " != " << existing_reg->key << dendl;
+         << std::hex << "0x" << res_key << " != "
+         << "0x" << existing_reg->key << dendl;
     // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
@@ -813,7 +821,8 @@ int WnbdPerResOutOperation::execute()
 
   if (scope != RESERVATION_SCOPE_LU) {
     derr << CLASS_NAME << "::" << __func__
-         << ": unsupported scope: " << scope << dendl;
+         << std::hex
+         << ": unsupported scope: 0x" << (uint) scope << dendl;
     WnbdSetSense(
       wnbd_status,
       SCSI_SENSE_ILLEGAL_REQUEST,
@@ -841,7 +850,7 @@ int WnbdPerResOutOperation::execute()
     return preempt();
   default:
     dout(5) << "Unsupported Persistent Reservation OUT service action: "
-            << service_action << dendl;
+            << std::hex << "0x" << service_action << dendl;
     WnbdSetSense(
       wnbd_status,
       SCSI_SENSE_ILLEGAL_REQUEST,
