@@ -372,8 +372,8 @@ void WnbdHandler::PersistResIn(
   ctx->req_type = WnbdReqTypePersistResIn;
   ctx->req_from = 0;
 
-  dout(20) << *ctx
-    << ", action=" << (int) ServiceAction
+  dout(20) << *ctx << std::hex
+    << ", action=0x" << (int) ServiceAction
     << ": start" << dendl;
 
   // TODO: can/should this be async?
@@ -432,11 +432,11 @@ void WnbdHandler::PersistResOut(
   bufferptr ptr((char*)Buffer, ctx->req_size);
   ctx->data.push_back(ptr);
 
-  dout(20) << *ctx
-    << ", action=" << (uint) ServiceAction
-    << ", scope=" << (uint) Scope
-    << ", type=" << (uint) Type
-    << ", buffer_sz=" << (uint) ParameterListLength
+  dout(20) << *ctx << std::hex
+    << ", action=0x" << (uint) ServiceAction
+    << ", scope=0x" << (uint) Scope
+    << ", type=0x" << (uint) Type
+    << ", buffer_sz=0x" << (uint) ParameterListLength
     << ": start" << dendl;
 
   // TODO: can/should this be async?

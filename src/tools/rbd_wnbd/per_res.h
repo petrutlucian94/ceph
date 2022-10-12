@@ -25,7 +25,7 @@ struct per_reg {
   uint64_t key;
   std::string initiator;
 
-  void encode(bufferlist &bl)
+  void encode(bufferlist &bl) const
   {
     using ceph::encode;
     ENCODE_START(1, 1, bl);
@@ -51,7 +51,7 @@ struct per_res {
   std::string initiator;
   uint8_t type;
 
-  void encode(bufferlist &bl)
+  void encode(bufferlist &bl) const
   {
     using ceph::encode;
     ENCODE_START(1, 1, bl);
@@ -93,7 +93,7 @@ public:
   // persistent reservation
   std::optional<per_res> res;
 
-  void encode(bufferlist &bl)
+  void encode(bufferlist &bl) const
   {
     using ceph::encode;
     ENCODE_START(1, 1, bl);
@@ -121,13 +121,13 @@ public:
   int safe_replace();
 
   // get registration
-  per_reg* get_reg(std::string const &initiator);
+  per_reg* get_reg(const std::string &initiator);
   bool is_res_holder(
-    std::string const &initiator,
+    const std::string &initiator,
     uint64_t res_key,
-    bool check_reg);
-  bool has_reservation();
-  bool all_registrants_access();
+    bool check_reg) const;
+  bool has_reservation() const;
+  bool all_registrants_access() const;
 
   friend std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info);
 

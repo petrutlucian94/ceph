@@ -115,7 +115,7 @@ int RbdPrInfo::retrieve_or_create()
   return r;
 }
 
-per_reg* RbdPrInfo::get_reg(std::string const &initiator)
+per_reg* RbdPrInfo::get_reg(const std::string &initiator)
 {
   per_reg *existing_reg = NULL;
   for (per_reg &reg : regs) {
@@ -126,7 +126,7 @@ per_reg* RbdPrInfo::get_reg(std::string const &initiator)
   return existing_reg;
 }
 
-bool RbdPrInfo::all_registrants_access() {
+bool RbdPrInfo::all_registrants_access() const {
   if (!res.has_value()) {
     return false;
   }
@@ -140,9 +140,9 @@ bool RbdPrInfo::all_registrants_access() {
 }
 
 bool RbdPrInfo::is_res_holder(
-  std::string const &initiator,
+  const std::string &initiator,
   uint64_t res_key,
-  bool check_reg)
+  bool check_reg) const
 {
   if (check_reg) {
     per_reg *existing_reg = get_reg(initiator);
@@ -160,7 +160,7 @@ bool RbdPrInfo::is_res_holder(
     res.value().key == res_key;
 }
 
-bool RbdPrInfo::has_reservation()
+bool RbdPrInfo::has_reservation() const
 {
   return res.has_value();
 }
@@ -217,15 +217,29 @@ int RbdPrInfo::safe_replace()
 }
 
 std::ostream &operator<<(std::ostream &os, const RbdPrInfo &pr_info) {
-  os << "RbdPrInfo("
-     << "generation=" << pr_info.generation;
+  os << std::hex
+     << "RbdPrInfo("
+     << "generation=0x" << pr_info.generation;
 
-  int i = 0;
-  for (auto reg: pr_info.regs) {
-    os << ", per_reg" << i << "("
-       << "key=" << reg.key
+  if (pr_info.has_reservation()) {
+    os << ", reservation=("
+       << "key=0x" << pr_info.res.value().key
+       << ", initiator=\"" << pr_info.res.value().initiator
+       << "\", type=0x" << (uint) pr_info.res.value().type
        << ")";
-    i++;
+  }
+
+  if (!pr_info.regs.empty()) {
+    os << ", registrations=[";
+
+    for (auto reg: pr_info.regs) {
+      os << "("
+         << "key=0x" << reg.key
+         << ", initiator=\"" << reg.initiator
+         << "\"), ";
+    }
+
+    os << "]";
   }
 
   os << ")";
@@ -306,8 +320,8 @@ int WnbdPerResInOperation::execute()
   case RESERVATION_ACTION_READ_RESERVATIONS:
     return read_reservations();
   default:
-    dout(5) << "Unsupported Persistent Reservation IN service action: "
-            << service_action << dendl;
+    derr << "Unsupported Persistent Reservation IN service action: "
+         << service_action << dendl;
     WnbdSetSense(
       wnbd_status,
       SCSI_SENSE_ILLEGAL_REQUEST,
@@ -320,8 +334,8 @@ int WnbdPerResInOperation::execute()
 int WnbdPerResOutOperation::parse_param_list()
 {
   if (in_buff.length() < sizeof(PRO_PARAMETER_LIST)) {
-    dout(5) << "Invalid PR OUT parameter list size: "
-            << in_buff.length() << " < " << sizeof(PRO_PARAMETER_LIST) << dendl;
+    derr << "Invalid PR OUT parameter list size: "
+         << in_buff.length() << " < " << sizeof(PRO_PARAMETER_LIST) << dendl;
     WnbdSetSense(
       wnbd_status,
       SCSI_SENSE_ILLEGAL_REQUEST,
@@ -365,6 +379,9 @@ int WnbdPerResOutOperation::register_key(bool ignore_existing)
     }
     if (sv_act_res_key == 0) {
       // delete no-op
+      dout(20) << CLASS_NAME << "::" << __func__
+               << ": was requested to delete registration but the initiator "
+               << "is unregistered, no-op" << dendl;
       return 0;
     }
   } else {
@@ -378,6 +395,8 @@ int WnbdPerResOutOperation::register_key(bool ignore_existing)
     }
 
     if (sv_act_res_key == 0) {
+      dout(20) << CLASS_NAME << "::" << __func__
+               << ": removing registration" << dendl;
       bool reg_found = false;
       remove_own_reg(pr_info, reg_found);
 
@@ -387,12 +406,16 @@ int WnbdPerResOutOperation::register_key(bool ignore_existing)
   }
 
   if (!existing_reg) {
+    dout(20) << CLASS_NAME << "::" << __func__
+             << ": adding new registration" << dendl;
     per_reg new_reg = {
       .key = sv_act_res_key,
       .initiator = initiator,
     };
     pr_info.regs.push_back(new_reg);
   } else {
+    dout(20) << CLASS_NAME << "::" << __func__
+             << ": changing registration key" << dendl;
     existing_reg->key = res_key;
   }
 
@@ -448,11 +471,19 @@ void WnbdPerResOutOperation::preempt_reg(
 
     found = true;
     it = pr_info.regs.erase(it);
+    dout(5) << CLASS_NAME << "::" << __func__
+            << ": preempted registration" << dendl;
+  }
+  if (!found) {
+    dout(5) << CLASS_NAME << "::" << __func__
+            << ": couldn't find registration to preempt" << dendl;
   }
 }
 
 void WnbdPerResOutOperation::do_reserve(RbdPrInfo& pr_info)
 {
+  dout(20) << CLASS_NAME << "::" << __func__ << ": start" << dendl;
+
   per_res reservation = {
     .key = res_key,
     .initiator = initiator,
@@ -574,7 +605,8 @@ int WnbdPerResOutOperation::release()
 
   // TODO: notify other reservation holders about the released reservation
   // using SCSI SENSE.
-
+  dout(5) << CLASS_NAME << "::" << __func__
+          << ": releasing reservation" << dendl;
   pr_info.res.reset();
   return pr_info.safe_replace();
 }
@@ -610,6 +642,8 @@ int WnbdPerResOutOperation::clear()
     return -EEXIST;
   }
 
+  dout(5) << CLASS_NAME << "::" << __func__
+          << ": clearing reservation and registrations" << dendl;
   // TODO: notify other initiators about the preempted reservations
   // using SCSI SENSE.
   pr_info.regs.clear();
@@ -655,6 +689,8 @@ int WnbdPerResOutOperation::preempt()
   bool regs_found = false;
 
   if (!pr_info.has_reservation()) {
+    dout(20) << CLASS_NAME << "::" << __func__
+             << ": preempt requested, no reservation found" << dendl;
     if (!sv_act_res_key) {
       derr << CLASS_NAME << "::" << __func__
            << ": reservation conflict"
@@ -669,6 +705,10 @@ int WnbdPerResOutOperation::preempt()
 
     preempt_reg(pr_info, regs_found);
     if (!regs_found) {
+      derr << CLASS_NAME << "::" << __func__
+           << ": reservation conflict"
+           << ": couldn't find the registration to preempt"
+           << dendl;
       wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
       return -EEXIST;
     }
@@ -677,13 +717,23 @@ int WnbdPerResOutOperation::preempt()
   }
 
   if (pr_info.all_registrants_access()) {
+    dout(20) << CLASS_NAME << "::" << __func__
+             << ": reservation applies to all registrants"
+             << dendl;
     preempt_reg(pr_info, regs_found);
     if (!regs_found) {
+      derr << CLASS_NAME << "::" << __func__
+           << ": reservation conflict"
+           << ": couldn't find the registration to preempt"
+           << dendl;
       wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
       return -EEXIST;
     }
 
     if (!sv_act_res_key) {
+      dout(5) << CLASS_NAME << "::" << __func__
+              << ": replacing reservation"
+              << dendl;
       do_reserve(pr_info);
     }
     goto commit;
@@ -691,6 +741,11 @@ int WnbdPerResOutOperation::preempt()
 
   if (pr_info.res.value().key != sv_act_res_key) {
     if (!sv_act_res_key) {
+      derr << CLASS_NAME << "::" << __func__
+           << ": reservation conflict"
+           << ": didn't specify which reservation to preempt, "
+           << " the existing reservation doesn't apply to all registrants"
+           << dendl;
       WnbdSetSense(
         wnbd_status,
         SCSI_SENSE_ILLEGAL_REQUEST,
@@ -698,8 +753,19 @@ int WnbdPerResOutOperation::preempt()
       return -EINVAL;
     }
 
+    dout(5) << CLASS_NAME << "::" << __func__
+              << ": the existing reservation doesn't match the specified key "
+              << " and it doesn't apply to all registrants. The reservation "
+              << " will be left in place while the specified registration "
+              << " will be preempted."
+              << dendl;
+
     preempt_reg(pr_info, regs_found);
     if (!regs_found) {
+      derr << CLASS_NAME << "::" << __func__
+           << ": reservation conflict"
+           << ": couldn't find the registration to preempt"
+           << dendl;
       wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
       return -EEXIST;
     }
@@ -708,10 +774,17 @@ int WnbdPerResOutOperation::preempt()
 
   preempt_reg(pr_info, regs_found);
   if (!regs_found) {
+    derr << CLASS_NAME << "::" << __func__
+           << ": reservation conflict"
+           << ": couldn't find the registration to preempt"
+           << dendl;
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
 
+  dout(5) << CLASS_NAME << "::" << __func__
+              << ": replacing reservation"
+              << dendl;
   do_reserve(pr_info);
 
 commit:
@@ -727,6 +800,17 @@ int WnbdPerResOutOperation::execute()
   if (r != 0) {
     return r;
   }
+
+  dout(5) << std::hex
+    << "WnbdPerResOutOperation: "
+    << ", action=0x" << (uint) service_action
+    << ", scope=0x" << (uint) scope
+    << ", type=0x" << (uint) type
+    << ", initiator=\"" << initiator << "\""
+    << ", res_key=0x" << (uint) res_key
+    << ", sv_act_res_key=0x" << (uint) res_key
+    << ", scope_specif_addr=0x" << (uint) scope_specif_addr
+    << ": start" << dendl;
 
   if (scope != RESERVATION_SCOPE_LU) {
     derr << CLASS_NAME << "::" << __func__
