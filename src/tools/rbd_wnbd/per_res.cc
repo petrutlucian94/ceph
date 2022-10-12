@@ -761,11 +761,11 @@ int WnbdPerResOutOperation::preempt()
     }
 
     dout(5) << CLASS_NAME << "::" << __func__
-              << ": the existing reservation doesn't match the specified key "
-              << " and it doesn't apply to all registrants. The reservation "
-              << " will be left in place while the specified registration "
-              << " will be preempted."
-              << dendl;
+            << ": the existing reservation doesn't match the specified key "
+            << " and it doesn't apply to all registrants. The reservation "
+            << " will be left in place while the specified registration "
+            << " will be preempted."
+            << dendl;
 
     preempt_reg(pr_info, regs_found);
     if (!regs_found) {
@@ -782,16 +782,16 @@ int WnbdPerResOutOperation::preempt()
   preempt_reg(pr_info, regs_found);
   if (!regs_found) {
     derr << CLASS_NAME << "::" << __func__
-           << ": reservation conflict"
-           << ": couldn't find the registration to preempt"
-           << dendl;
+         << ": reservation conflict"
+         << ": couldn't find the registration to preempt"
+         << dendl;
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
 
   dout(5) << CLASS_NAME << "::" << __func__
-              << ": replacing reservation"
-              << dendl;
+          << ": replacing reservation"
+          << dendl;
   do_reserve(pr_info);
 
 commit:
@@ -809,15 +809,15 @@ int WnbdPerResOutOperation::execute()
   }
 
   dout(5) << std::hex
-    << "WnbdPerResOutOperation: "
-    << ", action=0x" << (uint) service_action
-    << ", scope=0x" << (uint) scope
-    << ", type=0x" << (uint) type
-    << ", initiator=\"" << initiator << "\""
-    << ", res_key=0x" << (uint) res_key
-    << ", sv_act_res_key=0x" << (uint) res_key
-    << ", scope_specif_addr=0x" << (uint) scope_specif_addr
-    << ": start" << dendl;
+          << "WnbdPerResOutOperation: "
+          << ", action=0x" << (uint) service_action
+          << ", scope=0x" << (uint) scope
+          << ", type=0x" << (uint) type
+          << ", initiator=\"" << initiator << "\""
+          << ", res_key=0x" << (uint) res_key
+          << ", sv_act_res_key=0x" << (uint) res_key
+          << ", scope_specif_addr=0x" << (uint) scope_specif_addr
+          << ": start" << dendl;
 
   if (scope != RESERVATION_SCOPE_LU) {
     derr << CLASS_NAME << "::" << __func__
