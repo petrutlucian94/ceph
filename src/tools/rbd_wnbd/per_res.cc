@@ -99,7 +99,7 @@ int RbdPrInfo::retrieve()
     return -EINVAL;
   }
 
-  dout(20) << CLASS_NAME << "::" << __func__ << ": retrieved: " << *this << dendl;
+  dout(5) << CLASS_NAME << "::" << __func__ << ": retrieved: " << *this << dendl;
   return 0;
 }
 
@@ -200,7 +200,7 @@ int RbdPrInfo::safe_replace()
     return -EINVAL;
   }
 
-  dout(20) << CLASS_NAME << "::" << __func__ << ": applying: " << *this << dendl;
+  dout(5) << CLASS_NAME << "::" << __func__ << ": applying: " << *this << dendl;
 
   librados::ObjectWriteOperation o;
   o.cmpxattr(RBD_PR_INFO_XATTR_KEY, CEPH_OSD_CMPXATTR_OP_EQ, last_bl);
@@ -209,6 +209,9 @@ int RbdPrInfo::safe_replace()
   auto object_name = get_header_obj_name();
   auto r = rados_ctx.operate(object_name, &o);
   if (r < 0) {
+    dout(5) << CLASS_NAME << "::" << __func__
+            << ": couldn't apply PR: " << *this
+            << ", error: " << r << dendl;
     return r;
   }
 
@@ -317,6 +320,12 @@ int WnbdPerResInOperation::read_reservations()
 
 int WnbdPerResInOperation::execute()
 {
+  dout(5) << std::hex
+          << "WnbdPerResOutOperation: "
+          << ", action=0x" << (uint) service_action
+          << ", initiator=\"" << initiator << "\""
+          << ": start" << dendl;
+
   switch (service_action) {
   case RESERVATION_ACTION_READ_KEYS:
     return read_keys();
