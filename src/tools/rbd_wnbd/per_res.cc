@@ -533,7 +533,6 @@ int WnbdPerResOutOperation::reserve()
          << ": PR key mismatch: "
          << std::hex << "0x" << res_key << " != "
          << "0x" << existing_reg->key << dendl;
-    // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
@@ -606,7 +605,6 @@ int WnbdPerResOutOperation::release()
          << ": PR key mismatch: "
          << std::hex << "0x" << res_key << " != "
          << "0x" << existing_reg->key << dendl;
-    // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
@@ -656,7 +654,6 @@ int WnbdPerResOutOperation::clear()
          << ": PR key mismatch: "
          << std::hex << "0x" << res_key << " != "
          << "0x" << existing_reg->key << dendl;
-    // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
@@ -701,7 +698,6 @@ int WnbdPerResOutOperation::preempt()
          << ": PR key mismatch: "
          << std::hex << "0x" << res_key << " != "
          << "0x" << existing_reg->key << dendl;
-    // TODO: do we need to set a SENSE status?
     wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
     return -EEXIST;
   }
