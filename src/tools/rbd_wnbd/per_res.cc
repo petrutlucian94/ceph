@@ -321,8 +321,8 @@ int WnbdPerResInOperation::read_reservations()
 int WnbdPerResInOperation::execute()
 {
   dout(5) << std::hex
-          << "WnbdPerResOutOperation: "
-          << ", action=0x" << (uint) service_action
+          << "WnbdPerResInOperation: "
+          << "action=0x" << (uint) service_action
           << ", initiator=\"" << initiator << "\""
           << ": start" << dendl;
 
@@ -823,13 +823,13 @@ int WnbdPerResOutOperation::execute()
 
   dout(5) << std::hex
           << "WnbdPerResOutOperation: "
-          << ", action=0x" << (uint) service_action
+          << "action=0x" << (uint) service_action
           << ", scope=0x" << (uint) scope
           << ", type=0x" << (uint) type
           << ", initiator=\"" << initiator << "\""
-          << ", res_key=0x" << (uint) res_key
-          << ", sv_act_res_key=0x" << (uint) res_key
-          << ", scope_specif_addr=0x" << (uint) scope_specif_addr
+          << ", res_key=0x" << res_key
+          << ", sv_act_res_key=0x" << sv_act_res_key
+          << ", scope_specif_addr=0x" << scope_specif_addr
           << ": start" << dendl;
 
   if (scope != RESERVATION_SCOPE_LU) {
