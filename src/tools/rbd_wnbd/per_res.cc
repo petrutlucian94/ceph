@@ -19,6 +19,14 @@
 #include <rpc.h>
 #include <ddk/scsi.h>
 
+#ifndef RESERVATION_TYPE_WRITE_EXCLUSIVE_ALLREG
+#define RESERVATION_TYPE_WRITE_EXCLUSIVE_ALLREG 0x07
+#endif
+
+#ifndef RESERVATION_TYPE_EXCLUSIVE_ALLREG
+#define RESERVATION_TYPE_EXCLUSIVE_ALLREG 0x08
+#endif
+
 #include <boost/endian/conversion.hpp>
 
 #include "common/debug.h"
@@ -130,8 +138,8 @@ bool RbdPrInfo::all_registrants_access() const {
     return false;
   }
   switch (res.value().type) {
-  case RESERVATION_TYPE_WRITE_EXCLUSIVE_REGISTRANTS:
-  case RESERVATION_TYPE_EXCLUSIVE_REGISTRANTS:
+  case RESERVATION_TYPE_WRITE_EXCLUSIVE_ALLREG:
+  case RESERVATION_TYPE_EXCLUSIVE_ALLREG:
     return true;
   default:
     return false;
@@ -541,7 +549,9 @@ int WnbdPerResOutOperation::reserve()
     if (!pr_info.is_res_holder(initiator, res_key, false)) {
       derr << CLASS_NAME << "::" << __func__
          << ": unable to acquire reservation, already held by "
-         << pr_info.res.value().initiator << dendl;
+         << pr_info.res.value().initiator
+         << ". registration type: 0x" << std::hex << pr_info.res.value().type
+         << dendl;
       wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
       return -EEXIST;
     }
