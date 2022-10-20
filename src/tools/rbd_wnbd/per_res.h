@@ -228,5 +228,10 @@ public:
   int execute();
 };
 
+int check_pr_conflict(
+  librbd::IoCtx& rados_ctx,
+  librbd::Image& image,
+  WnbdRequestType req_type,
+  PWNBD_STATUS wnbd_status);
 
 #endif // WNBD_PER_RES_H

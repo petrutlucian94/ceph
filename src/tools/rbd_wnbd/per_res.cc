@@ -27,6 +27,10 @@
 #define RESERVATION_TYPE_EXCLUSIVE_ALLREG 0x08
 #endif
 
+#ifndef SCSI_ADSENSE_UNRECOVERED_ERROR
+#define SCSI_ADSENSE_UNRECOVERED_ERROR 0x11
+#endif
+
 #include <boost/endian/conversion.hpp>
 
 #include "common/debug.h"
@@ -877,4 +881,130 @@ int WnbdPerResOutOperation::execute()
     return -ENOTSUP;
   }
   return 0;
+}
+
+int check_pr_conflict(
+  librbd::IoCtx& rados_ctx,
+  librbd::Image& image,
+  WnbdRequestType req_type,
+  std::string &initiator,
+  PWNBD_STATUS wnbd_status)
+{
+  dout(20) << __func__ << ": start" << dendl;
+
+  auto pr_info = RbdPrInfo(rados_ctx, image);
+  int r = pr_info.retrieve();
+  if (r == -ENODATA) {
+    dout(20) << __func__ << ": no pr data" << dendl;
+    return 0;
+  }
+
+  if (r < 0) {
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_MEDIUM_ERROR,
+      SCSI_ADSENSE_UNRECOVERED_ERROR);
+    return r;
+  }
+
+  bool is_write = false;
+  // PR command conflicts are checked separately, let's avoid
+  // duplication
+  switch (req_type) {
+  case WnbdReqTypePersistResIn:
+  case WnbdReqTypePersistResOut:
+    return 0;
+  case WnbdReqTypeRead:
+    break;
+  case WnbdReqTypeWrite:
+  case WnbdReqTypeFlush:
+  case WnbdReqTypeUnmap:
+    // we're treating flush and unmap the same way as writes
+    is_write = true;
+    break;
+  default:
+    derr << __func__
+      << ": unsupported wnbd request type: 0x"
+      << std::hex << req_type << dendl;
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_ILLEGAL_REQUEST,
+      SCSI_ADSENSE_LUN_COMMUNICATION);
+    return -EINVAL;
+  }
+
+  if (!pr_info.has_reservation()) {
+    dout(20) << __func__
+      << ": no persistent reservation" << dendl;
+    return 0;
+  }
+
+  if (initiator == pr_info.res.value().initiator) {
+    dout(20) << __func__
+      << ": explicit reservation holder" << dendl;
+    return 0;
+  }
+
+  auto reg = pr_info.get_reg(initiator);
+  bool has_reg = reg.has_value();
+
+  bool reg_nexuses = false;
+  bool write_exclusive = false;
+
+  switch (pr_info.res.value().type) {
+  case RESERVATION_TYPE_WRITE_EXCLUSIVE:
+    write_exclusive = true;
+  case RESERVATION_TYPE_EXCLUSIVE:
+    break;
+  case RESERVATION_TYPE_WRITE_EXCLUSIVE_REGISTRANTS:
+  case RESERVATION_TYPE_WRITE_EXCLUSIVE_ALLREG:
+    write_exclusive = true;
+  case RESERVATION_TYPE_EXCLUSIVE_REGISTRANTS:
+  case RESERVATION_TYPE_EXCLUSIVE_ALLREG:
+    reg_nexuses = true;
+    break;
+  default:
+    derr << __func__
+      << ": unsupported reservation type: 0x"
+      << std::hex << pr_info.res.value().type
+      << dendl;
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_ILLEGAL_REQUEST,
+      SCSI_ADSENSE_LUN_COMMUNICATION);
+    return -EINVAL;
+  }
+
+  if (!is_write) {
+    if (write_exclusive) {
+      dout(20) << __func__
+        << ": allowing non-write operation with write exclusive pr"
+        << dendl;
+      return 0;
+    }
+  }
+
+  if (reg_nexuses) {
+    if (has_reg) {
+      dout(20) << __func__
+        << ": allowing operation"
+        << ": reg present, RR rsv"
+        << dendl;
+      return 0;
+    } else {
+      dout(10) << __func__
+        << ": reservation conflict"
+        << ": no reg, exclusive rsv"
+        << dendl;
+    }
+  } else {
+    dout(10) << __func__
+      << ": reservation conflict"
+      << ": exclusive rsv, not rsv owner"
+      << dendl;
+  }
+
+  // conflict by default
+  wnbd_status->ScsiStatus = SCSISTAT_RESERVATION_CONFLICT;
+  return -EINVAL;
 }
