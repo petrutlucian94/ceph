@@ -18,7 +18,7 @@
 #include "include/encoding.h"
 #include "include/rbd/librbd.hpp"
 
-std::string get_initiator();
+std::string get_pr_initiator();
 
 // persistent registration info
 struct per_reg {
@@ -148,11 +148,11 @@ class WnbdPerResInOperation
 private:
   librados::IoCtx &rados_ctx;
   librbd::Image &image;
+  std::string initiator;
   uint8_t service_action;
 
   bufferlist& out_buff;
   PWNBD_STATUS wnbd_status;
-  std::string initiator;
 
   int read_keys();
   int read_reservations();
@@ -160,15 +160,16 @@ private:
 public:
   WnbdPerResInOperation(librbd::IoCtx& _rados_ctx,
                         librbd::Image& _image,
+                        std::string& _initiator,
                         uint16_t _service_action,
                         bufferlist& _out_buff,
                         PWNBD_STATUS _wnbd_status)
     : rados_ctx(_rados_ctx)
     , image(_image)
+    , initiator(_initiator)
     , service_action(_service_action)
     , out_buff(_out_buff)
     , wnbd_status(_wnbd_status)
-    , initiator(get_initiator())
   {
   }
 
@@ -181,13 +182,13 @@ class WnbdPerResOutOperation
 private:
   librados::IoCtx &rados_ctx;
   librbd::Image &image;
+  std::string initiator;
   uint8_t service_action;
   uint8_t scope;
   uint8_t type;
 
   bufferlist& in_buff;
   PWNBD_STATUS wnbd_status;
-  std::string initiator;
 
   // common parameter list fields
   uint64_t res_key;
@@ -209,6 +210,7 @@ private:
 public:
   WnbdPerResOutOperation(librbd::IoCtx& _rados_ctx,
                         librbd::Image& _image,
+                        std::string& _initiator,
                         uint8_t _service_action,
                         uint8_t _scope,
                         uint8_t _type,
@@ -216,12 +218,12 @@ public:
                         PWNBD_STATUS _wnbd_status)
     : rados_ctx(_rados_ctx)
     , image(_image)
+    , initiator(_initiator)
     , service_action(_service_action)
     , scope(_scope)
     , type(_type)
     , in_buff(_in_buff)
     , wnbd_status(_wnbd_status)
-    , initiator(get_initiator())
   {
   }
 
@@ -232,6 +234,7 @@ int check_pr_conflict(
   librbd::IoCtx& rados_ctx,
   librbd::Image& image,
   WnbdRequestType req_type,
+  std::string& initiator,
   PWNBD_STATUS wnbd_status);
 
 #endif // WNBD_PER_RES_H

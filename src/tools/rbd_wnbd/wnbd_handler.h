@@ -24,6 +24,8 @@
 
 #include "global/global_context.h"
 
+#include "per_res.h"
+
 // TODO: make this configurable.
 #define RBD_WNBD_MAX_TRANSFER 2 * 1024 * 1024
 #define SOFT_REMOVE_RETRY_INTERVAL 2
@@ -72,6 +74,7 @@ private:
   bool readonly;
   bool rbd_cache_enabled;
   bool enable_pr;
+  std::string pr_initiator;
   uint32_t io_req_workers;
   uint32_t io_reply_workers;
   WnbdAdminHook* admin_hook;
@@ -102,6 +105,7 @@ public:
     // are going to send the IO replies and thus be able to cache Windows
     // OVERLAPPED structures.
     reply_tpool = new boost::asio::thread_pool(_io_reply_workers);
+    pr_initiator = get_pr_initiator();
   }
 
   int start();
@@ -145,6 +149,8 @@ private:
 
     void set_sense(uint8_t sense_key, uint8_t asc, uint64_t info);
     void set_sense(uint8_t sense_key, uint8_t asc);
+
+    int check_rsv_conflict();
   };
 
   friend std::ostream &operator<<(std::ostream &os, const IOContext &ctx);

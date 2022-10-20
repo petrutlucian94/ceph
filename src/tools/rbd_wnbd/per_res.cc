@@ -64,7 +64,7 @@ std::string RbdPrInfo::get_header_obj_name()
   }
 }
 
-std::string get_initiator() {
+std::string get_pr_initiator() {
   // target_core_rbd includes the initiator name and target wwn in the i_t nexus
   // buffer, which looks like this:
   // iqn.1991-05.com.microsoft:ws2k22-node2.mydomain.local,i,0x3430303030313337,

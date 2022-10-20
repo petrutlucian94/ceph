@@ -240,6 +240,31 @@ void WnbdHandler::IOContext::set_sense(uint8_t sense_key, uint8_t asc)
   WnbdSetSense(&wnbd_status, sense_key, asc);
 }
 
+int WnbdHandler::IOContext::check_rsv_conflict()
+{
+  ceph_assert(handler);
+
+  if (handler->enable_pr) {
+    int r = check_pr_conflict(
+      handler->rados_ctx,
+      handler->image,
+      req_type,
+      handler->pr_initiator,
+      &wnbd_status);
+    if (r < 0) {
+      dout(5) << *this << "persistent reservation conflict" << dendl;
+      // send_io_response disposes *this, avoid using it after this call
+      handler->send_io_response(this);
+      return r;
+    }
+  } else {
+    dout(20) << *this << ": persistent reservations disabled" << dendl;
+  }
+
+  return 0;
+}
+
+
 void WnbdHandler::Read(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
@@ -265,6 +290,29 @@ void WnbdHandler::Read(
   }
 
   dout(20) << *ctx << ": start" << dendl;
+
+  // TODO: just like target_core_rbd, we're checking for persistent reservation
+  // conflicts before each IO request. There are some consequences in terms of:
+  //
+  // * performance - additional round-trip for every IO request. Also, the IO
+  // callbacks were supposed to perform async RBD calls, yet we're adding a sync
+  // PR check. This can limit the number of concurrent requests and delay wnbd
+  // disconnect commands (if the IO dispatcher is busy waiting for sync pr
+  // checks, we may not be able to receive disconnect requests from the driver).
+  //
+  // * data consistency - if the node temporarily loses connection, gets
+  // preempted and then recovers network connectivity, queued IO operations may
+  // be submitted, ignoring the current reservations. This can be mitigated
+  // by carefully configuring timeouts. In the future, we may consider using
+  // Ceph blocklists.
+  //
+  // Eventually, we might be able to emulate persistent reservations using
+  // rbd locks and maybe ceph blocklists, however there are few key limitations
+  // that make it unfeasible: rbd locks are advisory, shared locks can't be
+  // preempted and blocklists apply to the entire host, not just a single client.
+  if (ctx->check_rsv_conflict()) {
+    return;
+  }
 
   librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(ctx, aio_callback);
   handler->image.aio_read2(ctx->req_from, ctx->req_size, ctx->data, c, op_flags);
@@ -300,6 +348,10 @@ void WnbdHandler::Write(
 
   dout(20) << *ctx << ": start" << dendl;
 
+  if (ctx->check_rsv_conflict()) {
+    return;
+  }
+
   librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(ctx, aio_callback);
   handler->image.aio_write2(ctx->req_from, ctx->req_size, ctx->data, c, op_flags);
 
@@ -323,6 +375,13 @@ void WnbdHandler::Flush(
   ctx->req_from = BlockAddress * handler->block_size;
 
   dout(20) << *ctx << ": start" << dendl;
+
+  // TODO: should we enforce that rbd caching is disabled when persistent
+  // reservations are enabled? in that case, we wouldn't receive flush
+  // requests.
+  if (ctx->check_rsv_conflict()) {
+    return;
+  }
 
   librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(ctx, aio_callback);
   handler->image.aio_flush(c);
@@ -349,14 +408,16 @@ void WnbdHandler::Unmap(
 
   dout(20) << *ctx << ": start" << dendl;
 
+  if (ctx->check_rsv_conflict()) {
+    return;
+  }
+
   librbd::RBD::AioCompletion *c = new librbd::RBD::AioCompletion(ctx, aio_callback);
   handler->image.aio_discard(ctx->req_from, ctx->req_size, c);
 
   dout(20) << *ctx << ": submitted" << dendl;
 }
 
-// TODO: drop Buffer parameter and consider doing the same
-// for the Read callback eventually.
 void WnbdHandler::PersistResIn(
   PWNBD_DISK Disk,
   UINT64 RequestHandle,
@@ -365,7 +426,6 @@ void WnbdHandler::PersistResIn(
   WnbdHandler* handler = nullptr;
   ceph_assert(!WnbdGetUserContext(Disk, (PVOID*)&handler));
 
-  // TODO: free this
   WnbdHandler::IOContext* ctx = new WnbdHandler::IOContext();
   ctx->handler = handler;
   ctx->req_handle = RequestHandle;
@@ -380,6 +440,7 @@ void WnbdHandler::PersistResIn(
   auto op = WnbdPerResInOperation(
     handler->rados_ctx,
     handler->image,
+    handler->pr_initiator,
     ServiceAction,
     ctx->data,
     &ctx->wnbd_status);
@@ -391,20 +452,7 @@ void WnbdHandler::PersistResIn(
     }
   }
 
-  WNBD_IO_RESPONSE wnbd_rsp = {0};
-  wnbd_rsp.RequestHandle = RequestHandle;
-  wnbd_rsp.RequestType = WnbdReqTypePersistResIn;
-  wnbd_rsp.Status = ctx->wnbd_status;
-
-  int err = WnbdSendResponse(
-    handler->wnbd_disk,
-    &wnbd_rsp,
-    ctx->data.c_str(),
-    ctx->data.length());
-  if (err != 0) {
-    derr << "Could not send response. Request id: " << wnbd_rsp.RequestHandle
-         << ". Error: " << err << dendl;
-  }
+  ctx->handler->send_io_response(ctx);
 
   dout(20) << *ctx << ": submitted" << dendl;
 }
@@ -421,7 +469,6 @@ void WnbdHandler::PersistResOut(
   WnbdHandler* handler = nullptr;
   ceph_assert(!WnbdGetUserContext(Disk, (PVOID*)&handler));
 
-  // TODO: free this
   WnbdHandler::IOContext* ctx = new WnbdHandler::IOContext();
   ctx->handler = handler;
   ctx->req_handle = RequestHandle;
@@ -443,6 +490,7 @@ void WnbdHandler::PersistResOut(
   auto op = WnbdPerResOutOperation(
     handler->rados_ctx,
     handler->image,
+    handler->pr_initiator,
     ServiceAction,
     Scope,
     Type,
@@ -456,20 +504,7 @@ void WnbdHandler::PersistResOut(
     }
   }
 
-  WNBD_IO_RESPONSE wnbd_rsp = {0};
-  wnbd_rsp.RequestHandle = RequestHandle;
-  wnbd_rsp.RequestType = WnbdReqTypePersistResOut;
-  wnbd_rsp.Status = ctx->wnbd_status;
-
-  int err = WnbdSendResponse(
-    handler->wnbd_disk,
-    &wnbd_rsp,
-    nullptr,
-    0);
-  if (err != 0) {
-    derr << "Could not send response. Request id: " << wnbd_rsp.RequestHandle
-         << ". Error: " << err << dendl;
-  }
+  ctx->handler->send_io_response(ctx);
 
   dout(20) << *ctx << ": submitted" << dendl;
 }
