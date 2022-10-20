@@ -71,6 +71,7 @@ private:
   uint32_t block_size;
   bool readonly;
   bool rbd_cache_enabled;
+  bool enable_pr;
   uint32_t io_req_workers;
   uint32_t io_reply_workers;
   WnbdAdminHook* admin_hook;
@@ -81,6 +82,7 @@ public:
               librbd::Image& _image, std::string _instance_name,
               uint64_t _block_count, uint32_t _block_size,
               bool _readonly, bool _rbd_cache_enabled,
+              bool _enable_pr,
               uint32_t _io_req_workers,
               uint32_t _io_reply_workers)
     : rados_ctx(_rados_ctx)
@@ -90,6 +92,7 @@ public:
     , block_size(_block_size)
     , readonly(_readonly)
     , rbd_cache_enabled(_rbd_cache_enabled)
+    , enable_pr(_enable_pr)
     , io_req_workers(_io_req_workers)
     , io_reply_workers(_io_reply_workers)
   {

@@ -917,6 +917,7 @@ Map options:
   --device <device path>  Optional mapping unique identifier
   --exclusive             Forbid writes by other clients
   --read-only             Map read-only
+  --enable-pr             Enable persistent reservations (EXPERIMENTAL)
   --non-persistent        Do not recreate the mapping when the Ceph service
                           restarts. By default, mappings are persistent
   --io-req-workers        The number of workers that dispatch IO requests.
@@ -1122,12 +1123,18 @@ static int do_map(Config *cfg)
   if (r < 0)
     goto close_ret;
 
+  if (cfg->enable_pr) {
+    dout(0) << "warning: persistent reservation support is experimental"
+      << dendl;
+  }
+
   handler = new WnbdHandler(io_ctx,
                             image, cfg->devpath,
                             info.size / RBD_WNBD_BLKSIZE,
                             RBD_WNBD_BLKSIZE,
                             !cfg->snapname.empty() || cfg->readonly,
                             g_conf().get_val<bool>("rbd_cache"),
+                            cfg->enable_pr,
                             cfg->io_req_workers,
                             cfg->io_reply_workers);
   r = handler->start();
@@ -1437,6 +1444,8 @@ static int parse_args(std::vector<const char*>& args,
       cfg->readonly = true;
     } else if (ceph_argparse_flag(args, i, "--exclusive", (char *)NULL)) {
       cfg->exclusive = true;
+    } else if (ceph_argparse_flag(args, i, "--enable-pr", (char *)NULL)) {
+      cfg->enable_pr = true;
     } else if (ceph_argparse_flag(args, i, "--non-persistent", (char *)NULL)) {
       cfg->persistent = false;
     } else if (ceph_argparse_flag(args, i, "--pretty-format", (char *)NULL)) {

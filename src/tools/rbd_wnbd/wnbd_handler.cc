@@ -503,7 +503,7 @@ int WnbdHandler::start()
 
   wnbd_props.Flags.ReadOnly = readonly;
   wnbd_props.Flags.UnmapSupported = 1;
-  wnbd_props.Flags.PersistResSupported = 1;
+  wnbd_props.Flags.PersistResSupported = enable_pr;
   if (rbd_cache_enabled) {
     wnbd_props.Flags.FUASupported = 1;
     wnbd_props.Flags.FlushSupported = 1;
