@@ -1151,7 +1151,7 @@ static int do_map(Config *cfg)
   if (r < 0)
     goto close_ret;
 
-  handler = new WnbdHandler(image, cfg->devpath,
+  handler = new WnbdHandler(image, cfg->devpath, cfg->snapname,
                             info.size / RBD_WNBD_BLKSIZE,
                             RBD_WNBD_BLKSIZE,
                             !cfg->snapname.empty() || cfg->readonly,
