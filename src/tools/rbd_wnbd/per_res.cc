@@ -377,7 +377,7 @@ int WnbdPerResOutOperation::parse_param_list()
     *reinterpret_cast<uint64_t*>(params->ScopeSpecificAddress));
   aptpl = params->ActivatePersistThroughPowerLoss;
   // TODO: consider checking "AllTargetPorts" and "SpecifyInitiatorPorts"
-  // if/when we switch to SPC-5. Right now, wnbd pings the SCSI 3 version.
+  // if/when we switch to SPC-5. Right now, wnbd pins the SCSI 3 version.
   return 0;
 }
 

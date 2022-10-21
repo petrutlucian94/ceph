@@ -86,7 +86,6 @@ private:
 
   std::string get_header_obj_name();
 public:
-  // TODO: consider endianness
   uint32_t generation;
   // persistent registrations
   std::vector<per_reg> regs;
