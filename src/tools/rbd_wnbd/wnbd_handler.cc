@@ -441,7 +441,8 @@ int WnbdHandler::start()
 
   wnbd_props.NaaIdentifier = naa_id;
 
-  err = WnbdCreate(&wnbd_props, &RbdWnbdInterface, this, &wnbd_disk);
+  err = WnbdCreate(&wnbd_props, (const PWNBD_INTERFACE) &RbdWnbdInterface,
+                   this, &wnbd_disk);
   if (err)
     goto exit;
 
