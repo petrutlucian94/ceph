@@ -444,13 +444,7 @@ void WnbdHandler::PersistResIn(
     ServiceAction,
     ctx->data,
     &ctx->wnbd_status);
-  int r = op.execute();
-  if (r < 0) {
-    if (!ctx->wnbd_status.ScsiStatus) {
-      ctx->set_sense(SCSI_SENSE_MEDIUM_ERROR,
-                     SCSI_ADSENSE_UNRECOVERED_ERROR);
-    }
-  }
+  op.execute();
 
   ctx->handler->send_io_response(ctx);
 
@@ -485,7 +479,6 @@ void WnbdHandler::PersistResOut(
     << ", type=0x" << (uint) Type
     << ", buffer_sz=0x" << (uint) ParameterListLength
     << ": start" << dendl;
-
   // TODO: can/should this be async?
   auto op = WnbdPerResOutOperation(
     handler->rados_ctx,
@@ -496,13 +489,7 @@ void WnbdHandler::PersistResOut(
     Type,
     ctx->data,
     &ctx->wnbd_status);
-  int r = op.execute();
-  if (r < 0) {
-    if (!ctx->wnbd_status.ScsiStatus) {
-      ctx->set_sense(SCSI_SENSE_MEDIUM_ERROR,
-                     SCSI_ADSENSE_UNRECOVERED_ERROR);
-    }
-  }
+  op.execute();
 
   ctx->handler->send_io_response(ctx);
 

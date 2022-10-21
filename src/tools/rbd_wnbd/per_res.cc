@@ -39,12 +39,14 @@
 
 #include "global/global_context.h"
 
-// We'll try to stay compatible with the "target_core_rbd" module
-#define RBD_PR_INFO_XATTR_KEY      "pr_info.win32"
-#define RBD_PR_INFO_XATTR_MAX_SIZE 8192
+#define WNBD_PR_INFO_XATTR_KEY      "pr_info.win32"
 
 #define RBD_HEADER_PREFIX "rbd_header."
 #define RBD_SUFFIX        ".rbd"
+
+// The number of PR OUT attempts, retrying when receiving EAGAIN errors caused
+// by concurrent PR updates.
+#define WNBD_PR_OUT_TRIES 5
 
 #define CLASS_NAME typeid(*this).name()
 
@@ -92,7 +94,7 @@ int RbdPrInfo::retrieve()
   dout(20) << CLASS_NAME << "::" << __func__ << ": start" << dendl;
 
   auto object_name = get_header_obj_name();
-  auto r = rados_ctx.getxattr(object_name, RBD_PR_INFO_XATTR_KEY, last_bl);
+  auto r = rados_ctx.getxattr(object_name, WNBD_PR_INFO_XATTR_KEY, last_bl);
   if (r < 0) {
     derr << CLASS_NAME << "::" << __func__
          << "failed to retrieve PR info xattr"
@@ -190,7 +192,7 @@ int RbdPrInfo::create()
   }
 
   auto object_name = get_header_obj_name();
-  auto r = rados_ctx.setxattr(object_name, RBD_PR_INFO_XATTR_KEY, last_bl);
+  auto r = rados_ctx.setxattr(object_name, WNBD_PR_INFO_XATTR_KEY, last_bl);
   if (r < 0) {
     return r;
   }
@@ -215,8 +217,8 @@ int RbdPrInfo::safe_replace()
   dout(5) << CLASS_NAME << "::" << __func__ << ": applying: " << *this << dendl;
 
   librados::ObjectWriteOperation o;
-  o.cmpxattr(RBD_PR_INFO_XATTR_KEY, CEPH_OSD_CMPXATTR_OP_EQ, last_bl);
-  o.setxattr(RBD_PR_INFO_XATTR_KEY, bl);
+  o.cmpxattr(WNBD_PR_INFO_XATTR_KEY, CEPH_OSD_CMPXATTR_OP_EQ, last_bl);
+  o.setxattr(WNBD_PR_INFO_XATTR_KEY, bl);
 
   auto object_name = get_header_obj_name();
   auto r = rados_ctx.operate(object_name, &o);
@@ -338,11 +340,14 @@ int WnbdPerResInOperation::execute()
           << ", initiator=\"" << initiator << "\""
           << ": start" << dendl;
 
+  int r = 0;
   switch (service_action) {
   case RESERVATION_ACTION_READ_KEYS:
-    return read_keys();
+    r = read_keys();
+    break;
   case RESERVATION_ACTION_READ_RESERVATIONS:
-    return read_reservations();
+    r = read_reservations();
+    break;
   default:
     derr << "Unsupported Persistent Reservation IN service action: "
          << std::hex << "0x" << (uint) service_action << dendl;
@@ -352,7 +357,15 @@ int WnbdPerResInOperation::execute()
       SCSI_ADSENSE_ILLEGAL_COMMAND);
     return -ENOTSUP;
   }
-  return 0;
+
+  if (r < 0 && !wnbd_status->ScsiStatus) {
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_MEDIUM_ERROR,
+      SCSI_ADSENSE_UNRECOVERED_ERROR);
+  }
+
+  return r;
 }
 
 int WnbdPerResOutOperation::parse_param_list()
@@ -824,7 +837,7 @@ commit:
   return pr_info.safe_replace();
 }
 
-int WnbdPerResOutOperation::execute()
+int WnbdPerResOutOperation::do_execute()
 {
   int r = parse_param_list();
   if (r != 0) {
@@ -881,6 +894,34 @@ int WnbdPerResOutOperation::execute()
     return -ENOTSUP;
   }
   return 0;
+}
+
+int WnbdPerResOutOperation::execute()
+{
+  int r = -EAGAIN;
+  for (int attempt=0;
+       r == -EAGAIN && attempt < WNBD_PR_OUT_TRIES;
+       attempt++){
+    r = do_execute();
+
+    if (r == -EAGAIN && attempt < WNBD_PR_OUT_TRIES) {
+      dout(5) << "encountered conflict while trying to update "
+              << "persistent reservations. Tries left: "
+              << WNBD_PR_OUT_TRIES - attempt - 1
+              << dendl;
+      // clear wnbd status before retrying
+      *wnbd_status = {0};
+    }
+  }
+
+  if (r < 0 && !wnbd_status->ScsiStatus) {
+    WnbdSetSense(
+      wnbd_status,
+      SCSI_SENSE_MEDIUM_ERROR,
+      SCSI_ADSENSE_UNRECOVERED_ERROR);
+  }
+
+  return r;
 }
 
 int check_pr_conflict(

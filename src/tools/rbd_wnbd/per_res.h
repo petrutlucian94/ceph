@@ -196,6 +196,7 @@ private:
   bool aptpl;
 
   int parse_param_list();
+  int do_execute();
 
   int register_key(bool ignore_existing);
   void remove_own_reg(RbdPrInfo& pr_info, bool& found);
