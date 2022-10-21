@@ -454,7 +454,7 @@ int WnbdPerResOutOperation::register_key(bool ignore_existing)
   } else {
     dout(20) << CLASS_NAME << "::" << __func__
              << ": changing registration key" << dendl;
-    existing_reg->key = res_key;
+    existing_reg->key = sv_act_res_key;
   }
 
   pr_info.generation++;
