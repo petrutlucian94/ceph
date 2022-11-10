@@ -20,9 +20,10 @@ Foundation.  See file COPYING.
 """
 
 from time import sleep
-import grp
 import os
-import pwd
+if os.name != "nt":
+    import grp
+    import pwd
 import re
 import shutil
 import stat
@@ -125,7 +126,8 @@ def get_cmake_variables(*names):
 
 
 if os.path.exists(os.path.join(MYPDIR, "CMakeCache.txt")) \
-     and os.path.exists(os.path.join(MYPDIR, "bin/init-ceph")):
+     and os.path.exists(os.path.join(MYPDIR, "bin/init-ceph")) \
+     and not os.name == "nt":
     src_path, with_asan, asan_lib_path = \
         get_cmake_variables("ceph_SOURCE_DIR", "WITH_ASAN", "ASAN_LIBRARY")
     if src_path is None:
