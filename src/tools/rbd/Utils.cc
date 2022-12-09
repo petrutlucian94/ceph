@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <regex>
+#include <string_view>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
@@ -1198,6 +1199,22 @@ int mgr_command(librados::Rados& rados, const std::string& cmd,
 
   return 0;
 }
+
+#ifdef _WIN32
+bool is_win32_phys_disk(std::string_view path)
+{
+  std::string sanitized_path(path);
+  std::replace(sanitized_path.begin(), sanitized_path.end(), '/', '\\');
+  std::string phys_disk_prefix = "\\\\.\\PhysicalDrive";
+  return sanitized_path.rfind(phys_disk_prefix, 0) == 0;
+}
+#else
+bool is_win32_phys_disk(std::string_view path)
+{
+  // Not a Windows disk
+  return false;
+}
+#endif
 
 } // namespace utils
 } // namespace rbd
