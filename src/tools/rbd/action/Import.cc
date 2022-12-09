@@ -14,7 +14,6 @@
 #include "common/debug.h"
 #include "common/errno.h"
 #include "common/safe_io.h"
-#include <algorithm>
 #include <iostream>
 #include <boost/program_options.hpp>
 #include <boost/scoped_ptr.hpp>
@@ -139,22 +138,6 @@ private:
   bool m_write_zeroes;
   uint64_t m_prog_offset;
 };
-
-#ifdef _WIN32
-bool is_win32_phys_disk(const char* path)
-{
-  std::string sanitized_path(path);
-  std::replace(sanitized_path.begin(), sanitized_path.end(), '/', '\\');
-  const char* phys_disk_prefix = "\\\\.\\PhysicalDrive";
-  return !strncasecmp(sanitized_path, phys_disk_prefix, strlen(phys_disk_prefix));
-}
-#else
-bool is_win32_phys_disk(const char* path)
-{
-  // Not a Windows disk
-  return false;
-}
-#endif
 
 static int do_image_snap_from(ImportDiffContext *idiffctx)
 {
@@ -872,7 +855,7 @@ static int do_import(librados::Rados &rados, librbd::RBD &rbd,
 
     // fstat fails when used with Windows paths such as \\.\PhysicalDrive1.
     // We'll rely on blkdev.get_size instead.
-    if (!is_win32_phys_disk(path)) {
+    if (!utils::is_win32_phys_disk(path)) {
       if ((fstat(fd, &stat_buf)) < 0) {
         r = -errno;
         std::cerr << "rbd: stat error " << path << std::endl;
