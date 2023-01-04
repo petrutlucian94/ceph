@@ -1201,7 +1201,7 @@ int mgr_command(librados::Rados& rados, const std::string& cmd,
 }
 
 #ifdef _WIN32
-bool is_win32_phys_disk(std::string_view path)
+bool is_blk_dev(std::string_view path)
 {
   std::string sanitized_path(path);
   std::replace(sanitized_path.begin(), sanitized_path.end(), '/', '\\');
@@ -1209,10 +1209,11 @@ bool is_win32_phys_disk(std::string_view path)
   return sanitized_path.rfind(phys_disk_prefix, 0) == 0;
 }
 #else
-bool is_win32_phys_disk(std::string_view path)
+bool is_blk_dev(std::string_view path)
 {
-  // Not a Windows disk
-  return false;
+  struct stat st;
+  int r = stat(std::string(path).c_str(), &st);
+  return !r && S_ISBLK(st.st_mode);
 }
 #endif
 

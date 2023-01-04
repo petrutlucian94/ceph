@@ -233,7 +233,7 @@ int do_export_diff(librbd::Image& image, const char *fromsnapname,
     fd = STDOUT_FILENO;
   } else {
     int flags = O_WRONLY | O_BINARY;
-    if (!utils::is_win32_phys_disk(path)) {
+    if (!utils::is_blk_dev(path)) {
       flags |= O_CREAT | O_EXCL;
     }
     fd = open(path, flags, 0644);
@@ -325,10 +325,10 @@ class C_Export : public Context
 public:
   C_Export(OrderedThrottle &ordered_throttle, librbd::Image &image,
            uint64_t fd_offset, uint64_t offset, uint64_t length, int fd,
-           bool win32_phys_disk)
+           bool is_blk_dev)
     : m_throttle(ordered_throttle), m_image(image), m_dest_offset(fd_offset),
       m_offset(offset), m_length(length), m_fd(fd),
-      m_win32_phys_disk(win32_phys_disk)
+      m_is_blk_dev(is_blk_dev)
   {
   }
 
@@ -363,7 +363,7 @@ public:
 
     ceph_assert(m_bufferlist.length() == static_cast<size_t>(r));
     if (m_fd != STDOUT_FILENO) {
-      if (m_bufferlist.is_zero() && !m_win32_phys_disk) {
+      if (m_bufferlist.is_zero() && !m_is_blk_dev) {
         return;
       }
 
@@ -376,7 +376,7 @@ public:
       }
     }
 
-    if (m_win32_phys_disk) {
+    if (m_is_blk_dev) {
       // Need to ensure that the writes are sector aligned
       m_bufferlist.rebuild();
     }
@@ -395,7 +395,7 @@ private:
   uint64_t m_offset;
   uint64_t m_length;
   int m_fd;
-  bool m_win32_phys_disk;
+  bool m_is_blk_dev;
 };
 
 const uint32_t MAX_KEYS = 64;
@@ -531,7 +531,7 @@ static int do_export_v2(librbd::Image& image, librbd::image_info_t &info, int fd
 
 static int do_export_v1(librbd::Image& image, librbd::image_info_t &info,
                         int fd, uint64_t period, int max_concurrent_ops,
-                        utils::ProgressContext &pc, bool win32_phys_disk)
+                        utils::ProgressContext &pc, bool is_blk_dev)
 {
   int r = 0;
   size_t file_size = 0;
@@ -543,7 +543,7 @@ static int do_export_v1(librbd::Image& image, librbd::image_info_t &info,
 
     uint64_t length = std::min(period, info.size - offset);
     C_Export *ctx = new C_Export(throttle, image, file_size + offset, offset,
-                                 length, fd, win32_phys_disk);
+                                 length, fd, is_blk_dev);
     ctx->send();
 
     pc.update_progress(offset, info.size);
@@ -552,7 +552,7 @@ static int do_export_v1(librbd::Image& image, librbd::image_info_t &info,
   file_size += info.size;
   r = throttle.wait_for_ret();
   if (fd != 1) {
-    if (r >= 0 && !win32_phys_disk) {
+    if (r >= 0 && !is_blk_dev) {
       r = ftruncate(fd, file_size);
       if (r < 0)
 	return r;
@@ -576,13 +576,13 @@ static int do_export(librbd::Image& image, const char *path, bool no_progress,
   int fd;
   int max_concurrent_ops = g_conf().get_val<uint64_t>("rbd_concurrent_management_ops");
   bool to_stdout = (strcmp(path, "-") == 0);
-  bool win32_phys_disk = false;
+  bool is_blk_dev = false;
   if (to_stdout) {
     fd = STDOUT_FILENO;
   } else {
     int flags = O_WRONLY | O_BINARY;
-    win32_phys_disk = utils::is_win32_phys_disk(path);
-    if (!win32_phys_disk) {
+    is_blk_dev = utils::is_blk_dev(path);
+    if (!is_blk_dev) {
       flags |= O_CREAT | O_EXCL;
     }
     fd = open(path, flags, 0644);
@@ -599,7 +599,7 @@ static int do_export(librbd::Image& image, const char *path, bool no_progress,
 
   if (export_format == 1)
     r = do_export_v1(image, info, fd, period, max_concurrent_ops, pc,
-                     win32_phys_disk);
+                     is_blk_dev);
   else
     r = do_export_v2(image, info, fd, period, max_concurrent_ops, pc);
 
