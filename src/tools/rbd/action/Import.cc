@@ -855,7 +855,7 @@ static int do_import(librados::Rados &rados, librbd::RBD &rbd,
 
     // fstat fails when used with Windows paths such as \\.\PhysicalDrive1.
     // We'll rely on blkdev.get_size instead.
-    if (!utils::is_win32_phys_disk(path)) {
+    if (!utils::is_blk_dev(path)) {
       if ((fstat(fd, &stat_buf)) < 0) {
         r = -errno;
         std::cerr << "rbd: stat error " << path << std::endl;
