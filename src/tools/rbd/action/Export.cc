@@ -232,11 +232,12 @@ int do_export_diff(librbd::Image& image, const char *fromsnapname,
   if (strcmp(path, "-") == 0) {
     fd = STDOUT_FILENO;
   } else {
-    int flags = O_WRONLY | O_BINARY;
-    if (!utils::is_blk_dev(path)) {
-      flags |= O_CREAT | O_EXCL;
+    if (utils::is_blk_dev(path)) {
+      std::cerr << "exporting diffs to raw block devices "
+                << "isn't currently supported." << std::endl;
+      return -EINVAL;
     }
-    fd = open(path, flags, 0644);
+    fd = open(path, O_WRONLY | O_BINARY | O_CREAT | O_EXCL, 0644);
   }
   if (fd < 0)
     return -errno;
@@ -584,6 +585,10 @@ static int do_export(librbd::Image& image, const char *path, bool no_progress,
     is_blk_dev = utils::is_blk_dev(path);
     if (!is_blk_dev) {
       flags |= O_CREAT | O_EXCL;
+    } else if (export_format != 1) {
+      cerr << "rbd: exporting to raw block devices is only allowed "
+           << "using the v1 image format" << std::endl;
+      return -EINVAL;
     }
     fd = open(path, flags, 0644);
     if (fd < 0) {
