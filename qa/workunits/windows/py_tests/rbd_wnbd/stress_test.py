@@ -82,27 +82,6 @@ parser.add_argument('--skip-cleanup-on-error', action='store_true',
                     help='Skip cleanup when hitting errors.')
 
 
-def array_stats(array: list):
-    mean = sum(array) / len(array) if len(array) else 0
-    variance = (sum((i - mean) ** 2 for i in array) / len(array)
-                if len(array) else 0)
-    std_dev = math.sqrt(variance)
-    sorted_array = sorted(array)
-
-    return {
-        'min': min(array) if len(array) else 0,
-        'max': max(array) if len(array) else 0,
-        'sum': sum(array) if len(array) else 0,
-        'mean': mean,
-        'median': sorted_array[len(array) // 2] if len(array) else 0,
-        'max_90': sorted_array[int(len(array) * 0.9)] if len(array) else 0,
-        'min_90': sorted_array[int(len(array) * 0.1)] if len(array) else 0,
-        'variance': variance,
-        'std_dev': std_dev,
-        'count': len(array)
-    }
-
-
 class RbdTest(object):
     image: RbdImage
 
@@ -139,6 +118,7 @@ class RbdTest(object):
     def cleanup(self):
         if self.image:
             self.image.cleanup()
+            self.image = None
 
     @classmethod
     def print_results(cls,
@@ -266,44 +246,49 @@ class RbdFioTest(RbdTest):
 
             op_data = cls.data[op]
 
-            s = array_stats([float(i["bw_bytes"]) / 1000_000 for i in op_data])
+            s = utils.array_stats(
+                [float(i["bw_bytes"]) / 1000_000 for i in op_data])
             table.add_row(["bandwidth (MB/s)",
                            s['min'], s['max'], s['mean'],
                            s['median'], s['std_dev'],
                            s['max_90'], s['min_90'], 'N/A'])
 
-            s = array_stats([float(i["runtime"]) for i in op_data])
+            s = utils.array_stats([float(i["runtime"]) for i in op_data])
             table.add_row(["duration (s)",
                           s['min'], s['max'], s['mean'],
                           s['median'], s['std_dev'],
                           s['max_90'], s['min_90'], s['sum']])
 
-            s = array_stats([i["error"] for i in op_data])
+            s = utils.array_stats(
+                [i["error"] for i in op_data])
             table.add_row(["errors",
                            s['min'], s['max'], s['mean'],
                            s['median'], s['std_dev'],
                            s['max_90'], s['min_90'], s['sum']])
 
-            s = array_stats([i["short_ios"] for i in op_data])
+            s = utils.array_stats(
+                [i["short_ios"] for i in op_data])
             table.add_row(["incomplete IOs",
                            s['min'], s['max'], s['mean'],
                            s['median'], s['std_dev'],
                            s['max_90'], s['min_90'], s['sum']])
 
-            s = array_stats([i["dropped_ios"] for i in op_data])
+            s = utils.array_stats(
+                [i["dropped_ios"] for i in op_data])
             table.add_row(["dropped IOs",
                            s['min'], s['max'], s['mean'],
                            s['median'], s['std_dev'],
                            s['max_90'], s['min_90'], s['sum']])
 
-            clat_min = array_stats([i["clat_ns_min"] for i in op_data])
-            clat_max = array_stats([i["clat_ns_max"] for i in op_data])
-            clat_mean = array_stats([i["clat_ns_mean"] for i in op_data])
+            clat_min = utils.array_stats([i["clat_ns_min"] for i in op_data])
+            clat_max = utils.array_stats([i["clat_ns_max"] for i in op_data])
+            clat_mean = utils.array_stats([i["clat_ns_mean"] for i in op_data])
             clat_stddev = math.sqrt(
-                sum([float(i["clat_ns_stddev"]) ** 2 for i in op_data]) / len(op_data)
+                sum([float(i["clat_ns_stddev"]) ** 2
+                    for i in op_data]) / len(op_data)
                 if len(op_data) else 0)
-            clat_10 = array_stats([i["clat_ns_10"] for i in op_data])
-            clat_90 = array_stats([i["clat_ns_90"] for i in op_data])
+            clat_10 = utils.array_stats([i["clat_ns_10"] for i in op_data])
+            clat_90 = utils.array_stats([i["clat_ns_90"] for i in op_data])
             # For convenience, we'll convert it from ns to seconds.
             table.add_row(["completion latency (s)",
                            clat_min['min'] / 1e+9,
@@ -367,14 +352,25 @@ class RbdStampTest(RbdTest):
     _write_open_mode = "rb+"
     _read_open_mode = "rb"
     _expect_path_exists = True
+    _stamp_size = 512
+
+    def __init__(self, *args, **kwargs):
+        super(RbdStampTest, self).__init__(*args, **kwargs)
+
+        # We allow running the test repeatedly, for example after a
+        # remount operation.
+        self._previous_stamp = None
 
     @staticmethod
     def _rand_float(min_val: float, max_val: float):
         return min_val + (random.random() * max_val - min_val)
 
     def _get_stamp(self):
-        buff = self.image_name.encode()
-        padding = 512 - len(buff)
+        buff_str = self.image_name + "-" + str(uuid.uuid4())
+        buff = buff_str.encode()
+        assert len(buff) <= self._stamp_size
+
+        padding = self._stamp_size - len(buff)
         buff += b'\0' * padding
         return buff
 
@@ -382,9 +378,8 @@ class RbdStampTest(RbdTest):
         return self.image.path
 
     @Tracer.trace
-    def _write_stamp(self):
+    def _write_stamp(self, stamp):
         with open(self._get_stamp_path(), self._write_open_mode) as disk:
-            stamp = self._get_stamp()
             disk.write(stamp)
 
     @Tracer.trace
@@ -401,13 +396,21 @@ class RbdStampTest(RbdTest):
             # we aren't writing to the wrong disk.
             time.sleep(self._rand_float(0, 5))
 
+            if self._previous_stamp:
+                exp_stamp = self._previous_stamp
+            else:
+                exp_stamp = b'\0' * self._stamp_size
+
             stamp = self._read_stamp()
-            assert stamp == b'\0' * len(self._get_stamp())
+            assert stamp == exp_stamp
 
-        self._write_stamp()
+        w_stamp = self._get_stamp()
+        self._write_stamp(w_stamp)
 
-        stamp = self._read_stamp()
-        assert stamp == self._get_stamp()
+        r_stamp = self._read_stamp()
+        assert w_stamp == r_stamp
+
+        self._previous_stamp = w_stamp
 
 
 class RbdFsStampTest(RbdFsTestMixin, RbdStampTest):
