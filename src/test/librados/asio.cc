@@ -143,6 +143,27 @@ TEST_F(AsioRados, AsyncWriteCallback)
   librados::async_write(service, io, "exist", bl, bl.length(), 0,
                         success_cb);
 
+  EXPECT_EQ(boost::system::errc::no_such_file_or_directory,
+            boost::system::error_code(ERROR_FILE_NOT_FOUND,
+                                      boost::system::system_category()));
+
+  EXPECT_EQ(boost::system::errc::read_only_file_system,
+            boost::system::error_code(30,
+                                      boost::system::system_category()));
+
+  EXPECT_EQ(boost::system::errc::read_only_file_system,
+            boost::system::error_code(30,
+                                      boost::system::generic_category()));
+
+  EXPECT_EQ(boost::system::errc::read_only_file_system,
+            boost::system::error_code(30,
+                                      boost::system::system_category()).value());
+
+  EXPECT_EQ(boost::system::errc::no_such_file_or_directory,
+            boost::system::error_code(50,
+                                      boost::system::system_category()));
+
+
   auto failure_cb = [&] (boost::system::error_code ec) {
     EXPECT_EQ(boost::system::errc::read_only_file_system, ec);
   };
