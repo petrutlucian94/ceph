@@ -40,7 +40,8 @@ public:
       ImageCtxT *ictx, uint64_t object_no, uint64_t object_off,
       ceph::bufferlist&& data, IOContext io_context, int op_flags,
       int write_flags, std::optional<uint64_t> assert_version,
-      const ZTracer::Trace &parent_trace, Context *completion);
+      const ZTracer::Trace &parent_trace, Context *completion,
+      std::optional<uint64_t> assert_tag = std::nullopt);
   static ObjectRequest* create_discard(
       ImageCtxT *ictx, uint64_t object_no, uint64_t object_off,
       uint64_t object_len, IOContext io_context, int discard_flags,
@@ -264,12 +265,14 @@ public:
       ImageCtxT *ictx, uint64_t object_no, uint64_t object_off,
       ceph::bufferlist&& data, IOContext io_context, int op_flags,
       int write_flags, std::optional<uint64_t> assert_version,
-      const ZTracer::Trace &parent_trace, Context *completion)
+      const ZTracer::Trace &parent_trace, Context *completion,
+      std::optional<uint64_t> assert_tag = std::nullopt)
     : AbstractObjectWriteRequest<ImageCtxT>(ictx, object_no, object_off,
                                             data.length(), io_context, "write",
                                             parent_trace, completion),
       m_write_data(std::move(data)), m_op_flags(op_flags),
-      m_write_flags(write_flags), m_assert_version(assert_version) {
+      m_write_flags(write_flags), m_assert_version(assert_version),
+      m_assert_tag(assert_tag) {
   }
 
   bool is_empty_write_op() const override {
@@ -289,6 +292,7 @@ private:
   int m_op_flags;
   int m_write_flags;
   std::optional<uint64_t> m_assert_version;
+  std::optional<uint64_t> m_assert_tag;
 };
 
 template <typename ImageCtxT = ImageCtx>

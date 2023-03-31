@@ -72,11 +72,12 @@ ObjectRequest<I>::create_write(
     I *ictx, uint64_t object_no, uint64_t object_off, ceph::bufferlist&& data,
     IOContext io_context, int op_flags, int write_flags,
     std::optional<uint64_t> assert_version,
-    const ZTracer::Trace &parent_trace, Context *completion) {
+    const ZTracer::Trace &parent_trace, Context *completion,
+    std::optional<uint64_t> assert_tag) {
   return new ObjectWriteRequest<I>(ictx, object_no, object_off,
                                    std::move(data), io_context, op_flags,
                                    write_flags, assert_version,
-                                   parent_trace, completion);
+                                   parent_trace, completion, assert_tag);
 }
 
 template <typename I>
@@ -654,6 +655,11 @@ void ObjectWriteRequest<I>::add_write_hint(neorados::WriteOp* wr) {
     wr->create(true);
   } else if (m_assert_version.has_value()) {
     wr->assert_version(m_assert_version.value());
+  } else if (m_assert_tag.has_value()) {
+    // TODO: consider moving this to ObjectRequest.
+    bufferlist bl;
+    bl.append(std::to_string(m_assert_tag.value()));
+    wr->cmpxattr("tag", neorados::cmpxattr_op::eq, bl);
   }
   AbstractObjectWriteRequest<I>::add_write_hint(wr);
 }

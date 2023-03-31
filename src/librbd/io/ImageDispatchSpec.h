@@ -120,6 +120,7 @@ public:
   IOContext io_context;
   int op_flags;
   ZTracer::Trace parent_trace;
+  std::optional<uint64_t> assert_tag;
   uint64_t tid = 0;
 
   template <typename ImageCtxT = ImageCtx>
@@ -153,12 +154,14 @@ public:
       ImageCtxT &image_ctx, ImageDispatchLayer image_dispatch_layer,
       AioCompletion *aio_comp, Extents &&image_extents, ImageArea area,
       bufferlist &&bl, IOContext io_context, int op_flags,
-      const ZTracer::Trace &parent_trace) {
+      const ZTracer::Trace &parent_trace,
+      std::optional<uint64_t> assert_tag = std::nullopt) {
     return new ImageDispatchSpec(image_ctx.io_image_dispatcher,
                                  image_dispatch_layer, aio_comp,
                                  std::move(image_extents), area,
                                  Write{std::move(bl)},
-                                 io_context, op_flags, parent_trace);
+                                 io_context, op_flags, parent_trace,
+                                 assert_tag);
   }
 
   template <typename ImageCtxT = ImageCtx>
@@ -205,6 +208,7 @@ public:
       ImageCtxT &image_ctx, ImageDispatchLayer image_dispatch_layer,
       AioCompletion *aio_comp, Extents &&image_extents, ImageArea area,
       SnapIds&& snap_ids, int list_snaps_flags, SnapshotDelta* snapshot_delta,
+
       const ZTracer::Trace &parent_trace) {
     return new ImageDispatchSpec(image_ctx.io_image_dispatcher,
                                  image_dispatch_layer, aio_comp,
@@ -230,11 +234,13 @@ private:
                     ImageDispatchLayer image_dispatch_layer,
                     AioCompletion* aio_comp, Extents&& image_extents,
                     ImageArea area, Request&& request, IOContext io_context,
-                    int op_flags, const ZTracer::Trace& parent_trace)
+                    int op_flags, const ZTracer::Trace& parent_trace,
+                    std::optional<uint64_t> assert_tag = std::nullopt)
     : dispatcher_ctx(this), image_dispatcher(image_dispatcher),
       dispatch_layer(image_dispatch_layer), aio_comp(aio_comp),
       image_extents(std::move(image_extents)), request(std::move(request)),
-      io_context(io_context), op_flags(op_flags), parent_trace(parent_trace) {
+      io_context(io_context), op_flags(op_flags), parent_trace(parent_trace),
+      assert_tag(assert_tag) {
     ceph_assert(aio_comp->image_dispatcher_ctx == nullptr);
     aio_comp->image_dispatcher_ctx = &dispatcher_ctx;
     aio_comp->get();

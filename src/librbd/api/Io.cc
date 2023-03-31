@@ -245,7 +245,8 @@ void Io<I>::aio_read(I &image_ctx, io::AioCompletion *aio_comp, uint64_t off,
 template <typename I>
 void Io<I>::aio_write(I &image_ctx, io::AioCompletion *aio_comp, uint64_t off,
                       uint64_t len, bufferlist &&bl, int op_flags,
-                      bool native_async) {
+                      bool native_async,
+                      std::optional<uint64_t> assert_tag = std::nullopt) {
   auto cct = image_ctx.cct;
   FUNCTRACE(cct);
   ZTracer::Trace trace;
@@ -270,7 +271,7 @@ void Io<I>::aio_write(I &image_ctx, io::AioCompletion *aio_comp, uint64_t off,
   auto req = io::ImageDispatchSpec::create_write(
       image_ctx, io::IMAGE_DISPATCH_LAYER_API_START, aio_comp,
       {{off, len}}, io::ImageArea::DATA, std::move(bl),
-      image_ctx.get_data_io_context(), op_flags, trace);
+      image_ctx.get_data_io_context(), op_flags, trace, assert_tag);
   req->send();
 }
 

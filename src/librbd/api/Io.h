@@ -37,7 +37,8 @@ struct Io {
                        bool native_async);
   static void aio_write(ImageCtxT &image_ctx, io::AioCompletion *c,
                         uint64_t off, uint64_t len, bufferlist &&bl,
-                        int op_flags, bool native_async);
+                        int op_flags, bool native_async,
+                        std::optional<uint64_t> assert_tag = std::nullopt);
   static void aio_discard(ImageCtxT &image_ctx, io::AioCompletion *c,
                           uint64_t off, uint64_t len,
                           uint32_t discard_granularity_bytes,
