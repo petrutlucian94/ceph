@@ -744,6 +744,9 @@ public:
   /* @param op_flags see librados.h constants beginning with LIBRADOS_OP_FLAG */
   int aio_write2(uint64_t off, size_t len, ceph::bufferlist& bl,
 		  RBD::AioCompletion *c, int op_flags);
+  int aio_write3(uint64_t off, size_t len, ceph::bufferlist& bl,
+      RBD::AioCompletion *c, int op_flags,
+      std::optional<uint64_t> assert_tag);
 
   int aio_discard(uint64_t off, uint64_t len, RBD::AioCompletion *c);
   int aio_writesame(uint64_t off, size_t len, ceph::bufferlist& bl,

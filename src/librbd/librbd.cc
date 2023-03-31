@@ -2728,6 +2728,24 @@ namespace librbd {
     return 0;
   }
 
+  int Image::aio_write3(uint64_t off, size_t len, bufferlist& bl,
+        RBD::AioCompletion *c, int op_flags,
+        std::optional<uint64_t> assert_tag)
+  {
+    ImageCtx *ictx = (ImageCtx *)ctx;
+    tracepoint(librbd, aio_write2_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(),
+    ictx->read_only, off, len, bl.length() < len ? NULL : bl.c_str(), c->pc, op_flags);
+    if (bl.length() < len) {
+      tracepoint(librbd, aio_write_exit, -EINVAL);
+      return -EINVAL;
+    }
+    api::Io<>::aio_write(*ictx, get_aio_completion(c), off, len, bufferlist{bl},
+                         op_flags, true, assert_tag);
+
+    tracepoint(librbd, aio_write_exit, 0);
+    return 0;
+  }
+
   int Image::aio_read(uint64_t off, size_t len, bufferlist& bl,
 		      RBD::AioCompletion *c)
   {
