@@ -119,10 +119,12 @@ ObjectRequest<I>::create_compare_and_write(
 template <typename I>
 ObjectRequest<I>::ObjectRequest(
     I *ictx, uint64_t objectno, IOContext io_context,
-    const char *trace_name, const ZTracer::Trace &trace, Context *completion)
+    const char *trace_name, const ZTracer::Trace &trace, Context *completion,
+    std::optional<uint64_t> assert_tag)
   : m_ictx(ictx), m_object_no(objectno), m_io_context(io_context),
     m_completion(completion),
-    m_trace(create_trace(*ictx, "", trace)) {
+    m_trace(create_trace(*ictx, "", trace)),
+    m_assert_tag(assert_tag) {
   ceph_assert(m_ictx->data_ctx.is_valid());
   if (m_trace.valid()) {
     m_trace.copy_name(trace_name + std::string(" ") +
@@ -141,6 +143,15 @@ void ObjectRequest<I>::add_write_hint(I& image_ctx, neorados::WriteOp* wr) {
                        alloc_hint_flags);
   } else if (image_ctx.alloc_hint_flags != 0U) {
     wr->set_alloc_hint(0, 0, alloc_hint_flags);
+  }
+}
+
+template <typename I>
+void ObjectRequest<I>::add_tag_check(neorados::Op* op) {
+  if (m_assert_tag.has_value()) {
+    bufferlist bl;
+    bl.append(std::to_string(m_assert_tag.value()));
+    op->cmpxattr("tag", neorados::cmpxattr_op::eq, bl);
   }
 }
 
@@ -362,9 +373,10 @@ template <typename I>
 AbstractObjectWriteRequest<I>::AbstractObjectWriteRequest(
     I *ictx, uint64_t object_no, uint64_t object_off, uint64_t len,
     IOContext io_context, const char *trace_name,
-    const ZTracer::Trace &parent_trace, Context *completion)
+    const ZTracer::Trace &parent_trace, Context *completion,
+    std::optional<uint64_t> assert_tag)
   : ObjectRequest<I>(ictx, object_no, io_context, trace_name, parent_trace,
-                     completion),
+                     completion, assert_tag),
     m_object_off(object_off), m_object_len(len)
 {
   if (this->m_object_off == 0 &&
@@ -505,6 +517,7 @@ void AbstractObjectWriteRequest<I>::write_object() {
     }
   }
 
+  this->add_tag_check(&write_op);
   add_write_hint(&write_op);
   add_write_ops(&write_op);
   ceph_assert(write_op.size() != 0);
@@ -655,11 +668,6 @@ void ObjectWriteRequest<I>::add_write_hint(neorados::WriteOp* wr) {
     wr->create(true);
   } else if (m_assert_version.has_value()) {
     wr->assert_version(m_assert_version.value());
-  } else if (m_assert_tag.has_value()) {
-    // TODO: consider moving this to ObjectRequest.
-    bufferlist bl;
-    bl.append(std::to_string(m_assert_tag.value()));
-    wr->cmpxattr("tag", neorados::cmpxattr_op::eq, bl);
   }
   AbstractObjectWriteRequest<I>::add_write_hint(wr);
 }

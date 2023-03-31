@@ -58,13 +58,15 @@ public:
 
   ObjectRequest(ImageCtxT *ictx, uint64_t objectno, IOContext io_context,
                 const char *trace_name, const ZTracer::Trace &parent_trace,
-                Context *completion);
+                Context *completion,
+                std::optional<uint64_t> assert_tag = std::nullopt);
   virtual ~ObjectRequest() {
     m_trace.event("finish");
   }
 
   static void add_write_hint(ImageCtxT& image_ctx,
                              neorados::WriteOp *wr);
+  void add_tag_check(neorados::Op *op);
 
   virtual void send() = 0;
 
@@ -83,6 +85,7 @@ protected:
   IOContext m_io_context;
   Context *m_completion;
   ZTracer::Trace m_trace;
+  std::optional<uint64_t> m_assert_tag;
 
   void async_finish(int r);
   void finish(int r);
@@ -157,7 +160,8 @@ public:
   AbstractObjectWriteRequest(
       ImageCtxT *ictx, uint64_t object_no, uint64_t object_off, uint64_t len,
       IOContext io_context, const char *trace_name,
-      const ZTracer::Trace &parent_trace, Context *completion);
+      const ZTracer::Trace &parent_trace, Context *completion,
+      std::optional<uint64_t> assert_tag = std::nullopt);
 
   virtual bool is_empty_write_op() const {
     return false;
@@ -269,10 +273,9 @@ public:
       std::optional<uint64_t> assert_tag = std::nullopt)
     : AbstractObjectWriteRequest<ImageCtxT>(ictx, object_no, object_off,
                                             data.length(), io_context, "write",
-                                            parent_trace, completion),
+                                            parent_trace, completion, assert_tag),
       m_write_data(std::move(data)), m_op_flags(op_flags),
-      m_write_flags(write_flags), m_assert_version(assert_version),
-      m_assert_tag(assert_tag) {
+      m_write_flags(write_flags), m_assert_version(assert_version) {
   }
 
   bool is_empty_write_op() const override {
@@ -292,7 +295,6 @@ private:
   int m_op_flags;
   int m_write_flags;
   std::optional<uint64_t> m_assert_version;
-  std::optional<uint64_t> m_assert_tag;
 };
 
 template <typename ImageCtxT = ImageCtx>
