@@ -5,6 +5,8 @@ set -e
 SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 
+USE_MINGW_LLVM=${USE_MINGW_LLVM:-}
+
 num_vcpus=$(nproc)
 NUM_WORKERS=${NUM_WORKERS:-$num_vcpus}
 
@@ -20,8 +22,8 @@ sslDir="${depsToolsetDir}/openssl"
 sslSrcDir="${depsSrcDir}/openssl"
 
 # For now, we'll keep the version number within the file path when not using git.
-boostUrl="https://boostorg.jfrog.io/artifactory/main/release/1.79.0/source/boost_1_79_0.tar.gz"
-boostSrcDir="${depsSrcDir}/boost_1_79_0"
+boostUrl="https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0_rc1.tar.gz"
+boostSrcDir="${depsSrcDir}/boost_1_82_0"
 boostDir="${depsToolsetDir}/boost"
 zlibDir="${depsToolsetDir}/zlib"
 zlibSrcDir="${depsSrcDir}/zlib"
@@ -42,6 +44,9 @@ dokanUrl="https://github.com/dokan-dev/dokany"
 dokanTag="v2.0.5.1000"
 dokanSrcDir="${depsSrcDir}/dokany"
 dokanLibDir="${depsToolsetDir}/dokany/lib"
+
+mingwLlvmUrl="https://github.com/mstorsjo/llvm-mingw/releases/download/20230320/llvm-mingw-20230320-msvcrt-ubuntu-18.04-x86_64.tar.xz"
+mingwLlvmDir="${DEPS_DIR}/mingw-llvm"
 
 # Allow for OS specific customizations through the OS flag (normally
 # passed through from win32_build).
@@ -101,6 +106,15 @@ case "$OS" in
         ;;
 esac
 
+if [[ -n $USE_MINGW_LLVM && ! -d $mingwLlvmDir ]]; then
+    echo "Fetching mingw-llvm"
+    cd $DEPS_DIR
+    wget -qO- $mingwLlvmUrl | tar xJ
+    # Remove the version from the mingw-llvm dirname, making it easier to locate
+    # and avoiding MAX_PATH issues with WSL.
+    mv `basename $mingwLlvmUrl | sed s'/\.tar\..*//g'` $mingwLlvmDir
+fi
+
 MINGW_CMAKE_FILE="$DEPS_DIR/mingw.cmake"
 source "$SCRIPT_DIR/mingw_conf.sh"
 
@@ -153,16 +167,23 @@ if [[ ! -d $boostSrcDir ]]; then
 fi
 
 cd $boostSrcDir
-echo "using gcc : mingw32 : ${MINGW_CXX} ;" > user-config.jam
+
+if [[ -n $USE_MINGW_LLVM ]]; then
+    b2toolset="clang"
+    echo "using clang :  : ${MINGW_CXX} ;" > user-config.jam
+else
+    b2toolset="gcc-mingw32"
+    echo "using gcc : mingw32 : ${MINGW_CXX} ;" > user-config.jam
+fi
 
 # Workaround for https://github.com/boostorg/thread/issues/156
 # Older versions of mingw provided a different pthread lib.
 sed -i 's/lib$(libname)GC2.a/lib$(libname).a/g' ./libs/thread/build/Jamfile.v2
-sed -i 's/mthreads/pthreads/g' ./tools/build/src/tools/gcc.py
-sed -i 's/mthreads/pthreads/g' ./tools/build/src/tools/gcc.jam
 
-sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.py
-sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.jam
+if [[ -z $USE_MINGW_LLVM ]]; then
+    sed -i 's/mthreads/pthreads/g' ./tools/build/src/tools/gcc.jam
+    sed -i 's/pthreads/mthreads/g' ./tools/build/src/tools/gcc.jam
+fi
 
 export PTW32_INCLUDE=${PTW32Include}
 export PTW32_LIB=${PTW32Lib}
@@ -201,7 +222,7 @@ EOL
 
 ./bootstrap.sh
 
-./b2 install --user-config=user-config.jam toolset=gcc-mingw32 \
+./b2 install --user-config=user-config.jam toolset=$b2toolset \
     target-os=windows release \
     link=static,shared \
     threadapi=win32 --prefix=$boostDir \
