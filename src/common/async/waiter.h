@@ -69,12 +69,12 @@ public:
   }
 
   template<typename... Args>
-  std::result_of_t<T&(Args&&...)> operator ()(Args&&... args ) const {
+  std::invoke_result_t<T&, Args...> operator()(Args&&... args) const {
     return (*p)(std::forward<Args>(args)...);
   }
 
   template<typename... Args>
-  std::result_of_t<T&&(Args&&...)> operator ()(Args&&... args ) {
+  std::invoke_result_t<T, Args...> operator()(Args&&... args) {
     return std::move(*p)(std::forward<Args>(args)...);
   }
 
