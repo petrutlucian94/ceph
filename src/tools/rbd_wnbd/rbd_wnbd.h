@@ -43,7 +43,7 @@
 #define DEFAULT_SERVICE_THREAD_COUNT 8
 
 static WnbdHandler* handler = nullptr;
-ceph::mutex shutdown_lock = ceph::make_mutex("RbdWnbd::ShutdownLock");
+extern ceph::mutex shutdown_lock;
 
 struct Config {
   bool exclusive = false;

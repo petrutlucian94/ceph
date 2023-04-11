@@ -72,6 +72,8 @@ using namespace std;
 // Wait for wmi events up to two seconds
 #define WMI_EVENT_TIMEOUT 2
 
+ceph::mutex shutdown_lock = ceph::make_mutex("RbdWnbd::ShutdownLock");
+
 bool is_process_running(DWORD pid)
 {
   HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
@@ -995,7 +997,8 @@ exit:
       }
 
       if (adapter_monitoring_enabled) {
-        adapter_monitor_thread = std::thread(&monitor_wnbd_adapter, this);
+        adapter_monitor_thread = std::thread(
+          &RBDService::monitor_wnbd_adapter, this);
       } else {
         dout(0) << "WNBD adapter monitoring disabled." << dendl;
       }
@@ -1631,10 +1634,6 @@ static int parse_args(std::vector<const char*>& args,
                                      err, "--wnbd-log-level", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "rbd-wnbd: " << err.str();
-        return -EINVAL;
-      }
-      if (cfg->wnbd_log_level < 0) {
-        *err_msg << "rbd-wnbd: Invalid argument for wnbd-log-level";
         return -EINVAL;
       }
     } else if (ceph_argparse_witharg(args, i, (int*)&cfg->io_req_workers,
