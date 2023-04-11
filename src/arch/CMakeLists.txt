@@ -9,4 +9,9 @@ elseif(HAVE_PPC64LE OR HAVE_PPC64 OR HAVE_PPC)
   list(APPEND arch_srcs ppc.c)
 endif()
 
-add_library(arch STATIC ${arch_srcs})
+if(WIN32)
+  # We need to avoid duplicate symbols with llvm.
+  add_library(arch OBJECT ${arch_srcs})
+else()
+  add_library(arch STATIC ${arch_srcs})
+endif()
