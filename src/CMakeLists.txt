@@ -331,6 +331,11 @@ else()
   set(old_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
   set(BUILD_SHARED_LIBS FALSE)
   add_subdirectory(fmt)
+  if (WIN32)
+    # We'll use the header-only version for now in order to avoid
+    # duplicate symbol errors with llvm.
+    add_library(fmt::fmt ALIAS fmt-header-only)
+  endif()
   set(BUILD_SHARED_LIBS ${old_BUILD_SHARED_LIBS})
   unset(old_BUILD_SHARED_LIBS)
   target_compile_definitions(fmt PUBLIC
