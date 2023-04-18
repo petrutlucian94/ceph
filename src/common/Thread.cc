@@ -203,6 +203,25 @@ int Thread::set_affinity(int id)
 // Functions for std::thread
 // =========================
 
+#if defined(_WIN32) && defined(__clang__) && \
+    !defined(_LIBCPP_HAS_THREAD_API_PTHREAD)
+// In this case, llvm doesn't use the pthread api for std::thread.
+// We cannot use native_handle() with the pthread api, nor can we pass
+// it to Windows API functions.
+void set_thread_name(std::thread& t, const std::string& s) {
+  // no-op
+}
+
+std::string get_thread_name(const std::thread& t) {
+  return "";
+}
+
+void kill(std::thread& t, int signal)
+{
+  throw std::runtime_error("unsupported");
+}
+
+#else
 void set_thread_name(std::thread& t, const std::string& s) {
   int r = ceph_pthread_setname(t.native_handle(), s.c_str());
   if (r != 0) {
@@ -228,3 +247,4 @@ void kill(std::thread& t, int signal)
     throw std::system_error(r, std::generic_category());
   }
 }
+#endif // pthread available
