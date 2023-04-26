@@ -17,7 +17,7 @@
 SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
 SCRIPT_DIR="$(realpath "$SCRIPT_DIR")"
 
-if [[ -n USE_MINGW_LLVM ]]; then
+if [[ -n $USE_MINGW_LLVM ]]; then
     MINGW_LLVM_DIR=${MINGW_LLVM_DIR:-"$SCRIPT_DIR/build.deps/mingw-llvm"}
 fi
 
@@ -30,14 +30,12 @@ MINGW_WINDRES="${MINGW_BASE}-windres"
 MINGW_STRIP="${MINGW_BASE}-strip"
 MINGW_OBJCOPY="${MINGW_BASE}-objcopy"
 
-mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
-
-if [[ -n USE_MINGW_LLVM ]]; then
-    mingwCompiler="clang"
+if [[ -n $USE_MINGW_LLVM ]]; then
     # This package isn't currently provided by Linux distributions, we're
     # fetching it from Github.
     export PATH="$MINGW_LLVM_DIR/bin:$PATH"
     mingwPosix=""
+    mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
     mingwX64IncludeDir="$MINGW_LLVM_DIR/x86_64-w64-mingw32/include"
     mingwX64BinDir="$MINGW_LLVM_DIR/x86_64-w64-mingw32/bin"
     mingwX64LibDir="$MINGW_LLVM_DIR/x86_64-w64-mingw32/lib"
@@ -45,13 +43,16 @@ if [[ -n USE_MINGW_LLVM ]]; then
     mingwLibpthreadDir="$mingwX64BinDir"
     PTW32Include="$mingwX64IncludeDir"
     PTW32Lib="$mingwX64LibDir"
+
+    MINGW_CC="${MINGW_BASE}-clang${mingwPosix}"
+    MINGW_CXX="${MINGW_BASE}-clang++${mingwPosix}"
 else
-    mingwCompiler="gcc"
     # -Distribution specific mingw settings-
     case "$OS" in
         ubuntu)
            mingwPosix="-posix"
            mingwLibDir="/usr/lib/gcc"
+           mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
            mingwTargetLibDir="${mingwLibDir}/${MINGW_BASE}/${mingwVersion}"
            mingwLibpthreadDir="/usr/${MINGW_BASE}/lib"
            PTW32Include=/usr/share/mingw-w64/include
@@ -60,6 +61,7 @@ else
         rhel)
             mingwPosix=""
             mingwLibDir="/usr/lib64/gcc"
+            mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
             mingwTargetLibDir="/usr/${MINGW_BASE}/sys-root/mingw/bin"
             mingwLibpthreadDir="$mingwTargetLibDir"
             PTW32Include=/usr/x86_64-w64-mingw32/sys-root/mingw/include
@@ -68,6 +70,7 @@ else
         suse)
             mingwPosix=""
             mingwLibDir="/usr/lib64/gcc"
+            mingwVersion="$(${MINGW_CPP}${mingwPosix} -dumpversion)"
             mingwTargetLibDir="/usr/${MINGW_BASE}/sys-root/mingw/bin"
             mingwLibpthreadDir="$mingwTargetLibDir"
             PTW32Include=/usr/x86_64-w64-mingw32/sys-root/mingw/include
@@ -78,12 +81,12 @@ else
             exit 1
             ;;
     esac
+    MINGW_CC="${MINGW_BASE}-gcc${mingwPosix}"
+    MINGW_CXX="${MINGW_BASE}-g++${mingwPosix}"
 fi
 
 # -Common mingw settings, dependent upon distribution specific settings-
 MINGW_FIND_ROOT_LIB_PATH="${mingwLibDir}/\${TOOLCHAIN_PREFIX}/${mingwVersion}"
-MINGW_CC="${MINGW_BASE}-${mingwCompiler}${mingwPosix}"
-MINGW_CXX="${MINGW_BASE}-${mingwCompiler}++${mingwPosix}"
 # End MINGW configuration
 
 
@@ -95,8 +98,8 @@ set(CMAKE_SYSTEM_PROCESSOR x86_64)
 
 # We'll need to use posix threads in order to use
 # C++11 features, such as std::thread.
-set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}-${mingwCompiler}${mingwPosix})
-set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}-${mingwCompiler}++${mingwPosix})
+set(CMAKE_C_COMPILER ${MINGW_CC})
+set(CMAKE_CXX_COMPILER ${MINGW_CXX})
 set(CMAKE_RC_COMPILER \${TOOLCHAIN_PREFIX}-windres)
 
 set(CMAKE_FIND_ROOT_PATH /usr/\${TOOLCHAIN_PREFIX} ${MINGW_FIND_ROOT_LIB_PATH})
