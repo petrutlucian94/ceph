@@ -92,7 +92,7 @@ public:
   }
 
   void unregister_watcher(uint64_t handle, Context *on_finish) {
-    ldout(m_cct, 20) << "ImageUpdateWatchers::" << __func__ << ": handle="
+    ldout(m_cct, 0) << "ImageUpdateWatchers::" << __func__ << ": handle="
 		     << handle << dendl;
     int r = 0;
     {
@@ -144,7 +144,7 @@ public:
 
   void handle_notify(uint64_t handle, UpdateWatchCtx *watcher) {
 
-    ldout(m_cct, 20) << "ImageUpdateWatchers::" << __func__ << ": handle="
+    ldout(m_cct, 0) << "ImageUpdateWatchers::" << __func__ << ": handle="
 		     << handle << ", watcher=" << watcher << dendl;
 
     watcher->handle_notify();
@@ -164,6 +164,7 @@ public:
       if (m_in_flight.find(handle) == m_in_flight.end()) {
 	auto it = m_pending_unregister.find(handle);
 	if (it != m_pending_unregister.end()) {
+    ldout(m_cct, 0) << "removing update watcher" << dendl;
 	  on_unregister_finish = it->second;
 	  m_pending_unregister.erase(it);
 	}
@@ -178,7 +179,7 @@ public:
     }
 
     if (on_unregister_finish != nullptr) {
-      ldout(m_cct, 20) << "ImageUpdateWatchers::" << __func__
+      ldout(m_cct, 0) << "ImageUpdateWatchers::" << __func__
 		       << ": completing unregister" << dendl;
       on_unregister_finish->complete(0);
     }
@@ -670,7 +671,7 @@ template <typename I>
 void ImageState<I>::unregister_update_watcher(uint64_t handle,
                                               Context *on_finish) {
   CephContext *cct = m_image_ctx->cct;
-  ldout(cct, 20) << __func__ << ": handle=" << handle << dendl;
+  ldout(cct, 0) << __func__ << ": handle=" << handle << dendl;
 
   m_update_watchers->unregister_watcher(handle, on_finish);
 }

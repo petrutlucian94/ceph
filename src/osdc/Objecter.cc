@@ -659,14 +659,16 @@ bs::error_code Objecter::_normalize_watch_error(bs::error_code ec)
   // translate ENOENT -> ENOTCONN so that a delete->disconnection
   // notification and a failure to reconnect because we raced with
   // the delete appear the same to the user.
-  if (ec == bs::errc::no_such_file_or_directory)
+  if (ec == bs::errc::no_such_file_or_directory) {
+    lderr(cct) << "converting ENOENT to ENOTCONN" << dendl;
     ec = bs::error_code(ENOTCONN, osd_category());
+  }
   return ec;
 }
 
 void Objecter::_linger_reconnect(LingerOp *info, bs::error_code ec)
 {
-  ldout(cct, 10) << __func__ << " " << info->linger_id << " = " << ec 
+  ldout(cct, 0) << __func__ << " " << info->linger_id << " = " << ec 
 		 << " (last_error " << info->last_error << ")" << dendl;
   std::unique_lock wl(info->watch_lock);
   if (ec) {
@@ -725,7 +727,7 @@ void Objecter::_linger_ping(LingerOp *info, bs::error_code ec, ceph::coarse_mono
 			    uint32_t register_gen)
 {
   std::unique_lock l(info->watch_lock);
-  ldout(cct, 10) << __func__ << " " << info->linger_id
+  ldout(cct, 0) << __func__ << " " << info->linger_id
 		 << " sent " << sent << " gen " << register_gen << " = " << ec
 		 << " (last_error " << info->last_error
 		 << " register_gen " << info->register_gen << ")" << dendl;
@@ -921,7 +923,9 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
   }
   std::unique_lock wl(info->watch_lock);
   if (m->opcode == CEPH_WATCH_EVENT_DISCONNECT) {
+    lderr(cct) << "disconnected" << dendl;
     if (!info->last_error) {
+      lderr(cct) << "disconnected, no err. setting ENOTCONN" << dendl;
       info->last_error = bs::error_code(ENOTCONN, osd_category());
       if (info->handle) {
 	boost::asio::defer(finish_strand, CB_DoWatchError(this, info,
