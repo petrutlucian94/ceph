@@ -15,6 +15,9 @@
 #ifndef COMMON_CEPH_TIMER_H
 #define COMMON_CEPH_TIMER_H
 
+#include "common/dout.h"
+#include "global/global_init.h"
+
 #include <cassert>
 #include <condition_variable>
 #include <cstdint>
@@ -117,8 +120,17 @@ class timer {
 	running = &e;
 
 	l.unlock();
-	p->f();
-	l.lock();
+        lderr(g_ceph_context) << "calling event cbk: "
+          << " - thread: " << std::this_thread::get_id()
+          << dendl;
+        p->f();
+        lderr(g_ceph_context) << "called event cbk: "
+          << " - thread: " << std::this_thread::get_id()
+          << dendl;
+        l.lock();
+        lderr(g_ceph_context) << "unlocked"
+          << " - thread: " << std::this_thread::get_id()
+          << dendl;
 
 	if (running) {
 	  running = nullptr;
@@ -129,14 +141,32 @@ class timer {
       if (suspended)
 	break;
       if (schedule.empty()) {
+        lderr(g_ceph_context) << "schedule empty, waiting" << dendl;
 	cond.wait(l);
+        lderr(g_ceph_context) << "schedule received" << dendl;
       } else {
 	// Since wait_until takes its parameter by reference, passing
 	// the time /in the event/ is unsafe, as it might be canceled
 	// while we wait.
 	const auto t = schedule.begin()->t;
+        lderr(g_ceph_context) << "timer wait"
+                << ", now: " << ceph::coarse_mono_clock::now()
+                << ", until: " << t
+                << " - owns lock: " << l.owns_lock()
+                << " - thread: " << std::this_thread::get_id()
+                << dendl;
 	cond.wait_until(l, t);
+        lderr(g_ceph_context) << "timer wait finished"
+                << ", now: " << ceph::coarse_mono_clock::now()
+                << ", deadline: " << t
+                << " - owns lock: " << l.owns_lock()
+                << " - thread: " << std::this_thread::get_id()
+                << dendl;
       }
+    }
+
+    if (suspended) {
+        lderr(g_ceph_context) << "timer suspended" << dendl;
     }
   }
 
@@ -160,6 +190,7 @@ public:
 
   // Suspend operation of the timer (and let its thread die).
   void suspend() {
+    lderr(g_ceph_context) << "timer suspend requested" << dendl;
     std::unique_lock l(lock);
     if (suspended)
       return;
@@ -173,6 +204,7 @@ public:
   // Resume operation of the timer. (Must have been previously
   // suspended.)
   void resume() {
+    lderr(g_ceph_context) << "timer resume requested" << dendl;
     std::unique_lock l(lock);
     if (!suspended)
       return;
@@ -195,6 +227,7 @@ public:
   template<typename Callable, typename... Args>
   std::uint64_t add_event(typename TC::time_point when,
 			  Callable&& f, Args&&... args) {
+    lderr(g_ceph_context) << "added event: " << " when: " << when << dendl;
     std::lock_guard l(lock);
     auto e = std::make_unique<event>(when, ++next_id,
 				     std::bind(std::forward<Callable>(f),
@@ -224,6 +257,7 @@ public:
 
   // Adjust the timeout of a currently-scheduled event (absolute)
   bool adjust_event(std::uint64_t id, typename TC::time_point when) {
+    lderr(g_ceph_context) << "event adjusted: " << id << dendl;
     std::lock_guard l(lock);
 
     auto it = events.find(id);
@@ -244,6 +278,7 @@ public:
   // never submitted it) you will receive false. Otherwise you will
   // receive true and it is guaranteed the event will not execute.
   bool cancel_event(const std::uint64_t id) {
+    lderr(g_ceph_context) << "event canceled: " << id << dendl;
     std::lock_guard l(lock);
     auto p = events.find(id);
     if (p == events.end()) {
@@ -281,6 +316,7 @@ public:
   // Returns an event id. If you had an event_id from the first
   // scheduling, replace it with this return value.
   std::uint64_t reschedule_me(typename TC::time_point when) {
+    lderr(g_ceph_context) << "event rescheduled" << dendl;
     assert(std::this_thread::get_id() == thread.get_id());
     std::lock_guard l(lock);
     running->t = when;
@@ -298,6 +334,7 @@ public:
 
   // Remove all events from the queue.
   void cancel_all_events() {
+    lderr(g_ceph_context) << "all events canceled" << dendl;
     std::lock_guard l(lock);
     while (!events.empty()) {
       auto p = events.begin();
