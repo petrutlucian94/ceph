@@ -108,8 +108,15 @@ class timer {
       while (!schedule.empty()) {
 	auto p = schedule.begin();
 	// Should we wait for the future?
-	if (p->t > now)
+	if (p->t > now) {
+          lderr(g_ceph_context) << "timer p->t > now"
+                << ", now: " << now
+                << ", p->t: " << p->t
+                << ", time delta: " << now - p->t
+                << " - thread: " << std::this_thread::get_id()
+                << dendl;
 	  break;
+        }
 
 	auto& e = *p;
 	schedule.erase(e);
@@ -128,18 +135,21 @@ class timer {
           << " - thread: " << std::this_thread::get_id()
           << dendl;
         l.lock();
-        lderr(g_ceph_context) << "unlocked"
+        lderr(g_ceph_context) << "locked"
           << " - thread: " << std::this_thread::get_id()
           << dendl;
 
 	if (running) {
+          lderr(g_ceph_context) << "cleaning up event" << dendl;
 	  running = nullptr;
 	  delete &e;
 	} // Otherwise the event requeued itself
       }
 
-      if (suspended)
-	break;
+      if (suspended) {
+        lderr(g_ceph_context) << "timer suspended." << dendl;
+        break;
+      }
       if (schedule.empty()) {
         lderr(g_ceph_context) << "schedule empty, waiting" << dendl;
 	cond.wait(l);
@@ -155,8 +165,9 @@ class timer {
                 << " - owns lock: " << l.owns_lock()
                 << " - thread: " << std::this_thread::get_id()
                 << dendl;
-	cond.wait_until(l, t);
+	auto wait_ret = cond.wait_until(l, t);
         lderr(g_ceph_context) << "timer wait finished"
+                << ", timeout: " << (wait_ret == std::cv_status::timeout)
                 << ", now: " << ceph::coarse_mono_clock::now()
                 << ", deadline: " << t
                 << " - owns lock: " << l.owns_lock()
@@ -303,7 +314,12 @@ public:
   // Returns an event id. If you had an event_id from the first
   // scheduling, replace it with this return value.
   std::uint64_t reschedule_me(typename TC::duration duration) {
-    return reschedule_me(TC::now() + duration);
+    auto tp = TC::now() + duration;
+    lderr(g_ceph_context) << "rescheduling event"
+        << ", duration: " << duration
+        << ", tp: " << tp
+        << dendl;
+    return reschedule_me(tp);
   }
 
   // Reschedules a currently running event in the absolute
@@ -316,12 +332,16 @@ public:
   // Returns an event id. If you had an event_id from the first
   // scheduling, replace it with this return value.
   std::uint64_t reschedule_me(typename TC::time_point when) {
-    lderr(g_ceph_context) << "event rescheduled" << dendl;
+    lderr(g_ceph_context) << "rescheduling event" << dendl;
     assert(std::this_thread::get_id() == thread.get_id());
     std::lock_guard l(lock);
     running->t = when;
     std::uint64_t id = ++next_id;
     running->id = id;
+    lderr(g_ceph_context) << "rescheduling event"
+                          << ", tp: " << when
+                          << ", id: " << id
+                          << dendl;
     schedule.insert(*running);
     events.insert(*running);
 
@@ -329,6 +349,10 @@ public:
     running = nullptr;
 
     // Same function, but you get a new ID.
+    lderr(g_ceph_context) << "rescheduled event"
+                          << ", tp: " << when
+                          << ", id: " << id
+                          << dendl;
     return id;
   }
 

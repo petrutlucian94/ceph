@@ -2217,15 +2217,20 @@ void Objecter::tick()
     // send a ping to these osds, to ensure we detect any session resets
     // (osd reply message policy is lossy)
     for (auto i = toping.begin(); i != toping.end(); ++i) {
+      ldout(cct, 10) << "sending ping: " << dendl;
       (*i)->con->send_message(new MPing);
+      ldout(cct, 10) << "sent ping: " << dendl;
     }
   }
 
   // Make sure we don't reschedule if we wake up after shutdown
   if (initialized) {
+    ldout(cct, 10) << "rescheduling event" << dendl;
     tick_event = timer.reschedule_me(ceph::make_timespan(
 				       cct->_conf->objecter_tick_interval));
   }
+
+  ldout(cct, 10) << "tick finished" << dendl;
 }
 
 void Objecter::resend_mon_ops()
