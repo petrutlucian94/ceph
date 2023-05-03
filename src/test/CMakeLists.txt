@@ -97,6 +97,17 @@ if(WITH_FIO)
 endif()
 add_subdirectory(lazy-omap-stats)
 
+add_executable(ceph_test_timer_loop
+  test_timer.cc
+  )
+target_link_libraries(ceph_test_timer_loop
+  ceph-common
+  global
+  ${UNITTEST_LIBS}
+  ${EXTRALIBS}
+  )
+
+
 # test_timers
 add_executable(ceph_test_timers
   TestTimers.cc
