@@ -109,13 +109,17 @@ class timer {
 	auto p = schedule.begin();
 	// Should we wait for the future?
 	if (p->t > now) {
-          lderr(g_ceph_context) << "timer p->t > now"
-                << ", now: " << now
-                << ", p->t: " << p->t
-                << ", time delta: " << now - p->t
-                << " - thread: " << std::this_thread::get_id()
-                << dendl;
-	  break;
+          if (p->t - now < std::chrono::milliseconds(1)) {
+                lderr(g_ceph_context) << "ignoring <1ms time delta" << dendl;
+          } else {
+                lderr(g_ceph_context) << "timer p->t > now"
+                        << ", now: " << now
+                        << ", p->t: " << p->t
+                        << ", time delta: " << now - p->t
+                        << " - thread: " << std::this_thread::get_id()
+                        << dendl;
+                break;
+          }
         }
 
 	auto& e = *p;
