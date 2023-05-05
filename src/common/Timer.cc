@@ -87,23 +87,8 @@ void CommonSafeTimer<Mutex>::timer_thread()
       auto p = schedule.begin();
 
       // is the future now?
-      #if defined(_WIN32) && defined(__clang__)
-      if (p->first - now > std::chrono::milliseconds(10)) {
-          // When using mingw-llvm, wait_until sometimes returns
-          // a few microseconds quicker and than hangs when asked
-          // to wait for the remaining time. As a workaround,
-          // we'll avoid waiting for less than one millisecond.
-          //
-          // Right now we're calling the callback immediately,
-          // we may also considering sleeps when the time delta is
-          // smaller than 10ms.
-        break;
-      }
-      #else // !(_WIN32 && __clang__)
-      if (p->first > now) {
-        break;
-      }
-      #endif
+      if (p->first > now)
+	break;
 
       Context *callback = p->second;
       events.erase(callback);
