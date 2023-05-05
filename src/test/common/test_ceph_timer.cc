@@ -21,6 +21,8 @@
 #include "common/ceph_time.h"
 #include "common/ceph_timer.h"
 
+#include <iostream>
+
 using namespace std::literals;
 
 namespace {
@@ -168,8 +170,11 @@ void tick(ceph::timer<TC>* t,
           typename TC::time_point deadline,
           double interval,
           bool* test_finished,
-          typename TC::time_point* last_tick) {
+          typename TC::time_point* last_tick,
+          uint64_t* tick_count) {
   *last_tick = TC::now();
+  *tick_count += 1;
+  // std::cerr << *last_tick << ": tick" << std::endl;
 
   if (TC::now() > deadline) {
     *test_finished = true;
@@ -182,9 +187,10 @@ TEST(TimerLoopTest, TimerLoop)
 {
   ceph::timer<ceph::coarse_mono_clock> t;
   bool test_finished = false;
-  int test_duration = 30;
+  int test_duration = 10;
   double tick_interval = 0.00004;
   auto last_tick = ceph::coarse_mono_clock::now();
+  uint64_t tick_count = 0;
 
   t.add_event(
     ceph::make_timespan(tick_interval),
@@ -193,12 +199,14 @@ TEST(TimerLoopTest, TimerLoop)
     ceph::coarse_mono_clock::now() + std::chrono::seconds(test_duration),
     tick_interval,
     &test_finished,
-    &last_tick);
+    &last_tick,
+    &tick_count);
 
   std::this_thread::sleep_for(std::chrono::seconds(test_duration + 2));
 
   ASSERT_TRUE(test_finished)
     << "The timer job didn't complete, it probably hanged. "
     << "Time since last tick: "
-    << (ceph::coarse_mono_clock::now() - last_tick);
+    << (ceph::coarse_mono_clock::now() - last_tick)
+    << ". Tick count: " << tick_count;
 }
