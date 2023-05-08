@@ -90,7 +90,7 @@ if [[ -z $CMAKE_BUILD_TYPE ]]; then
   # By default, we're building release binaries with minimal debug information.
   export CFLAGS="$CFLAGS -g3"
   export CXXFLAGS="$CXXFLAGS -g3"
-  CMAKE_BUILD_TYPE=Debug
+  CMAKE_BUILD_TYPE=Release
 fi
 
 # Some tests can't use shared libraries yet due to unspecified dependencies.

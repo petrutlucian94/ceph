@@ -219,12 +219,12 @@ TEST(TimerLoopTest, TimerLoop)
 
   std::this_thread::sleep_for(std::chrono::seconds(test_duration + 2));
 
-  // ASSERT_TRUE(test_finished)
-  //   << "The timer job didn't complete, it probably hanged. "
-  //   << "Time since last tick: "
-  //   << (ceph::coarse_mono_clock::now() - last_tick)
-  //   << ". Tick count: " << tick_count
-  //   << ". Last wait tp: " << last_tp
-  //   << ", second last tp: " << second_last_tp
-  //   << ", deadline tp: " << test_deadline;
+  ASSERT_TRUE(test_finished)
+    << "The timer job didn't complete, it probably hanged. "
+    << "Time since last tick: "
+    << (ceph::coarse_mono_clock::now() - last_tick)
+    << ". Tick count: " << tick_count
+    << ". Last wait tp: " << last_tp
+    << ", second last tp: " << second_last_tp
+    << ", deadline tp: " << test_deadline;
 }

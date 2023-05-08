@@ -308,7 +308,7 @@ public:
 // monotonic clock
 class coarse_mono_clock {
 public:
-  typedef timespan duration;
+  typedef signedspan duration;
   typedef duration::rep rep;
   typedef duration::period period;
   typedef std::chrono::time_point<coarse_mono_clock> time_point;
