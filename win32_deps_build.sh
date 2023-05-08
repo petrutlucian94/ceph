@@ -57,10 +57,10 @@ function _make() {
   make -j $NUM_WORKERS $@
 }
 
-if [[ -d $DEPS_DIR ]]; then
-    echo "Cleaning up dependency build dir: $DEPS_DIR"
-    rm -rf $DEPS_DIR
-fi
+# if [[ -d $DEPS_DIR ]]; then
+#    echo "Cleaning up dependency build dir: $DEPS_DIR"
+#    rm -rf $DEPS_DIR
+# fi
 
 mkdir -p $DEPS_DIR
 mkdir -p $depsToolsetDir
@@ -106,14 +106,14 @@ case "$OS" in
         ;;
 esac
 
-if [[ -n $USE_MINGW_LLVM && ! -d $mingwLlvmDir ]]; then
-    echo "Fetching mingw-llvm"
-    cd $DEPS_DIR
-    wget -qO- $mingwLlvmUrl | tar xJ
-    # Remove the version from the mingw-llvm dirname, making it easier to locate
-    # and avoiding MAX_PATH issues with WSL.
-    mv `basename $mingwLlvmUrl | sed s'/\.tar\..*//g'` $mingwLlvmDir
-fi
+# if [[ -n $USE_MINGW_LLVM && ! -d $mingwLlvmDir ]]; then
+#     echo "Fetching mingw-llvm"
+#     cd $DEPS_DIR
+#     wget -qO- $mingwLlvmUrl | tar xJ
+#     # Remove the version from the mingw-llvm dirname, making it easier to locate
+#     # and avoiding MAX_PATH issues with WSL.
+#     mv `basename $mingwLlvmUrl | sed s'/\.tar\..*//g'` $mingwLlvmDir
+# fi
 
 MINGW_CMAKE_FILE="$DEPS_DIR/mingw.cmake"
 source "$SCRIPT_DIR/mingw_conf.sh"

@@ -143,7 +143,7 @@ class timer {
 public:
   timer() : suspended(false) {
     thread = std::thread(&timer::timer_thread, this);
-    set_thread_name(thread, "ceph_timer");
+    // set_thread_name(thread, "ceph_timer");
   }
 
   // Create a suspended timer, jobs will be executed in order when

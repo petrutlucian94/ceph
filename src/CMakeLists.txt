@@ -550,7 +550,7 @@ endif()
 if (WIN32)
   # Statically building ceph-common on Windows fails. We're temporarily
   # reverting this: 22fefb2338cfc4fcb03ece3cbf77aa964a7f17f2
-  add_library(ceph-common SHARED ${ceph_common_objs})
+  add_library(ceph-common OBJECT ${ceph_common_objs})
 else()
   add_library(ceph-common ${CEPH_SHARED} ${ceph_common_objs})
 endif()

@@ -88,9 +88,9 @@ ALLOCATOR=${ALLOCATOR:-libc}
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-}
 if [[ -z $CMAKE_BUILD_TYPE ]]; then
   # By default, we're building release binaries with minimal debug information.
-  export CFLAGS="$CFLAGS -g1"
-  export CXXFLAGS="$CXXFLAGS -g1"
-  CMAKE_BUILD_TYPE=Release
+  export CFLAGS="$CFLAGS -g3"
+  export CXXFLAGS="$CXXFLAGS -g3"
+  CMAKE_BUILD_TYPE=Debug
 fi
 
 # Some tests can't use shared libraries yet due to unspecified dependencies.
