@@ -62,6 +62,11 @@
 using namespace std;
 
 ceph::mutex shutdown_lock = ceph::make_mutex("RbdWnbd::ShutdownLock");
+librados::Rados rados;
+RbdMappingDispatcher mapping_dispatcher(rados);
+// TODO: consider reusing RbdMappingDispatcher, at the moment it doesn't
+// allow waiting for the mappings.
+RbdMapping* daemon_mapping = nullptr;
 
 // Wait 2s before recreating the wmi subscription in case of errors
 #define WMI_SUBSCRIPTION_RETRY_INTERVAL 2
@@ -80,6 +85,26 @@ bool is_process_running(DWORD pid)
   DWORD ret = WaitForSingleObject(process, 0);
   CloseHandle(process);
   return ret == WAIT_TIMEOUT;
+}
+
+int init_global_rados() {
+  dout(1) << "initializing rados connection" << dendl;
+  int r = rados.init_with_context(g_ceph_context);
+  if (r < 0) {
+    derr << "couldn't initialize rados: " << cpp_strerror(r)
+         << dendl;
+    return r;
+  }
+
+  r = rados.connect();
+  if (r < 0) {
+    derr << "couldn't establish rados connection: "
+         << cpp_strerror(r) << dendl;
+  } else {
+    dout(1) << "successfully initialized rados connection" << dendl;
+  }
+
+  return r;
 }
 
 DWORD WNBDActiveDiskIterator::fetch_list(
@@ -325,184 +350,65 @@ int send_map_request(std::string arguments) {
   return reply.status;
 }
 
-// Spawn a subprocess using the specified "rbd-wnbd" command
-// arguments. A pipe is passed to the child process,
-// which will allow it to communicate the mapping status
-int map_device_using_suprocess(std::string arguments, int timeout_ms)
+int map_device_using_same_process(std::string command_line)
 {
-  STARTUPINFO si;
-  PROCESS_INFORMATION pi;
-  char ch;
-  DWORD err = 0, status = 0;
-  int exit_code = 0;
-  std::ostringstream command_line;
-  std::string exe_path;
-  // Windows async IO context
-  OVERLAPPED connect_o, read_o;
-  HANDLE connect_event = NULL, read_event = NULL;
-  // Used for waiting on multiple events that are going to be initialized later.
-  HANDLE wait_events[2] = { INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE};
-  DWORD bytes_read = 0;
-  // We may get a command line containing an old pipe handle when
-  // recreating mappings, so we'll have to replace it.
-  std::regex pipe_pattern("([\'\"]?--pipe-name[\'\"]? +[\'\"]?[^ ]+[\'\"]?)");
+  int argc;
+  std::vector<const char*> args;
 
-  uuid_d uuid;
-  uuid.generate_random();
-  std::ostringstream pipe_name;
-  pipe_name << "\\\\.\\pipe\\rbd-wnbd-" << uuid;
+  dout(5) << "Creating mapping using the same process. Command line: "
+          << command_line << dendl;
 
-  // Create an unique named pipe to communicate with the child. */
-  HANDLE pipe_handle = CreateNamedPipe(
-    pipe_name.str().c_str(),
-    PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE |
-      FILE_FLAG_OVERLAPPED,
-    PIPE_WAIT,
-    1, // Only accept one instance
-    SERVICE_PIPE_BUFFSZ,
-    SERVICE_PIPE_BUFFSZ,
-    SERVICE_PIPE_TIMEOUT_MS,
-    NULL);
-  if (pipe_handle == INVALID_HANDLE_VALUE) {
-    err = GetLastError();
-    derr << "CreateNamedPipe failed: " << win32_strerror(err) << dendl;
-    exit_code = -ECHILD;
-    goto finally;
+  LPWSTR* argv_w = CommandLineToArgvW(
+    to_wstring(command_line).c_str(),
+    &argc);
+  if (!argv_w) {
+    DWORD err = GetLastError();
+    derr << "Couldn't parse args, error: "
+         << cpp_strerror(err) << dendl;
+    return -EINVAL;
   }
-  connect_event = CreateEvent(0, TRUE, FALSE, NULL);
-  read_event = CreateEvent(0, TRUE, FALSE, NULL);
-  if (!connect_event || !read_event) {
-    err = GetLastError();
-    derr << "CreateEvent failed: " << win32_strerror(err) << dendl;
-    exit_code = -ECHILD;
-    goto finally;
+  size_t buff_sz = 0;
+  for (int i=0; i<argc; i++) {
+    buff_sz += wcslen(argv_w[i]) * sizeof(wchar_t) + 1;
   }
-  connect_o.hEvent = connect_event;
-  read_o.hEvent = read_event;
-
-  status = ConnectNamedPipe(pipe_handle, &connect_o);
-  err = GetLastError();
-  if (status || err != ERROR_IO_PENDING) {
-    if (status)
-      err = status;
-    derr << "ConnectNamedPipe failed: " << win32_strerror(err) << dendl;
-    exit_code = -ECHILD;
-    goto finally;
-  }
-  err = 0;
-
-  dout(5) << __func__ << ": command arguments: " << arguments << dendl;
-
-  // We'll avoid running arbitrary commands, instead using the executable
-  // path of this process (expected to be the full rbd-wnbd.exe path).
-  err = get_exe_path(exe_path);
-  if (err) {
-    exit_code = -EINVAL;
-    goto finally;
-  }
-  command_line << std::quoted(exe_path)
-               << " " << std::regex_replace(arguments, pipe_pattern, "")
-               << " --pipe-name " << pipe_name.str();
-
-  dout(5) << __func__ << ": command line: " << command_line.str() << dendl;
-
-  GetStartupInfo(&si);
-  // Create a detached child
-  if (!CreateProcess(NULL, (char*)command_line.str().c_str(),
-                     NULL, NULL, FALSE, DETACHED_PROCESS,
-                     NULL, NULL, &si, &pi)) {
-    err = GetLastError();
-    derr << "CreateProcess failed: " << win32_strerror(err) << dendl;
-    exit_code = -ECHILD;
-    goto finally;
+  char* buff = (char*) calloc(1, buff_sz);
+  if (!buff) {
+    derr << "Couldn't allocate " << buff_sz << " bytes." << dendl;
+    return -ENOMEM;
   }
 
-  wait_events[0] = connect_event;
-  wait_events[1] = pi.hProcess;
-  status = WaitForMultipleObjects(2, wait_events, FALSE, timeout_ms);
-  switch(status) {
-    case WAIT_OBJECT_0:
-      if (!GetOverlappedResult(pipe_handle, &connect_o, &bytes_read, TRUE)) {
-        err = GetLastError();
-        derr << "Couldn't establish a connection with the child process. "
-             << "Error: " << win32_strerror(err) << dendl;
-        exit_code = -ECHILD;
-        goto clean_process;
-      }
-      // We have an incoming connection.
-      break;
-    case WAIT_OBJECT_0 + 1:
-      // The process has exited prematurely.
-      goto clean_process;
-    case WAIT_TIMEOUT:
-      derr << "Timed out waiting for child process connection." << dendl;
-      goto clean_process;
-    default:
-      derr << "Failed waiting for child process. Status: " << status << dendl;
-      goto clean_process;
+  char* curr_arg = buff;
+  for (int i=0; i<argc; i++) {
+    std::string str_arg = to_string(argv_w[i]);
+    size_t curr_arg_sz = str_arg.size() + 1;
+    str_arg.copy(curr_arg, curr_arg_sz);
+    args.push_back(curr_arg);
+    curr_arg += curr_arg_sz;
   }
-  // Block and wait for child to say it is ready.
-  dout(5) << __func__ << ": waiting for child notification." << dendl;
-  if (!ReadFile(pipe_handle, &ch, 1, NULL, &read_o)) {
-    err = GetLastError();
-    if (err != ERROR_IO_PENDING) {
-      derr << "Receiving child process reply failed with: "
-           << win32_strerror(err) << dendl;
-      exit_code = -ECHILD;
-      goto clean_process;
-    }
+  LocalFree(argv_w);
+
+  Config cfg;
+  cfg.command_line = command_line;
+  Command parsed_cmd = None;
+  std::ostringstream err_msg;
+  int r = parse_args(args, &err_msg, &parsed_cmd, &cfg);
+  free(buff);
+  if (r) {
+    derr << "Couldn't parse args, error: " << r
+         << ". Error message: " << err_msg.str() << dendl;
+    return -EINVAL;
   }
-  wait_events[0] = read_event;
-  wait_events[1] = pi.hProcess;
-  // The RBD daemon is expected to write back right after opening the
-  // pipe. We'll use the same timeout value for now.
-  status = WaitForMultipleObjects(2, wait_events, FALSE, timeout_ms);
-  switch(status) {
-    case WAIT_OBJECT_0:
-      if (!GetOverlappedResult(pipe_handle, &read_o, &bytes_read, TRUE)) {
-        err = GetLastError();
-        derr << "Receiving child process reply failed with: "
-             << win32_strerror(err) << dendl;
-        exit_code = -ECHILD;
-        goto clean_process;
-      }
-      break;
-    case WAIT_OBJECT_0 + 1:
-      // The process has exited prematurely.
-      goto clean_process;
-    case WAIT_TIMEOUT:
-      derr << "Timed out waiting for child process message." << dendl;
-      goto clean_process;
-    default:
-      derr << "Failed waiting for child process. Status: " << status << dendl;
-      goto clean_process;
+  if (parsed_cmd != Connect) {
+    derr << "Unexpected map command: " << parsed_cmd
+         << ", expecting: " << Connect << dendl;
+    return -EINVAL;
   }
 
-  dout(5) << __func__ << ": received child notification." << dendl;
-  goto finally;
+  if (construct_devpath_if_missing(&cfg)) {
+    return -EINVAL;
+  }
 
-  clean_process:
-    if (!is_process_running(pi.dwProcessId)) {
-      GetExitCodeProcess(pi.hProcess, (PDWORD)&exit_code);
-      derr << "Daemon failed with: " << cpp_strerror(exit_code) << dendl;
-    } else {
-      // The process closed the pipe without notifying us or exiting.
-      // This is quite unlikely, but we'll terminate the process.
-      dout(0) << "Terminating unresponsive process." << dendl;
-      TerminateProcess(pi.hProcess, 1);
-      exit_code = -EINVAL;
-    }
-
-  finally:
-    if (exit_code)
-      derr << "Could not start RBD daemon." << dendl;
-    if (pipe_handle)
-      CloseHandle(pipe_handle);
-    if (connect_event)
-      CloseHandle(connect_event);
-    if (read_event)
-      CloseHandle(read_event);
-  return exit_code;
+  return mapping_dispatcher.create(cfg);
 }
 
 BOOL WINAPI console_handler_routine(DWORD dwCtrlType)
@@ -510,7 +416,10 @@ BOOL WINAPI console_handler_routine(DWORD dwCtrlType)
   dout(0) << "Received control signal: " << dwCtrlType
           << ". Exiting." << dendl;
 
-  // TODO: shutdown all mappings
+  std::unique_lock l{shutdown_lock};
+  if (daemon_mapping) {
+    daemon_mapping->shutdown();
+  }
 
   return true;
 }
@@ -582,7 +491,7 @@ int restart_registered_mappings(
 
         // We'll try to map all devices and return a non-zero value
         // if any of them fails.
-        int r = map_device_using_suprocess(cfg.command_line, time_left_ms);
+        int r = map_device_using_same_process(cfg.command_line);
         if (r) {
           err = r;
           derr << "Could not create mapping: "
@@ -709,15 +618,17 @@ class RBDService : public ServiceBase {
 
     static int execute_command(ServiceRequest* request)
     {
+      std::string command_line;
+      std::thread map_thread;
+
       switch(request->command) {
         case Connect:
           dout(1) << "Received device connect request. Command line: "
                   << (char*)request->arguments << dendl;
           // TODO: use the configured service map timeout.
           // TODO: add ceph.conf options.
-          return map_device_using_suprocess(
-            (char*)request->arguments,
-            DEFAULT_IMAGE_MAP_TIMEOUT * 1000);
+          command_line = std::string((char*) request->arguments);
+          return map_device_using_same_process(command_line);
         default:
           dout(1) << "Received unsupported command: "
                   << request->command << dendl;
@@ -930,6 +841,8 @@ exit:
         } else {
           dout(0) << "Ignoring image remap failure." << dendl;
         }
+      } else {
+        dout(0) << "successfully restarted mappings" << dendl;
       }
 
       if (adapter_monitoring_enabled) {
@@ -1060,7 +973,7 @@ boost::intrusive_ptr<CephContext> do_global_init(
   global_pre_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, code_env, flags);
   // Avoid cluttering the console when spawning a mapping that will run
   // in the background.
-  if (g_conf()->daemonize && cfg->parent_pipe.empty()) {
+  if (g_conf()->daemonize) {
     flags |= CINIT_FLAG_NO_DAEMON_ACTIONS;
   }
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
@@ -1073,33 +986,23 @@ boost::intrusive_ptr<CephContext> do_global_init(
   return cct;
 }
 
-static int do_map(Config *cfg)
+int do_map(Config *cfg)
 {
-  if (g_conf()->daemonize && cfg->parent_pipe.empty()) {
-    return send_map_request(get_cli_args());
-  }
-
   dout(0) << "Mapping RBD image: " << cfg->devpath << dendl;
 
-  librados::Rados rados;
-  int r = rados.init_with_context(g_ceph_context);
-  if (r < 0) {
-    derr << "rbd-wnbd: couldn't initialize rados: " << cpp_strerror(r)
-         << dendl;
-    return r;
-  }
-
-  RbdMapping rbd_mapping(*cfg, rados, get_cli_args());
-  r = rbd_mapping.start();
+  RbdMapping rbd_mapping(*cfg, rados);
+  int r = rbd_mapping.start();
   if (r) {
     return r;
   }
+
+  daemon_mapping = &rbd_mapping;
 
   dout(0) << "Successfully mapped RBD image: " << cfg->devpath << dendl;
   return rbd_mapping.wait();
 }
 
-static int do_unmap(Config *cfg, bool unregister)
+int do_unmap(Config *cfg, bool unregister)
 {
   WNBD_REMOVE_OPTIONS remove_options = {0};
   remove_options.Flags.HardRemove = cfg->hard_disconnect;
@@ -1307,9 +1210,9 @@ static int do_stats(std::string search_devpath)
   return error;
 }
 
-static int parse_args(std::vector<const char*>& args,
-                      std::ostream *err_msg,
-                      Command *command, Config *cfg)
+int parse_args(std::vector<const char*>& args,
+               std::ostream *err_msg,
+               Command *command, Config *cfg)
 {
   std::string conf_file_list;
   std::string cluster;
@@ -1331,6 +1234,10 @@ static int parse_args(std::vector<const char*>& args,
 
   std::vector<const char*>::iterator i;
   std::ostringstream err;
+  // The parent pipe parameter has been deprecated since we're no longer
+  // using separate processes per mapping (unless "-f" is passed).
+  // TODO: remove this parameter eventually.
+  std::string parent_pipe;
 
   // TODO: consider using boost::program_options like Device.cc does.
   // This should simplify argument parsing. Also, some arguments must be tied
@@ -1356,7 +1263,7 @@ static int parse_args(std::vector<const char*>& args,
       cfg->remap_failure_fatal = true;
     } else if (ceph_argparse_flag(args, i, "--adapter-monitoring-enabled", (char *)NULL)) {
       cfg->adapter_monitoring_enabled = true;
-    } else if (ceph_argparse_witharg(args, i, &cfg->parent_pipe, err,
+    } else if (ceph_argparse_witharg(args, i, &parent_pipe, err,
                                      "--pipe-name", (char *)NULL)) {
       if (!err.str().empty()) {
         *err_msg << "rbd-wnbd: " << err.str();
@@ -1507,6 +1414,7 @@ static int parse_args(std::vector<const char*>& args,
 static int rbd_wnbd(int argc, const char *argv[])
 {
   Config cfg;
+  cfg.command_line = get_cli_args();
   auto args = argv_to_vec(argc, argv);
 
   // Avoid using dout before calling "do_global_init"
@@ -1538,6 +1446,14 @@ static int rbd_wnbd(int argc, const char *argv[])
       if (construct_devpath_if_missing(&cfg)) {
         return -EINVAL;
       }
+      if (g_conf()->daemonize) {
+        return send_map_request(get_cli_args());
+      }
+
+      r = init_global_rados();
+      if (r < 0)
+        return r;
+
       r = do_map(&cfg);
       if (r < 0)
         return r;
@@ -1565,6 +1481,11 @@ static int rbd_wnbd(int argc, const char *argv[])
       break;
     case Service:
     {
+      int r = init_global_rados();
+      if (r < 0) {
+        return r;
+      }
+
       RBDService service(cfg.hard_disconnect, cfg.soft_disconnect_timeout,
                          cfg.service_thread_count,
                          cfg.service_start_timeout,

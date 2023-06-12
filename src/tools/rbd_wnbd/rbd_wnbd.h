@@ -62,14 +62,15 @@ int disconnect_all_mappings(
   int worker_count);
 int restart_registered_mappings(
   int worker_count, int total_timeout, int image_map_timeout);
-int map_device_using_suprocess(std::string command_line);
+int map_device_using_same_process(std::string command_line);
 
 BOOL WINAPI console_handler_routine(DWORD dwCtrlType);
 
-static int parse_args(std::vector<const char*>& args,
-                      std::ostream *err_msg,
-                      Command *command, Config *cfg);
-static int do_unmap(Config *cfg, bool unregister);
+int parse_args(std::vector<const char*>& args,
+               std::ostream *err_msg,
+               Command *command, Config *cfg);
+int do_map(Config *cfg);
+int do_unmap(Config *cfg, bool unregister);
 
 
 class BaseIterator {

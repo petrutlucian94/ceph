@@ -45,6 +45,7 @@ public:
   }
 };
 
+typedef std::function<void(std::string devpath, int ret)> disconnect_cbk_t;
 
 class RbdMapping
 {
@@ -52,8 +53,7 @@ private:
   Config cfg;
   // We're sharing the rados object across mappings in order to
   // reuse the OSD connections.
-  librados::Rados &rados;
-  std::string command_line;
+  librados::Rados& rados;
 
   librbd::RBD rbd;
   librados::IoCtx io_ctx;
@@ -63,26 +63,49 @@ private:
   WnbdHandler* handler = nullptr;
   uint64_t watch_handle;
   WNBDWatchCtx* watch_ctx = nullptr;
+  disconnect_cbk_t disconnect_cbk;
 
   ceph::mutex shutdown_lock = ceph::make_mutex("RbdMapping::ShutdownLock");
+  std::thread monitor_thread;
 
   int init();
-  int shutdown();
 
 public:
-  RbdMapping(Config& _cfg, librados::Rados& _rados,
-             std::string _command_line)
+  RbdMapping(Config& _cfg,
+             librados::Rados& _rados)
     : cfg(_cfg)
     , rados(_rados)
-    , command_line(_command_line)
-  {
-  }
+  {}
 
-  ~RbdMapping()
-  {
-      shutdown();
-  }
+  RbdMapping(Config& _cfg,
+             librados::Rados& _rados,
+             disconnect_cbk_t _disconnect_cbk)
+    : cfg(_cfg)
+    , rados(_rados)
+    , disconnect_cbk(_disconnect_cbk)
+  {}
+
+  ~RbdMapping();
 
   int start();
   int wait();
+  int shutdown();
+};
+
+class RbdMappingDispatcher
+{
+private:
+  librados::Rados& rados;
+
+  std::map<std::string, std::unique_ptr<RbdMapping>> mappings;
+  ceph::mutex map_mutex = ceph::make_mutex("RbdMappingDispatcher::MapMutex");
+
+  void disconnect_cbk(std::string devpath, int ret);
+
+public:
+  RbdMappingDispatcher(librados::Rados& _rados)
+    : rados(_rados)
+  {}
+
+  int create(Config& cfg);
 };

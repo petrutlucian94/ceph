@@ -31,6 +31,7 @@ int RbdMapping::init()
   int r = rados.ioctx_create(cfg.poolname.c_str(), io_ctx);
   if (r < 0) {
     derr << "rbd-wnbd: couldn't create IO context: " << cpp_strerror(r)
+         << ". Pool name: " << cfg.poolname
          << dendl;
     return r;
   }
@@ -79,7 +80,7 @@ int RbdMapping::init()
   // as the rbd pool or admin socket path.
   // We're cleaning up the registry entry when the non-persistent mapping
   // gets disconnected or when the ceph service restarts.
-  r = save_config_to_registry(&cfg, command_line);
+  r = save_config_to_registry(&cfg);
   if (r < 0)
     return r;
 
@@ -96,6 +97,8 @@ int RbdMapping::init()
 int RbdMapping::shutdown()
 {
   std::unique_lock l{shutdown_lock};
+
+  dout(5) << __func__ << ": removing RBD mapping: " << cfg.devpath << dendl;
 
   int r = 0;
   if (!cfg.persistent) {
@@ -126,24 +129,26 @@ int RbdMapping::shutdown()
 
   image.close();
   io_ctx.close();
-  rados.shutdown();
 
   return r;
 }
 
 int RbdMapping::start()
 {
+  dout(10) << "initializing mapping" << dendl;
   int r = init();
   if (r < 0) {
     return r;
   }
 
+  dout(10) << "starting wnbd handler" << dendl;
   r = handler->start();
   if (r) {
     r = r == ERROR_ALREADY_EXISTS ? -EEXIST : -EINVAL;
     return r;
   }
 
+  dout(10) << "setting up watcher" << dendl;
   watch_ctx = new WNBDWatchCtx(io_ctx, handler, image, initial_image_size);
   r = image.update_watch(watch_ctx, &watch_handle);
   if (r < 0) {
@@ -152,32 +157,18 @@ int RbdMapping::start()
     return r;
   }
 
-  // We're informing the parent processes that the initialization
-  // was successful.
-  int err = 0;
-  if (!cfg.parent_pipe.empty()) {
-    HANDLE parent_pipe_handle = CreateFile(
-      cfg.parent_pipe.c_str(), GENERIC_WRITE, 0, NULL,
-      OPEN_EXISTING, 0, NULL);
-    if (parent_pipe_handle == INVALID_HANDLE_VALUE) {
-      err = GetLastError();
-      derr << "Could not open parent pipe: " << win32_strerror(err) << dendl;
-    } else if (!WriteFile(parent_pipe_handle, "a", 1, NULL, NULL)) {
-      // TODO: consider exiting in this case. The parent didn't wait for us,
-      // maybe it was killed after a timeout.
-      err = GetLastError();
-      derr << "Failed to communicate with the parent: "
-           << win32_strerror(err) << dendl;
-    } else {
-      dout(5) << __func__ << ": submitted parent notification." << dendl;
-    }
-
-    if (parent_pipe_handle != INVALID_HANDLE_VALUE)
-      CloseHandle(parent_pipe_handle);
-
-    global_init_postfork_finish(g_ceph_context);
+  if (disconnect_cbk) {
+    monitor_thread = std::thread([this]{
+      int ret = this->wait();
+      // Allow "this" to be destroyed by the disconnect callback.
+      this->monitor_thread.detach();
+      dout(5) << "finished waiting for: " << this->cfg.devpath
+              << ", ret: " << ret << dendl;
+      disconnect_cbk(this->cfg.devpath, ret);
+    });
   }
 
+  dout(10) << "successfully mapped image" << dendl;
   return 0;
 }
 
@@ -186,4 +177,55 @@ int RbdMapping::wait() {
     return handler->wait();
   }
   return 0;
+}
+
+RbdMapping::~RbdMapping() {
+  dout(10) << __func__ << ": cleaning up rbd mapping: "
+           << cfg.devpath << dendl;
+  shutdown();
+}
+
+int RbdMappingDispatcher::create(Config& cfg) {
+  if (cfg.devpath.empty()) {
+    derr << "missing device identifier" << dendl;
+    return -EINVAL;
+  }
+
+  std::unique_lock l{map_mutex};
+
+  auto existing = mappings.find(cfg.devpath);
+  if ( existing != mappings.end()) {
+    derr << "already mapped: " << cfg.devpath << dendl;
+    return -EEXIST;
+  }
+
+  auto rbd_mapping = std::make_unique<RbdMapping>(
+    cfg, rados,
+    std::bind(
+      &RbdMappingDispatcher::disconnect_cbk,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2));
+
+  // TODO: see if it makes sense to parallelize this step.
+  // We used to spin up rbd-wnbd daemons in parallel when using
+  // separate processes, however this should be much faster
+  // now that we have a single process and a shared rados context.
+  int r = rbd_mapping.get()->start();
+  if (!r) {
+    mappings.insert(std::make_pair(cfg.devpath, std::move(rbd_mapping)));
+  }
+  return r;
+}
+
+void RbdMappingDispatcher::disconnect_cbk(std::string devpath, int ret) {
+    std::unique_lock l{this->map_mutex};
+
+    dout(10) << "RbdMappingDispatcher: cleaning up stopped mapping" << dendl;
+    if (ret) {
+      derr << "rbd mapping wait error: " << ret
+           << ", allowing cleanup to proceed"
+           << dendl;
+    }
+    this->mappings.erase(devpath);
 }
