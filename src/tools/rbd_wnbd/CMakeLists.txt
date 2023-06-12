@@ -1,4 +1,5 @@
 add_executable(rbd-wnbd
+    rados_client_cache.cc
     rbd_mapping.cc rbd_mapping_config.cc
     rbd_wnbd.cc wnbd_handler.cc wnbd_wmi.cc)
 set_target_properties(
