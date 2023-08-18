@@ -280,11 +280,18 @@ int get_exe_path(std::string& path) {
 
 std::string get_cli_args() {
   std::ostringstream cmdline;
+  char** argv_utf8 = get_utf8_argv();
+  if (!argv_utf8) {
+    std::cerr << "Couldn't convert args to utf8." << std::endl;
+    return "";
+  }
+
   for (int i=1; i<__argc; i++) {
     if (i > 1)
       cmdline << " ";
-    cmdline << std::quoted(__argv[i]);
+    cmdline << std::quoted(argv_utf8[i]);
   }
+  free(argv_utf8);
   return cmdline.str();
 }
 
@@ -331,7 +338,7 @@ int send_map_request(std::string arguments) {
 // which will allow it to communicate the mapping status
 int map_device_using_suprocess(std::string arguments, int timeout_ms)
 {
-  STARTUPINFO si;
+  STARTUPINFOW si;
   PROCESS_INFORMATION pi;
   char ch;
   DWORD err = 0, status = 0;
@@ -407,11 +414,11 @@ int map_device_using_suprocess(std::string arguments, int timeout_ms)
 
   dout(5) << __func__ << ": command line: " << command_line.str() << dendl;
 
-  GetStartupInfo(&si);
+  GetStartupInfoW(&si);
   // Create a detached child
-  if (!CreateProcess(NULL, (char*)command_line.str().c_str(),
-                     NULL, NULL, FALSE, DETACHED_PROCESS,
-                     NULL, NULL, &si, &pi)) {
+  if (!CreateProcessW(NULL, (wchar_t*)to_wstring(command_line.str()).c_str(),
+                      NULL, NULL, FALSE, DETACHED_PROCESS,
+                      NULL, NULL, &si, &pi)) {
     err = GetLastError();
     derr << "CreateProcess failed: " << win32_strerror(err) << dendl;
     exit_code = -ECHILD;
@@ -1904,7 +1911,16 @@ int main(int argc, const char *argv[])
   SetConsoleCtrlHandler(console_handler_routine, true);
   // Avoid the Windows Error Reporting dialog.
   SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
-  int r = rbd_wnbd(argc, argv);
+
+  setlocale(LC_ALL, ".UTF8");
+  SetConsoleOutputCP(CP_UTF8);
+  char** argv_utf8 = get_utf8_argv();
+  if (!argv_utf8) {
+    std::cerr << "Couldn't convert args to utf8." << std::endl;
+    return -EINVAL;
+  }
+
+  int r = rbd_wnbd(argc, (const char**) argv_utf8);
   if (r < 0) {
     return r;
   }
