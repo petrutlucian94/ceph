@@ -54,6 +54,9 @@
 #include "include/compat.h"
 #include "include/util.h"
 #include "common/hobject.h"
+#ifdef _WIN32
+#include "common/win32/wstring.h"
+#endif
 
 #include "PoolDump.h"
 #include "RadosImport.h"
@@ -4047,7 +4050,18 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
 
 int main(int argc, const char **argv)
 {
+  #ifdef _WIN32
+  setlocale(LC_ALL, ".UTF8");
+  SetConsoleOutputCP(CP_UTF8);
+  char** argv_utf8 = get_utf8_argv();
+  if (!argv_utf8) {
+    std::cerr << "Couldn't convert args to utf8." << std::endl;
+    return -EINVAL;
+  }
+  auto args = argv_to_vec(argc, argv_utf8);
+  #else
   auto args = argv_to_vec(argc, argv);
+  #endif
   if (args.empty()) {
     cerr << argv[0] << ": -h or --help for usage" << std::endl;
     exit(1);
