@@ -1074,6 +1074,9 @@ Map options:
   --device <device path>  Optional mapping unique identifier
   --exclusive             Forbid writes by other clients
   --read-only             Map read-only
+  --wait-online           Wait for the disk to become available.
+  --wait-online-timeout   Specifies how long to wait for the disk to become
+                          available (seconds). Default: 15
   --non-persistent        Do not recreate the mapping when the Ceph service
                           restarts. By default, mappings are persistent
   --io-req-workers        The number of workers that dispatch IO requests.
@@ -1210,7 +1213,31 @@ static int do_map(Config *cfg)
   int err = 0;
 
   if (g_conf()->daemonize && cfg->parent_pipe.empty()) {
-    return send_map_request(get_cli_args());
+    r = send_map_request(get_cli_args());
+    if (r) {
+      return r;
+    }
+
+    if (cfg->wait_disk_online) {
+      DWORD status = WnbdPollDiskNumber(
+        cfg->devpath.c_str(),
+        TRUE, // ExpectMapped
+        TRUE, // TryOpen
+        cfg->wait_online_timeout,
+        DISK_STATUS_POLLING_INTERVAL_MS,
+        (PDWORD) &cfg->disk_number);
+      if (status) {
+        derr << "WNBD disk unavailable, error: "
+             << win32_strerror(status) << dendl;
+        return -EINVAL;
+      }
+      dout(0) << "Successfully mapped image: " << cfg->devpath
+              << ". Windows disk path: "
+              << "\\\\.\\PhysicalDrive" + std::to_string(cfg->disk_number)
+              << dendl;
+    }
+
+    return 0;
   }
 
   dout(0) << "Mapping RBD image: " << cfg->devpath << dendl;
@@ -1711,6 +1738,20 @@ static int parse_args(std::vector<const char*>& args,
         *err_msg << "rbd-wnbd: Invalid argument for map-timeout";
         return -EINVAL;
       }
+    } else if (ceph_argparse_witharg(args, i,
+                                     (int*)&cfg->wait_online_timeout,
+                                     err, "--wait-online-timeout",
+                                     (char *)NULL)) {
+      if (!err.str().empty()) {
+        *err_msg << "rbd-wnbd: " << err.str();
+        return -EINVAL;
+      }
+      if (cfg->wait_online_timeout <= 0) {
+        *err_msg << "rbd-wnbd: Invalid argument for wait-online-timeout";
+        return -EINVAL;
+      }
+    } else if (ceph_argparse_flag(args, i, "--wait-online", (char *)NULL)) {
+      cfg->wait_disk_online = true;
     } else {
       ++i;
     }

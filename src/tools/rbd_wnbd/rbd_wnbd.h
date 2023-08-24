@@ -33,6 +33,7 @@
 
 #define DEFAULT_SERVICE_START_TIMEOUT 120
 #define DEFAULT_IMAGE_MAP_TIMEOUT 20
+#define DISK_STATUS_POLLING_INTERVAL_MS 500
 
 #define HELP_INFO 1
 #define VERSION_INFO 2
@@ -68,6 +69,9 @@ struct Config {
   int image_map_timeout = DEFAULT_IMAGE_MAP_TIMEOUT;
   bool remap_failure_fatal = false;
   bool adapter_monitoring_enabled = false;
+
+  bool wait_disk_online = false;
+  int wait_online_timeout = DEFAULT_IMAGE_MAP_TIMEOUT;
 
   // TODO: consider moving those fields to a separate structure. Those
   // provide connection information without actually being configurable.

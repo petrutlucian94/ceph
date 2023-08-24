@@ -1394,6 +1394,7 @@ wnbd_open(const char *name, struct rbd_ctx *ctx)
 		"rbd-wnbd",
 		SubProcess::KEEP, SubProcess::PIPE, SubProcess::KEEP);
 	process.add_cmd_arg("map");
+	process.add_cmd_arg("--wait-online");
 	std::string img;
 	img.append(pool);
 	img.append("/");
