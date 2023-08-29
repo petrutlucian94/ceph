@@ -28,7 +28,12 @@ int RbdMapping::init()
 {
   librbd::image_info_t info;
 
-  int r = rados.ioctx_create(cfg.poolname.c_str(), io_ctx);
+  auto rados = client_cache.get_client(cfg.user_name, cfg.cluster_name);
+  if (!rados) {
+    return -EINVAL;
+  }
+
+  int r = rados->ioctx_create(cfg.poolname.c_str(), io_ctx);
   if (r < 0) {
     derr << "rbd-wnbd: couldn't create IO context: " << cpp_strerror(r)
          << ". Pool name: " << cfg.poolname
@@ -197,13 +202,13 @@ int RbdMappingDispatcher::create(Config& cfg) {
   std::unique_lock l{map_mutex};
 
   auto existing = mappings.find(cfg.devpath);
-  if ( existing != mappings.end()) {
+  if (existing != mappings.end()) {
     derr << "already mapped: " << cfg.devpath << dendl;
     return -EEXIST;
   }
 
   auto rbd_mapping = std::make_unique<RbdMapping>(
-    cfg, rados,
+    cfg, client_cache,
     std::bind(
       &RbdMappingDispatcher::disconnect_cbk,
       this,

@@ -29,6 +29,7 @@
 #include "wnbd_handler.h"
 #include "wnbd_wmi.h"
 #include "rbd_wnbd.h"
+#include "rados_client_cache.h"
 
 #include <fstream>
 #include <memory>
@@ -62,10 +63,9 @@
 using namespace std;
 
 ceph::mutex shutdown_lock = ceph::make_mutex("RbdWnbd::ShutdownLock");
-librados::Rados rados;
-RbdMappingDispatcher mapping_dispatcher(rados);
-// TODO: consider reusing RbdMappingDispatcher, at the moment it doesn't
-// allow waiting for the mappings.
+
+RadosClientCache client_cache;
+RbdMappingDispatcher mapping_dispatcher(client_cache);
 RbdMapping* daemon_mapping = nullptr;
 
 // Wait 2s before recreating the wmi subscription in case of errors
@@ -85,26 +85,6 @@ bool is_process_running(DWORD pid)
   DWORD ret = WaitForSingleObject(process, 0);
   CloseHandle(process);
   return ret == WAIT_TIMEOUT;
-}
-
-int init_global_rados() {
-  dout(1) << "initializing rados connection" << dendl;
-  int r = rados.init_with_context(g_ceph_context);
-  if (r < 0) {
-    derr << "couldn't initialize rados: " << cpp_strerror(r)
-         << dendl;
-    return r;
-  }
-
-  r = rados.connect();
-  if (r < 0) {
-    derr << "couldn't establish rados connection: "
-         << cpp_strerror(r) << dendl;
-  } else {
-    dout(1) << "successfully initialized rados connection" << dendl;
-  }
-
-  return r;
 }
 
 DWORD WNBDActiveDiskIterator::fetch_list(
@@ -990,7 +970,7 @@ int do_map(Config *cfg)
 {
   dout(0) << "Mapping RBD image: " << cfg->devpath << dendl;
 
-  RbdMapping rbd_mapping(*cfg, rados);
+  RbdMapping rbd_mapping(*cfg, client_cache);
   int r = rbd_mapping.start();
   if (r) {
     return r;
@@ -1230,6 +1210,9 @@ int parse_args(std::vector<const char*>& args,
   }
   config.parse_env(CEPH_ENTITY_TYPE_CLIENT);
   config.parse_argv(args);
+
+  cfg->cluster_name = string(config->cluster);
+  cfg->user_name = config->name.get_id();
   cfg->poolname = config.get_val<std::string>("rbd_default_pool");
 
   std::vector<const char*>::iterator i;
@@ -1450,10 +1433,6 @@ static int rbd_wnbd(int argc, const char *argv[])
         return send_map_request(get_cli_args());
       }
 
-      r = init_global_rados();
-      if (r < 0)
-        return r;
-
       r = do_map(&cfg);
       if (r < 0)
         return r;
@@ -1481,11 +1460,6 @@ static int rbd_wnbd(int argc, const char *argv[])
       break;
     case Service:
     {
-      int r = init_global_rados();
-      if (r < 0) {
-        return r;
-      }
-
       RBDService service(cfg.hard_disconnect, cfg.soft_disconnect_timeout,
                          cfg.service_thread_count,
                          cfg.service_start_timeout,

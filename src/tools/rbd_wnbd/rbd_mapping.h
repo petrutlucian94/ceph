@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include "rados_client_cache.h"
 #include "rbd_mapping_config.h"
 #include "wnbd_handler.h"
 
@@ -53,7 +54,7 @@ private:
   Config cfg;
   // We're sharing the rados object across mappings in order to
   // reuse the OSD connections.
-  librados::Rados& rados;
+  RadosClientCache& client_cache;
 
   librbd::RBD rbd;
   librados::IoCtx io_ctx;
@@ -73,16 +74,16 @@ private:
 
 public:
   RbdMapping(Config& _cfg,
-             librados::Rados& _rados)
+             RadosClientCache& _client_cache)
     : cfg(_cfg)
-    , rados(_rados)
+    , client_cache(_client_cache)
   {}
 
   RbdMapping(Config& _cfg,
-             librados::Rados& _rados,
+             RadosClientCache& _client_cache,
              disconnect_cbk_t _disconnect_cbk)
     : cfg(_cfg)
-    , rados(_rados)
+    , client_cache(_client_cache)
     , disconnect_cbk(_disconnect_cbk)
   {}
 
@@ -96,7 +97,7 @@ public:
 class RbdMappingDispatcher
 {
 private:
-  librados::Rados& rados;
+  RadosClientCache& client_cache;
 
   std::map<std::string, std::unique_ptr<RbdMapping>> mappings;
   ceph::mutex map_mutex = ceph::make_mutex("RbdMappingDispatcher::MapMutex");
@@ -104,8 +105,8 @@ private:
   void disconnect_cbk(std::string devpath, int ret);
 
 public:
-  RbdMappingDispatcher(librados::Rados& _rados)
-    : rados(_rados)
+  RbdMappingDispatcher(RadosClientCache& _client_cache)
+    : client_cache(_client_cache)
   {}
 
   int create(Config& cfg);

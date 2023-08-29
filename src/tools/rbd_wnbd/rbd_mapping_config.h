@@ -31,6 +31,9 @@ struct Config {
   bool exclusive = false;
   bool readonly = false;
 
+  std::string cluster_name;
+  std::string user_name;
+
   std::string poolname;
   std::string nsname;
   std::string imgname;
