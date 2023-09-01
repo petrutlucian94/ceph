@@ -66,11 +66,11 @@ int map_device_using_same_process(std::string command_line);
 
 BOOL WINAPI console_handler_routine(DWORD dwCtrlType);
 
-int parse_args(std::vector<const char*>& args,
-               std::ostream *err_msg,
-               Command *command, Config *cfg);
-int do_map(Config *cfg);
-int do_unmap(Config *cfg, bool unregister);
+static int parse_args(std::vector<const char*>& args,
+                      std::ostream *err_msg,
+                      Command *command, Config *cfg);
+static int do_map(Config *cfg);
+static int do_unmap(Config *cfg, bool unregister);
 
 class BaseIterator {
   public:

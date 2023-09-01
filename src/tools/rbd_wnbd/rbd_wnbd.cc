@@ -963,7 +963,7 @@ boost::intrusive_ptr<CephContext> do_global_init(
   return cct;
 }
 
-int do_map(Config *cfg)
+static int do_map(Config *cfg)
 {
   dout(0) << "Mapping RBD image: " << cfg->devpath << dendl;
 
@@ -979,7 +979,7 @@ int do_map(Config *cfg)
   return rbd_mapping.wait();
 }
 
-int do_unmap(Config *cfg, bool unregister)
+static int do_unmap(Config *cfg, bool unregister)
 {
   WNBD_REMOVE_OPTIONS remove_options = {0};
   remove_options.Flags.HardRemove = cfg->hard_disconnect;
@@ -1187,9 +1187,9 @@ static int do_stats(std::string search_devpath)
   return error;
 }
 
-int parse_args(std::vector<const char*>& args,
-               std::ostream *err_msg,
-               Command *command, Config *cfg)
+static int parse_args(std::vector<const char*>& args,
+                      std::ostream *err_msg,
+                      Command *command, Config *cfg)
 {
   std::string conf_file_list;
   std::string cluster;
