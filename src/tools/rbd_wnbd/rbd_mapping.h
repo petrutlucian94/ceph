@@ -104,7 +104,7 @@ class RbdMappingDispatcher
 private:
   RadosClientCache& client_cache;
 
-  std::map<std::string, std::unique_ptr<RbdMapping>> mappings;
+  std::map<std::string, std::shared_ptr<RbdMapping>> mappings;
   ceph::mutex map_mutex = ceph::make_mutex("RbdMappingDispatcher::MapMutex");
 
   void disconnect_cbk(std::string devpath, int ret);
@@ -115,4 +115,5 @@ public:
   {}
 
   int create(Config& cfg);
+  std::shared_ptr<RbdMapping> get_mapping(std::string& devpath);
 };

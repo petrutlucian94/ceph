@@ -188,14 +188,16 @@ int RbdMapping::start()
 }
 
 // Wait until the image gets disconnected.
-int RbdMapping::wait() {
+int RbdMapping::wait()
+{
   if (handler) {
     return handler->wait();
   }
   return 0;
 }
 
-RbdMapping::~RbdMapping() {
+RbdMapping::~RbdMapping()
+{
   dout(10) << __func__ << ": cleaning up rbd mapping: "
            << cfg.devpath << dendl;
   shutdown();
@@ -223,21 +225,19 @@ int wait_mapped_disk(Config& cfg)
   return 0;
 }
 
-int RbdMappingDispatcher::create(Config& cfg) {
+int RbdMappingDispatcher::create(Config& cfg)
+{
   if (cfg.devpath.empty()) {
     derr << "missing device identifier" << dendl;
     return -EINVAL;
   }
 
-  std::unique_lock l{map_mutex};
-
-  auto existing = mappings.find(cfg.devpath);
-  if (existing != mappings.end()) {
+  if (get_mapping(cfg.devpath)) {
     derr << "already mapped: " << cfg.devpath << dendl;
     return -EEXIST;
   }
 
-  auto rbd_mapping = std::make_unique<RbdMapping>(
+  auto rbd_mapping = std::make_shared<RbdMapping>(
     cfg, client_cache,
     std::bind(
       &RbdMappingDispatcher::disconnect_cbk,
@@ -245,25 +245,45 @@ int RbdMappingDispatcher::create(Config& cfg) {
       std::placeholders::_1,
       std::placeholders::_2));
 
-  // TODO: see if it makes sense to parallelize this step.
-  // We used to spin up rbd-wnbd daemons in parallel when using
-  // separate processes, however this should be much faster
-  // now that we have a single process and a shared rados context.
   int r = rbd_mapping.get()->start();
   if (!r) {
-    mappings.insert(std::make_pair(cfg.devpath, std::move(rbd_mapping)));
+    std::unique_lock l{map_mutex};
+    mappings.insert(std::make_pair(cfg.devpath, rbd_mapping));
   }
   return r;
 }
 
-void RbdMappingDispatcher::disconnect_cbk(std::string devpath, int ret) {
-    std::unique_lock l{this->map_mutex};
+std::shared_ptr<RbdMapping> RbdMappingDispatcher::get_mapping(
+  std::string& devpath)
+{
+  std::unique_lock l{map_mutex};
 
-    dout(10) << "RbdMappingDispatcher: cleaning up stopped mapping" << dendl;
-    if (ret) {
-      derr << "rbd mapping wait error: " << ret
-           << ", allowing cleanup to proceed"
-           << dendl;
-    }
-    this->mappings.erase(devpath);
+  auto mapping_it = mappings.find(devpath);
+  if (mapping_it == mappings.end()) {
+    // not found
+    return std::shared_ptr<RbdMapping>();
+  } else {
+    return mapping_it->second;
+  }
+}
+
+void RbdMappingDispatcher::disconnect_cbk(std::string devpath, int ret)
+{
+  dout(10) << "RbdMappingDispatcher: cleaning up stopped mapping" << dendl;
+  if (ret) {
+    derr << "rbd mapping wait error: " << ret
+         << ", allowing cleanup to proceed"
+         << dendl;
+  }
+
+  auto mapping = get_mapping(devpath);
+  if (mapping) {
+    // This step can be fairly time consuming, especially when
+    // cumulated. For this reason, we'll ensure that multiple mappings
+    // can be cleaned up simultaneously.
+    mapping->shutdown();
+  }
+
+  std::unique_lock l{map_mutex};
+  mappings.erase(devpath);
 }
