@@ -64,11 +64,22 @@ export OS="$OS"
 # * not affected by the libstdc++/winpthread rw lock bugs
 # * can generate pdb debug symbols, which are compatible with WinDBG
 TOOLCHAIN=${TOOLCHAIN:-"mingw-llvm"}
+# Set the following to "pdb" if you intend to use Microsoft debuggers.
+# This only works with mingw-llvm.
+DBG_SYMBOLS_FMT=${DBG_SYMBOLS_FMT:-"dwarf"}
 
 case "$TOOLCHAIN" in
     mingw-llvm)
         echo "Using mingw-llvm."
         export USE_MINGW_LLVM=1
+
+        if [[ $DBG_SYMBOLS_FMT == "pdb" ]]; then
+            # export LDFLAGS="$LDFLAGS -Wl,--pdb="
+            # export CFLAGS="$CFLAGS -gcodeview"
+            # export CXXFLAGS="$CXXFLAGS -gcodeview"
+            export CFLAGS="$CFLAGS -Wno-unused-command-line-argument -gcodeview -Wl,--pdb="
+            export CXXFLAGS="$CXXFLAGS -Wno-unused-command-line-argument -gcodeview -Wl,--pdb="
+        fi
         ;;
     mingw-gcc)
         echo "Using mingw-gcc"
