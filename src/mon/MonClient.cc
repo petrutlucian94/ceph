@@ -83,6 +83,7 @@ MonClient::MonClient(CephContext *cct_, boost::asio::io_context& service) :
 
 MonClient::~MonClient()
 {
+  lderr(cct) << "~MonClient()" << dendl;
 }
 
 int MonClient::build_initial_monmap()

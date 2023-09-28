@@ -47,6 +47,8 @@ namespace {
 // Set things up this way so we don't start up threads until mount and
 // kill them off when the last mount goes away, but are tolerant to
 // multiple mounts of overlapping duration.
+static ceph::mutex shutdown_lock = ceph::make_mutex("LibCephfs::ShutdownLock");
+
 std::shared_ptr<ceph::async::io_context_pool> get_icp(CephContext* cct)
 {
   static std::mutex m;
@@ -218,6 +220,9 @@ public:
 
   void shutdown()
   {
+    std::unique_lock l{shutdown_lock};
+    lderr(cct) << "libcephfs::shutdown()" << dendl;
+
     if (mounted) {
       client->unmount();
       mounted = false;
@@ -232,8 +237,10 @@ public:
       delete messenger;
       messenger = nullptr;
     }
+    lderr(cct) << "icp reset" << dendl;
     icp.reset();
     if (monclient) {
+      lderr(cct) << "deleting mon client" << dendl;
       delete monclient;
       monclient = nullptr;
     }
