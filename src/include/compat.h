@@ -41,6 +41,12 @@
 #define ALLPERMS (S_ISUID|S_ISGID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO)
 #endif
 
+#ifdef _WIN32
+#define CREAT_ACCESSPERMS _S_IREAD | _S_IWRITE
+#else
+#define CREAT_ACCESSPERMS ACCESSPERMS
+#endif
+
 #if defined(__FreeBSD__)
 
 // FreeBSD supports Linux procfs with its compatibility module
