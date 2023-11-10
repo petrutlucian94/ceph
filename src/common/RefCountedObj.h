@@ -21,6 +21,9 @@
 
 #include <atomic>
 
+#include "common/dout.h"
+#include "common/debug.h"
+
 /* This class provides mechanisms to make a sub-class work with
  * boost::intrusive_ptr (aka ceph::ref_t).
  *
@@ -107,14 +110,34 @@ struct RefCountedCond : public RefCountedObject {
 
   int wait() {
     std::unique_lock l(lock);
+    ldpp_dout(dpp, 5)
+      << "RefCountedCond::wait start"
+      << ", this=" << this
+      << ", cond=" << cond.native_handle()
+      << ", thread_id: " << std::this_thread::get_id()
+      << dendl;
     while (!complete) {
       cond.wait(l);
+      ldpp_dout(dpp, 5)
+        << "RefCountedCond::wait end"
+        << ", this=" << this
+        << ", cond=" << cond.native_handle()
+        << ", r=" << rval
+        << ", thread_id: " << std::this_thread::get_id()
+        << dendl;
     }
     return rval;
   }
 
   void done(int r) {
     std::lock_guard l(lock);
+    ldpp_dout(dpp, 5)
+      << "RefCountedCond::done"
+      << ", this=" << this
+      << ", cond=" << cond.native_handle()
+      << ", r=" << r
+      << ", thread_id: " << std::this_thread::get_id()
+      << dendl;
     rval = r;
     complete = true;
     cond.notify_all();
@@ -123,6 +146,8 @@ struct RefCountedCond : public RefCountedObject {
   void done() {
     done(0);
   }
+public: 
+  const DoutPrefixProvider *dpp = nullptr;
 
 private:
   bool complete = false;

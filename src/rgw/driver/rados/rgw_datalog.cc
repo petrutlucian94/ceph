@@ -663,15 +663,33 @@ int RGWDataChangesLog::add_entry(const DoutPrefixProvider *dpp,
 
   auto now = real_clock::now();
 
+  ldpp_dout(dpp, 5)
+      << ">>> acquiring status lock "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
   std::unique_lock sl(status->lock);
+  ldpp_dout(dpp, 5)
+      << ">>> acquired status lock "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
 
-  ldpp_dout(dpp, 20) << "RGWDataChangesLog::add_entry() bucket.name=" << bucket.name
+  ldpp_dout(dpp, 5) << ">>> RGWDataChangesLog::add_entry() bucket.name=" << bucket.name
 		     << " shard_id=" << shard_id << " now=" << now
 		     << " cur_expiration=" << status->cur_expiration << dendl;
 
   if (now < status->cur_expiration) {
     /* no need to send, recently completed */
     sl.unlock();
+    ldpp_dout(dpp, 5)
+      << ">>> renewing recently completed shard "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
     register_renew(bs, gen);
     return 0;
   }
@@ -679,23 +697,57 @@ int RGWDataChangesLog::add_entry(const DoutPrefixProvider *dpp,
   RefCountedCond* cond;
 
   if (status->pending) {
+    ldpp_dout(dpp, 5)
+      << ">>> shard pending "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
+
     cond = status->cond;
+    cond->dpp = dpp;
 
     ceph_assert(cond);
 
     status->cond->get();
     sl.unlock();
 
+    ldpp_dout(dpp, 5)
+      << ">>> waiting for pending shard "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
     int ret = cond->wait();
+    ldpp_dout(dpp, 5) << ">>> finished waiting for pending shard "
+      << ", ret: " << ret
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
     cond->put();
     if (!ret) {
       register_renew(bs, gen);
     }
     return ret;
+  } else {
+    ldpp_dout(dpp, 5)
+      << ">>> shard not pending "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
   }
 
   status->cond = new RefCountedCond;
+  status->cond->dpp = dpp;
   status->pending = true;
+  ldpp_dout(dpp, 5)
+      << ">>> initialized pending shard condition "
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
 
   ceph::real_time expiration;
 
@@ -717,10 +769,24 @@ int RGWDataChangesLog::add_entry(const DoutPrefixProvider *dpp,
     change.gen = gen.gen;
     encode(change, bl);
 
-    ldpp_dout(dpp, 20) << "RGWDataChangesLog::add_entry() sending update with now=" << now << " cur_expiration=" << expiration << dendl;
+    ldpp_dout(dpp, 5)
+      << ">>> RGWDataChangesLog::add_entry() sending update with now="
+      << now << " cur_expiration=" << expiration
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << dendl;
 
     auto be = bes->head();
     ret = be->push(dpp, index, now, change.key, std::move(bl), y);
+    ldpp_dout(dpp, 5)
+      << ">>> RGWDataChangesLog::add_entry() sent update with now="
+      << now << " cur_expiration=" << expiration
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << status->cond
+      << ", ret: " << ret
+      << dendl;
 
     now = real_clock::now();
 
@@ -737,6 +803,13 @@ int RGWDataChangesLog::add_entry(const DoutPrefixProvider *dpp,
   status->cond = nullptr;
   sl.unlock();
 
+  ldpp_dout(dpp, 5)
+      << ">>> clearing pending status"
+      << ", shard_id: " << shard_id
+      << ", thread_id: " << std::this_thread::get_id()
+      << ", cond: " << cond
+      << ", ret: " << ret
+      << dendl;
   cond->done(ret);
   cond->put();
 
