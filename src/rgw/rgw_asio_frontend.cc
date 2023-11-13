@@ -276,7 +276,13 @@ void handle_connection(boost::asio::io_context& context,
       optional_yield y = null_yield;
       if (cct->_conf->rgw_beast_enable_async) {
         y = optional_yield{context, yield};
+        lsubdout(cct, rgw_access, 1)
+          << ">>> handle_connection: using yield context" << dendl;
+      } else {
+        lsubdout(cct, rgw_access, 1)
+          << ">>> handle_connection: no yield context" << dendl;
       }
+
       int http_ret = 0;
       string user = "-";
       const auto started = ceph::coarse_real_clock::now();

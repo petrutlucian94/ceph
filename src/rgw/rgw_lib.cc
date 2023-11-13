@@ -169,6 +169,7 @@ namespace rgw {
   {
     int ret = 0;
     bool should_log = true; // XXX
+    derr << ">>> using RGWLibProcess w/o async context" << dendl;
 
     dout(1) << "====== " << __func__
 	    << " starting new request req=" << hex << req << dec

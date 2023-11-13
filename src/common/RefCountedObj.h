@@ -110,34 +110,34 @@ struct RefCountedCond : public RefCountedObject {
 
   int wait() {
     std::unique_lock l(lock);
-    ldpp_dout(dpp, 5)
-      << "RefCountedCond::wait start"
-      << ", this=" << this
-      << ", cond=" << cond.native_handle()
-      << ", thread_id: " << std::this_thread::get_id()
-      << dendl;
+    // ldpp_dout(dpp, 5)
+    //   << "RefCountedCond::wait start"
+    //   << ", this=" << this
+    //   << ", cond=" << cond.native_handle()
+    //   << ", thread_id: " << std::this_thread::get_id()
+    //   << dendl;
     while (!complete) {
       cond.wait(l);
-      ldpp_dout(dpp, 5)
-        << "RefCountedCond::wait end"
-        << ", this=" << this
-        << ", cond=" << cond.native_handle()
-        << ", r=" << rval
-        << ", thread_id: " << std::this_thread::get_id()
-        << dendl;
+      // ldpp_dout(dpp, 5)
+      //   << "RefCountedCond::wait end"
+      //   << ", this=" << this
+      //   << ", cond=" << cond.native_handle()
+      //   << ", r=" << rval
+      //   << ", thread_id: " << std::this_thread::get_id()
+      //   << dendl;
     }
     return rval;
   }
 
   void done(int r) {
     std::lock_guard l(lock);
-    ldpp_dout(dpp, 5)
-      << "RefCountedCond::done"
-      << ", this=" << this
-      << ", cond=" << cond.native_handle()
-      << ", r=" << r
-      << ", thread_id: " << std::this_thread::get_id()
-      << dendl;
+    // ldpp_dout(dpp, 5)
+    //   << "RefCountedCond::done"
+    //   << ", this=" << this
+    //   << ", cond=" << cond.native_handle()
+    //   << ", r=" << r
+    //   << ", thread_id: " << std::this_thread::get_id()
+    //   << dendl;
     rval = r;
     complete = true;
     cond.notify_all();
