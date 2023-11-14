@@ -260,10 +260,11 @@ class LazyFIFO {
   std::mutex m;
   std::unique_ptr<rgw::cls::fifo::FIFO> fifo;
 
-  int lazy_init(const DoutPrefixProvider *dpp, optional_yield y) {
+  int lazy_init(const DoutPrefixProvider *dpp) {
     std::unique_lock l(m);
     if (fifo) return 0;
-    auto r = rgw::cls::fifo::FIFO::create(dpp, ioctx, oid, &fifo, y);
+    // Use null_yield here, so we don't hold a mutex over a coroutine.
+    auto r = rgw::cls::fifo::FIFO::create(dpp, ioctx, oid, &fifo, null_yield);
     if (r) {
       fifo.reset();
     }
@@ -276,107 +277,110 @@ public:
     : ioctx(ioctx), oid(std::move(oid)) {}
 
   int read_meta(const DoutPrefixProvider *dpp, optional_yield y) {
-    auto r = lazy_init(dpp, y);
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     return fifo->read_meta(dpp, y);
   }
 
-  int meta(const DoutPrefixProvider *dpp, rados::cls::fifo::info& info, optional_yield y) {
-    auto r = lazy_init(dpp, y);
+  int meta(const DoutPrefixProvider *dpp, rados::cls::fifo::info& info,
+	   optional_yield y) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     info = fifo->meta();
     return 0;
   }
 
-  int get_part_layout_info(const DoutPrefixProvider *dpp, 
+  int get_part_layout_info(const DoutPrefixProvider *dpp,
                            std::uint32_t& part_header_size,
 			   std::uint32_t& part_entry_overhead,
 			   optional_yield y) {
-    auto r = lazy_init(dpp, y);
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     std::tie(part_header_size, part_entry_overhead)
       = fifo->get_part_layout_info();
     return 0;
   }
 
-  int push(const DoutPrefixProvider *dpp, 
+  int push(const DoutPrefixProvider *dpp,
            const ceph::buffer::list& bl,
 	   optional_yield y) {
-    auto r = lazy_init(dpp, y);
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     return fifo->push(dpp, bl, y);
   }
 
-  int push(const DoutPrefixProvider *dpp, 
+  int push(const DoutPrefixProvider *dpp,
            ceph::buffer::list& bl,
-	   librados::AioCompletion* c,
-	   optional_yield y) {
-    auto r = lazy_init(dpp, y);
+	   librados::AioCompletion* c) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     fifo->push(dpp, bl, c);
     return 0;
   }
 
-  int push(const DoutPrefixProvider *dpp, 
+  int push(const DoutPrefixProvider *dpp,
            const std::vector<ceph::buffer::list>& data_bufs,
 	   optional_yield y) {
-    auto r = lazy_init(dpp, y);
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     return fifo->push(dpp, data_bufs, y);
   }
 
-  int push(const DoutPrefixProvider *dpp, 
+  int push(const DoutPrefixProvider *dpp,
             const std::vector<ceph::buffer::list>& data_bufs,
-	    librados::AioCompletion* c,
-	    optional_yield y) {
-    auto r = lazy_init(dpp, y);
+	    librados::AioCompletion* c) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     fifo->push(dpp, data_bufs, c);
     return 0;
   }
 
-  int list(const DoutPrefixProvider *dpp, 
+  int list(const DoutPrefixProvider *dpp,
            int max_entries, std::optional<std::string_view> markstr,
 	   std::vector<rgw::cls::fifo::list_entry>* out,
 	   bool* more, optional_yield y) {
-    auto r = lazy_init(dpp, y);
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     return fifo->list(dpp, max_entries, markstr, out, more, y);
   }
 
-  int list(const DoutPrefixProvider *dpp, int max_entries, std::optional<std::string_view> markstr,
+  int list(const DoutPrefixProvider *dpp, int max_entries,
+	   std::optional<std::string_view> markstr,
 	   std::vector<rgw::cls::fifo::list_entry>* out, bool* more,
-	   librados::AioCompletion* c, optional_yield y) {
-    auto r = lazy_init(dpp, y);
+	   librados::AioCompletion* c) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     fifo->list(dpp, max_entries, markstr, out, more, c);
     return 0;
   }
 
-  int trim(const DoutPrefixProvider *dpp, std::string_view markstr, bool exclusive, optional_yield y) {
-    auto r = lazy_init(dpp, y);
+  int trim(const DoutPrefixProvider *dpp, std::string_view markstr,
+	   bool exclusive, optional_yield y) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     return fifo->trim(dpp, markstr, exclusive, y);
   }
 
-  int trim(const DoutPrefixProvider *dpp, std::string_view markstr, bool exclusive, librados::AioCompletion* c,
-	   optional_yield y) {
-    auto r = lazy_init(dpp, y);
+  int trim(const DoutPrefixProvider *dpp, std::string_view markstr,
+	   bool exclusive, librados::AioCompletion* c) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     fifo->trim(dpp, markstr, exclusive, c);
     return 0;
   }
 
-  int get_part_info(const DoutPrefixProvider *dpp, int64_t part_num, rados::cls::fifo::part_header* header,
+  int get_part_info(const DoutPrefixProvider *dpp, int64_t part_num,
+		    rados::cls::fifo::part_header* header,
 		    optional_yield y) {
-    auto r = lazy_init(dpp, y);
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     return fifo->get_part_info(dpp, part_num, header, y);
   }
 
-  int get_part_info(const DoutPrefixProvider *dpp, int64_t part_num, rados::cls::fifo::part_header* header,
-		    librados::AioCompletion* c, optional_yield y) {
-    auto r = lazy_init(dpp, y);
+  int get_part_info(const DoutPrefixProvider *dpp, int64_t part_num,
+		    rados::cls::fifo::part_header* header,
+		    librados::AioCompletion* c) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     fifo->get_part_info(part_num, header, c);
     return 0;
@@ -384,9 +388,8 @@ public:
 
   int get_head_info(const DoutPrefixProvider *dpp, fu2::unique_function<
 		      void(int r, rados::cls::fifo::part_header&&)>&& f,
-		    librados::AioCompletion* c,
-		    optional_yield y) {
-    auto r = lazy_init(dpp, y);
+		    librados::AioCompletion* c) {
+    auto r = lazy_init(dpp);
     if (r < 0) return r;
     fifo->get_head_info(dpp, std::move(f), c);
     return 0;

@@ -380,7 +380,7 @@ public:
       //
       // It can be eliminated after Reef when we can get rid of
       // AioCompletion entirely.
-      fifos[index].trim(dpp, marker, false, c, null_yield);
+      fifos[index].trim(dpp, marker, false, c);
     }
     return r;
   }
