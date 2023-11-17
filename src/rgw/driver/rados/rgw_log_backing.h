@@ -261,13 +261,23 @@ class LazyFIFO {
   std::unique_ptr<rgw::cls::fifo::FIFO> fifo;
 
   int lazy_init(const DoutPrefixProvider *dpp) {
+    ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init enter" << dendl;
     std::unique_lock l(m);
-    if (fifo) return 0;
-    // Use null_yield here, so we don't hold a mutex over a coroutine.
-    auto r = rgw::cls::fifo::FIFO::create(dpp, ioctx, oid, &fifo, null_yield);
-    if (r) {
-      fifo.reset();
+    ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init acquired mutex" << dendl;
+    if (fifo) {
+      ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init exit, r=0, fifo exists" << dendl;
+      return 0;
     }
+    // Use null_yield here, so we don't hold a mutex over a coroutine.
+    ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init creating fifo" << dendl;
+    auto r = rgw::cls::fifo::FIFO::create(dpp, ioctx, oid, &fifo, null_yield);
+    ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init created fifo" << dendl;
+    if (r) {
+      ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init FIFO::create r=" << r << dendl;
+      fifo.reset();
+      ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init finished resetting fifo" << dendl;
+    }
+    ldpp_dout(dpp, 5) << "LazyFIFO::lazy_init exit, r=" << r << dendl;
     return r;
   }
 
