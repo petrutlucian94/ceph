@@ -1045,11 +1045,6 @@ int main(int argc, const char** argv)
 {
   setlocale(LC_ALL, ".UTF8");
   SetConsoleOutputCP(CP_UTF8);
-  char** argv_utf8 = get_utf8_argv();
-  if (!argv_utf8) {
-    std::cerr << "Couldn't convert args to utf8." << std::endl;
-    return -EINVAL;
-  }
 
   if (!SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE)) {
     cerr << "Couldn't initialize console event handler." << std::endl;
@@ -1059,7 +1054,7 @@ int main(int argc, const char** argv)
   g_cfg = new Config;
 
   Command cmd = Command::None;
-  auto args = argv_to_vec(argc, argv_utf8);
+  auto args = argv_to_vec(argc, argv);
   std::ostringstream err_msg;
   int r = parse_args(args, &err_msg, &cmd, g_cfg);
   if (r) {

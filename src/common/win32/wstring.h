@@ -16,5 +16,3 @@
 
 std::wstring to_wstring(const std::string& str);
 std::string to_string(const std::wstring& wstr);
-
-char** get_utf8_argv();

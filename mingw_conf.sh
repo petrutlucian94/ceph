@@ -106,6 +106,7 @@ set(CMAKE_SYSTEM_PROCESSOR x86_64)
 set(CMAKE_C_COMPILER ${MINGW_CC})
 set(CMAKE_CXX_COMPILER ${MINGW_CXX})
 set(CMAKE_RC_COMPILER ${MINGW_WINDRES})
+set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> -O coff <INCLUDES> <FLAGS> <SOURCE> <OBJECT>")
 
 set(CMAKE_FIND_ROOT_PATH ${MINGW_FIND_ROOT_PATH})
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -129,8 +130,8 @@ EOL
     if [[ -n $USE_MINGW_LLVM ]]; then
         cat >> $MINGW_CMAKE_FILE <<EOL
 add_definitions(-I$mingwX64IncludeDir)
-add_definitions(-march=native)
-add_definitions(-Wno-unknown-attributes)
+add_compile_options(-march=native)
+add_compile_options(-Wno-unknown-attributes)
 EOL
     fi
 fi

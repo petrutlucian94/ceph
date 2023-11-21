@@ -146,6 +146,8 @@ if(WIN32)
     win32/service.cc
     win32/SubProcess.cc
     win32/syslog.cc)
+
+  set(win32_rc_srcs win32/code_page.rc)
 else()
   list(APPEND common_srcs
     blkdev.cc
