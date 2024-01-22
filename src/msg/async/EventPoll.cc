@@ -71,7 +71,7 @@ int PollDriver::poll_ctl(int fd, int op, int events) {
     }
     // We ran out of slots, try to increase
     if (max_pfds < hard_max_pfds) {
-      ldout(cct, 10) << __func__ << " exhausted pollfd slots"
+      ldout(cct, 0) << __func__ << " exhausted pollfd slots"
 		     << ", doubling to " << max_pfds*2 << dendl;
       pfds = (POLLFD*)realloc(pfds, max_pfds*2*sizeof(POLLFD));
       if (!pfds) {
@@ -160,6 +160,7 @@ int PollDriver::resize_events(int newsize) {
 int PollDriver::event_wait(std::vector<FiredFileEvent> &fired_events,
 			  struct timeval *tvp) {
   int retval, numevents = 0;
+  ldout(cct, 10) << __func__ << "initiating event wait" << dendl;
 #ifdef _WIN32
   retval = WSAPoll(pfds, max_pfds,
 		      tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
@@ -167,6 +168,7 @@ int PollDriver::event_wait(std::vector<FiredFileEvent> &fired_events,
   retval = poll(pfds, max_pfds,
 		      tvp ? (tvp->tv_sec*1000 + tvp->tv_usec/1000) : -1);
 #endif
+  ldout(cct, 10) << __func__ << "finished event wait, ret val:" << retval << dendl;
   if (retval > 0) {
     for (int j = 0; j < max_pfds; j++) {
       if (pfds[j].fd != -1) {
