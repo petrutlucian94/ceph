@@ -6,6 +6,7 @@
 #include "tools/rbd/Shell.h"
 #include "tools/rbd/Utils.h"
 #include "include/Context.h"
+#include "common/blkdev.h"
 #include "common/errno.h"
 #include "common/Throttle.h"
 #include "include/encoding.h"
@@ -229,16 +230,10 @@ int do_export_diff(librbd::Image& image, const char *fromsnapname,
   int r;
   int fd;
 
-  if (strcmp(path, "-") == 0) {
+  if (strcmp(path, "-") == 0)
     fd = STDOUT_FILENO;
-  } else {
-    if (utils::is_blk_dev(path)) {
-      std::cerr << "exporting diffs to raw block devices "
-                << "isn't currently supported." << std::endl;
-      return -EINVAL;
-    }
-    fd = open(path, O_WRONLY | O_BINARY | O_CREAT | O_EXCL, 0644);
-  }
+  else
+    fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, 0644);
   if (fd < 0)
     return -errno;
 
@@ -363,8 +358,8 @@ public:
     }
 
     ceph_assert(m_bufferlist.length() == static_cast<size_t>(r));
-    if (m_fd != STDOUT_FILENO) {
-      if (m_bufferlist.is_zero() && !m_is_blk_dev) {
+    if (m_fd != STDOUT_FILENO && !m_is_blk_dev) {
+      if (m_bufferlist.is_zero()) {
         return;
       }
 
@@ -377,10 +372,12 @@ public:
       }
     }
 
+#ifdef _WIN32
     if (m_is_blk_dev) {
-      // Need to ensure that the writes are sector aligned
+      // Need to ensure that the writes are sector aligned.
       m_bufferlist.rebuild();
     }
+#endif
     r = m_bufferlist.write_fd(m_fd);
     if (r < 0) {
       cerr << "rbd: error writing to destination image at offset "
@@ -552,8 +549,8 @@ static int do_export_v1(librbd::Image& image, librbd::image_info_t &info,
 
   file_size += info.size;
   r = throttle.wait_for_ret();
-  if (fd != 1) {
-    if (r >= 0 && !is_blk_dev) {
+  if (fd != STDOUT_FILENO && !is_blk_dev) {
+    if (r >= 0) {
       r = ftruncate(fd, file_size);
       if (r < 0)
 	return r;
@@ -581,18 +578,46 @@ static int do_export(librbd::Image& image, const char *path, bool no_progress,
   if (to_stdout) {
     fd = STDOUT_FILENO;
   } else {
-    int flags = O_WRONLY | O_BINARY;
-    is_blk_dev = utils::is_blk_dev(path);
-    if (!is_blk_dev) {
-      flags |= O_CREAT | O_EXCL;
-    } else if (export_format != 1) {
-      cerr << "rbd: exporting to raw block devices is only allowed "
-           << "using the v1 image format" << std::endl;
-      return -EINVAL;
-    }
-    fd = open(path, flags, 0644);
-    if (fd < 0) {
-      return -errno;
+    if (utils::is_blk_dev(path)) {
+      // On Windows, we need read access in order to retrieve the block
+      // device size.  On Linux, O_EXCL checks whether the block device
+      // is in use.
+      fd = open(path, O_RDWR | O_EXCL | O_BINARY);
+      if (fd < 0) {
+        return -errno;
+      }
+
+      is_blk_dev = true;
+      if (export_format == 1) {
+        uint64_t bdev_size;
+        BlkDev blkdev(fd);
+        r = blkdev.get_size((int64_t*)&bdev_size);
+        if (r < 0) {
+          std::cerr << "rbd: unable to retrieve destination block device size: "
+                    << cpp_strerror(r) << std::endl;
+          close(fd);
+          return r;
+        }
+        if (bdev_size != info.size) {
+          std::cerr << "rbd: destination block device size does not match "
+                    << "source image size: " << bdev_size << " != " << info.size
+                    << std::endl;
+          close(fd);
+          return -EINVAL;
+        }
+      } else {
+#ifdef _WIN32
+        std::cerr << "rbd: exporting to raw block devices is only allowed "
+                  << "using the v1 image format" << std::endl;
+        close(fd);
+        return -EINVAL;
+#endif
+      }
+    } else {
+      fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, 0644);
+      if (fd < 0) {
+        return -errno;
+      }
     }
 #ifdef HAVE_POSIX_FADVISE
     posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
