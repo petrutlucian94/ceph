@@ -578,42 +578,43 @@ static int do_export(librbd::Image& image, const char *path, bool no_progress,
   if (to_stdout) {
     fd = STDOUT_FILENO;
   } else {
-    // On Windows, we need read access in order to retrieve the block device size.
-    int flags = O_RDWR | O_BINARY | O_EXCL;
-    is_blk_dev = utils::is_blk_dev(path);
-    if (!is_blk_dev) {
-      flags |= O_CREAT;
-    } else if (export_format != 1) {
-      cerr << "rbd: exporting to raw block devices is only allowed "
-           << "using the v1 image format" << std::endl;
-      return -EINVAL;
-    }
-    fd = open(path, flags, 0644);
-    if (fd < 0) {
-      return -errno;
+    if (utils::is_blk_dev(path)) {
+      // On Windows, we need read access in order to retrieve the block
+      // device size.  On Linux, O_EXCL checks whether the block device
+      // is in use.
+      fd = open(path, O_RDWR | O_EXCL | O_BINARY);
+      if (fd < 0) {
+        return -errno;
+      }
+
+      is_blk_dev = true;
+      if (export_format == 1) {
+        uint64_t bdev_size;
+        BlkDev blkdev(fd);
+        r = blkdev.get_size((int64_t*)&bdev_size);
+        if (r < 0) {
+          std::cerr << "rbd: unable to retrieve destination block device size: "
+                    << cpp_strerror(r) << std::endl;
+          close(fd);
+          return r;
+        }
+        if (bdev_size != info.size) {
+          std::cerr << "rbd: destination block device size does not match "
+                    << "source image size: " << bdev_size << " != " << info.size
+                    << std::endl;
+          close(fd);
+          return -EINVAL;
+        }
+      }
+    } else {
+      fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, 0644);
+      if (fd < 0) {
+        return -errno;
+      }
     }
 #ifdef HAVE_POSIX_FADVISE
     posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 #endif
-  }
-
-  if (is_blk_dev) {
-    uint64_t bdev_size = 0;
-    BlkDev blkdev(fd);
-    r = blkdev.get_size((int64_t*)&bdev_size);
-    if (r < 0) {
-      std::cerr << "rbd: unable to retrieve block device size, error: "
-                << cpp_strerror(r) << std::endl;
-      close(fd);
-      return r;
-    }
-    if (bdev_size != info.size) {
-      std::cerr << "rbd: the target block device size does not match "
-                << "the image size: " << bdev_size << " != " << info.size
-                << std::endl;
-      close(fd);
-      return -EINVAL;
-    }
   }
 
   utils::ProgressContext pc("Exporting image", no_progress);
