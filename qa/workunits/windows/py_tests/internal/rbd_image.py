@@ -46,6 +46,27 @@ class RbdImage(object):
 
         return RbdImage(name, size_mb, is_shared)
 
+    @classmethod
+    @Tracer.trace
+    def import_image(cls, name: str, path: str, export_format: int = 1):
+        LOG.info("Importing image: %s. Path: %s.", name, path)
+        cmd = ["rbd", "import", "--export-format", str(export_format), path, name]
+        utils.ps_execute(*cmd)
+
+        cmd = ["rbd", "info", name, "--format=json"]
+        result = utils.ps_execute(*cmd)
+        size = json.loads(result.stdout)["size"]
+        size_mb = size / (1 << 20)
+
+        return RbdImage(name, size_mb, False)
+
+    @Tracer.trace
+    def export_image(self, path: str, export_format: int = 1):
+        LOG.info("Exporting image: %s. Path: %s.", self.name, path)
+        cmd = ["rbd", "export", "--export-format",
+               str(export_format), self.name, path]
+        utils.ps_execute(*cmd)
+
     @Tracer.trace
     def get_disk_number(self,
                         timeout: int = 60,
@@ -185,7 +206,8 @@ class RbdImage(object):
     @Tracer.trace
     @utils.retry_decorator()
     def _init_disk(self):
-        cmd = f"Get-Disk -Number {self.disk_number} | Initialize-Disk -PartitionStyle MBR"
+        cmd = (f"Get-Disk -Number {self.disk_number} | "
+               "Initialize-Disk -PartitionStyle MBR")
         utils.ps_execute(cmd)
 
     @Tracer.trace
